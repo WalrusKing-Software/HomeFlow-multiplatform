@@ -1,0 +1,36 @@
+*.iml
+.kotlin
+.gradle
+**/build/
+**/bin/
+xcuserdata
+!src/**/build/
+local.properties
+.idea
+.DS_Store
+captures
+.externalNativeBuild
+.cxx
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings
+node_modules/
+
+# --- Secrets / signing / sensitive (HomeFlow) -------------------------------
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+backups/
+
+# --- Distribution artifacts (when built outside build/) ---------------------
+*.apk
+*.aab
+*.dmg
+*.msi
+*.deb
+*.pkg
