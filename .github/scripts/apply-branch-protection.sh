@@ -15,10 +15,12 @@
 # What it sets up:
 #   protect-main     -> refs/heads/main      : PR required, all checks must pass, no force-push, no deletion
 #   protect-release  -> refs/heads/release/* : PR required, all checks must pass, no force-push, no deletion
+#   protect-develop  -> refs/heads/develop-* : PR required, all checks must pass, no force-push, no deletion
 #
-# Note: the head -> base SOURCE branch policy (only release/x.y.z into main, only
-# feature/*|bugfix/* into release/*) is enforced by the `validate-branch-flow`
-# CI check, which is listed as a required status check inside these rulesets.
+# Note: the head -> base SOURCE branch policy (only release/x.y.z into main; only
+# develop-*|feature/*|bugfix/* into release/*; only feature/*|bugfix/* into
+# develop-*) is enforced by the `validate-branch-flow` CI check, which is listed
+# as a required status check inside these rulesets.
 
 set -euo pipefail
 
@@ -88,6 +90,7 @@ apply_ruleset() {
 
 apply_ruleset "$RULESET_DIR/protect-main.json"
 apply_ruleset "$RULESET_DIR/protect-release.json"
+apply_ruleset "$RULESET_DIR/protect-develop.json"
 
 echo
 echo "Done. Review them at: https://github.com/$REPO/settings/rules"
