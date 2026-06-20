@@ -1,0 +1,1041 @@
+openapi: 3.0.3
+
+# =============================================================================
+# HomeFlow API — single source of truth for the /api/v1 contract.
+#
+# This spec is authored from the live route handlers (backend/src/modules/*/
+# *.routes.ts) and __docs/API.md. It is the codegen source for the Kotlin/
+# Retrofit Android client (and may regenerate/validate the TS frontend types).
+# When a route changes, update this file in the same commit. API.md is the
+# human-readable companion; this file is authoritative for client generation.
+# =============================================================================
+
+info:
+  title: HomeFlow API
+  version: 1.0.0
+  description: >
+    Self-hosted, single-user period-tracking API. Every route under /api/v1
+    requires a Keycloak-issued JWT in the `Authorization: Bearer` header and is
+    implicitly scoped to the authenticated user (user_id is never accepted from
+    the request body). Dates are ISO-8601 `YYYY-MM-DD`; timestamps are ISO-8601
+    with timezone; all `id` fields are UUID v4.
+
+servers:
+  # Host is environment-specific. LAN: https://homeflow.lan. Over Tailscale the
+  # canonical host becomes https://homeflow.<tailnet>.ts.net (see DEPLOYMENT.md).
+  - url: https://{host}
+    description: HomeFlow server (Caddy)
+    variables:
+      host:
+        default: homeflow.lan
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+  - name: Users
+  - name: Cycles
+  - name: Daily Logs
+  - name: Pain
+  - name: Analytics
+  - name: Preferences
+  - name: Reference Data
+  - name: Import & Export
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: [] # no auth
+      responses:
+        '200':
+          description: Backend is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      summary: Get current user record
+      responses:
+        '200':
+          description: The authenticated user's internal record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, createdAt, updatedAt]
+                properties:
+                  id:
+                    $ref: '#/components/schemas/Uuid'
+                  createdAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Users]
+      summary: Delete account and all data
+      description: >
+        Irreversible. Deletes all health data rows, the users row, then the
+        Keycloak identity. The client must confirm with the user first.
+      responses:
+        '204': { description: Account deleted (no body) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/cycles:
+    get:
+      tags: [Cycles]
+      summary: List all cycles (newest first)
+      responses:
+        '200':
+          description: All cycles for the user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cycles]
+                properties:
+                  cycles:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cycle' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Cycles]
+      summary: Start a new cycle
+      description: >
+        If an open cycle exists it is auto-closed with end_date = startDate - 1 day.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                  description: Required, valid date, not in the future
+      responses:
+        '201':
+          description: Created cycle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cycle' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/cycles/current:
+    get:
+      tags: [Cycles]
+      summary: Get the active (open) cycle
+      responses:
+        '200':
+          description: The currently open cycle (endDate null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cycle' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/cycles/{cycleId}:
+    parameters:
+      - $ref: '#/components/parameters/CycleId'
+    get:
+      tags: [Cycles]
+      summary: Get a single cycle
+      responses:
+        '200':
+          description: The requested cycle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cycle' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Cycles]
+      summary: Close or update a cycle
+      description: Currently supports setting endDate (closing the cycle).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endDate]
+              properties:
+                endDate:
+                  type: string
+                  format: date
+                  description: On or after startDate, not in the future
+      responses:
+        '200':
+          description: Updated cycle
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cycle' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs:
+    post:
+      tags: [Daily Logs]
+      summary: Create a daily log anchor
+      description: >
+        Must be called before any PUT sub-log for that date. Idempotent: returns
+        409 if a log already exists for the date.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, cycleId]
+              properties:
+                date: { type: string, format: date }
+                cycleId: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '201':
+          description: Created daily log anchor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, logDate, cycleId, createdAt, updatedAt]
+                properties:
+                  id: { $ref: '#/components/schemas/Uuid' }
+                  logDate: { type: string, format: date }
+                  cycleId: { $ref: '#/components/schemas/Uuid' }
+                  createdAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/daily-logs/{date}:
+    parameters:
+      - $ref: '#/components/parameters/LogDate'
+    get:
+      tags: [Daily Logs]
+      summary: Get a full day log by date
+      responses:
+        '200':
+          description: Full day log including all symptom sub-logs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyLog' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/notes:
+    parameters:
+      - $ref: '#/components/parameters/LogDate'
+    patch:
+      tags: [Daily Logs]
+      summary: Update free-text notes (encrypted at rest)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notes]
+              properties:
+                notes:
+                  type: string
+                  nullable: true
+                  maxLength: 5000
+                  description: Pass null to clear
+      responses:
+        '200':
+          description: Updated notes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notes, updatedAt]
+                properties:
+                  notes: { type: string, nullable: true }
+                  updatedAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/emotions:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace emotion selections
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated emotions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmotionsResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/sleep:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace sleep quality selections
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated sleep
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SleepResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/energy:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace energy selection (single-select)
+      requestBody: { $ref: '#/components/requestBodies/SingleSelect' }
+      responses:
+        '200':
+          description: Updated energy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnergyResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/sex:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace sex/sex-life selections (encrypted at rest)
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated sex
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SexResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/discharge:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace discharge selections
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated discharge
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DischargeResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/skin:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace skin/face selections
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated skin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkinResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/digestion:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace digestion selections
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated digestion
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DigestionResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/flow:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace blood flow selection (menstruation only, single-select)
+      requestBody: { $ref: '#/components/requestBodies/SingleSelect' }
+      responses:
+        '200':
+          description: Updated flow
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlowResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/collection:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace collection method selection (menstruation only, single-select)
+      requestBody: { $ref: '#/components/requestBodies/SingleSelect' }
+      responses:
+        '200':
+          description: Updated collection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CollectionResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/mind:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Daily Logs]
+      summary: Replace mind/cognitive selections (menstruation only)
+      requestBody: { $ref: '#/components/requestBodies/MultiSelect' }
+      responses:
+        '200':
+          description: Updated mind
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MindResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/daily-logs/{date}/pain:
+    parameters: [{ $ref: '#/components/parameters/LogDate' }]
+    put:
+      tags: [Pain]
+      summary: Replace the full pain log (locations + per-location severity)
+      description: An empty locations array clears all pain data for the day.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locations]
+              properties:
+                locations:
+                  type: array
+                  description: Empty array clears the entry. No duplicate locationIds.
+                  items: { $ref: '#/components/schemas/PainLocation' }
+      responses:
+        '200':
+          description: Updated pain log (pain is null when cleared)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pain, updatedAt]
+                properties:
+                  pain:
+                    nullable: true
+                    allOf: [{ $ref: '#/components/schemas/Pain' }]
+                  updatedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/analytics/cycle-stats:
+    get:
+      tags: [Analytics]
+      summary: Average cycle length, variation, average period length
+      description: Fields are null when there is insufficient history. Always 200.
+      responses:
+        '200':
+          description: Cycle statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [averageCycleLength, cycleVariation, averagePeriodLength]
+                properties:
+                  averageCycleLength: { type: integer, nullable: true }
+                  cycleVariation: { type: number, nullable: true }
+                  averagePeriodLength: { type: integer, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/analytics/period-length-chart:
+    get:
+      tags: [Analytics]
+      summary: Per-cycle bleeding-day counts for charting
+      responses:
+        '200':
+          description: One data point per closed cycle, oldest to newest
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dataPoints]
+                properties:
+                  dataPoints:
+                    type: array
+                    items:
+                      type: object
+                      required: [cycleStartDate, bleedingDays]
+                      properties:
+                        cycleStartDate: { type: string, format: date }
+                        bleedingDays: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/analytics/ovulation-prediction:
+    get:
+      tags: [Analytics]
+      summary: Predicted period start and ovulation dates (next 3 months)
+      responses:
+        '200':
+          description: Predictions (null when fewer than 2 closed cycles)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [averageCycleLength, predictions]
+                properties:
+                  averageCycleLength: { type: integer, nullable: true }
+                  predictions:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      required: [predictedPeriodStart, predictedOvulationDate]
+                      properties:
+                        predictedPeriodStart: { type: string, format: date }
+                        predictedOvulationDate: { type: string, format: date }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/analytics/sleep-predictions:
+    get:
+      tags: [Analytics]
+      summary: Predicted sleep-quality profile per cycle phase
+      responses:
+        '200':
+          description: >
+            Phase objects keyed by menstruation/follicular/ovulation/luteal.
+            A phase is null when fewer than 5 days of data exist for it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phases]
+                properties:
+                  phases:
+                    type: object
+                    properties:
+                      menstruation: { $ref: '#/components/schemas/SleepPhase' }
+                      follicular: { $ref: '#/components/schemas/SleepPhase' }
+                      ovulation: { $ref: '#/components/schemas/SleepPhase' }
+                      luteal: { $ref: '#/components/schemas/SleepPhase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/preferences:
+    get:
+      tags: [Preferences]
+      summary: Get dashboard category order
+      responses:
+        '200':
+          description: Category order (defaults from ref data if never saved)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryOrder' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [Preferences]
+      summary: Replace dashboard category order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryOrder' }
+      responses:
+        '200':
+          description: Updated category order
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CategoryOrder'
+                  - type: object
+                    properties:
+                      updatedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ref-data/symptom-categories:
+    get:
+      tags: [Reference Data]
+      summary: All symptom categories with nested options
+      responses:
+        '200':
+          description: Symptom categories in default display order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [categories]
+                properties:
+                  categories:
+                    type: array
+                    items: { $ref: '#/components/schemas/SymptomCategory' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ref-data/pain-regions:
+    get:
+      tags: [Reference Data]
+      summary: All pain regions with nested locations
+      responses:
+        '200':
+          description: Pain regions in display order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [regions]
+                properties:
+                  regions:
+                    type: array
+                    items: { $ref: '#/components/schemas/PainRegion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/import:
+    post:
+      tags: [Import & Export]
+      summary: Import historical data or restore a HomeFlow backup
+      description: >
+        multipart/form-data with a single `file` part. The `source` rides in the
+        query string so the parser is chosen before the body is read (streams
+        large Apple Health exports). Additive and idempotent.
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [clue, apple_health, csv, homeflow]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cyclesCreated, dailyLogsCreated, dailyLogsSkipped, warnings]
+                properties:
+                  cyclesCreated: { type: integer }
+                  dailyLogsCreated: { type: integer }
+                  dailyLogsSkipped: { type: integer }
+                  warnings:
+                    type: array
+                    items: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ImportError' }
+
+  /api/v1/export:
+    get:
+      tags: [Import & Export]
+      summary: Export all data (backup or migration format)
+      description: >
+        Decrypts notes and sex data into plaintext (breach-sensitive). Sent with
+        Content-Disposition: attachment and never logged.
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [json, clue, apple_health, csv]
+      responses:
+        '200':
+          description: >
+            Downloadable export. Content-Type varies by format: application/json
+            (json, clue), application/xml (apple_health), text/csv (csv).
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Shape varies by format; json = HomeFlow native backup.
+            application/xml:
+              schema: { type: string }
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak-issued RS256 access token (aud must include homeflow-backend).
+
+  parameters:
+    CycleId:
+      name: cycleId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    LogDate:
+      name: date
+      in: path
+      required: true
+      description: ISO-8601 date, the natural key for a daily log (e.g. 2024-02-14)
+      schema: { type: string, format: date }
+
+  requestBodies:
+    MultiSelect:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [optionIds]
+            properties:
+              optionIds:
+                type: array
+                description: All UUIDs must belong to the route's category. Empty array clears.
+                items: { $ref: '#/components/schemas/Uuid' }
+    SingleSelect:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [optionId]
+            properties:
+              optionId:
+                allOf: [{ $ref: '#/components/schemas/Uuid' }]
+                nullable: true
+                description: Single UUID from the route's category, or null to clear.
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found (or belongs to another user)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ImportError:
+      description: Declared source but structurally invalid file
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Internal error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+
+    UuidNullable:
+      type: string
+      format: uuid
+      nullable: true
+
+    UuidArray:
+      type: array
+      items: { $ref: '#/components/schemas/Uuid' }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - RESOURCE_NOT_FOUND
+                - VALIDATION_ERROR
+                - CONFLICT
+                - IMPORT_ERROR
+                - INTERNAL_ERROR
+            message: { type: string }
+
+    Cycle:
+      type: object
+      required: [id, startDate, endDate, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        startDate: { type: string, format: date }
+        endDate:
+          type: string
+          format: date
+          nullable: true
+          description: null for the currently active cycle
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    DailyLog:
+      type: object
+      required: [id, logDate, cycleId, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        logDate: { type: string, format: date }
+        cycleId: { $ref: '#/components/schemas/Uuid' }
+        notes: { type: string, nullable: true }
+        emotions: { $ref: '#/components/schemas/UuidArrayNullable' }
+        sleep: { $ref: '#/components/schemas/UuidArrayNullable' }
+        energy:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          nullable: true
+        sex: { $ref: '#/components/schemas/UuidArrayNullable' }
+        discharge: { $ref: '#/components/schemas/UuidArrayNullable' }
+        skin: { $ref: '#/components/schemas/UuidArrayNullable' }
+        digestion: { $ref: '#/components/schemas/UuidArrayNullable' }
+        flow:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          nullable: true
+          description: null outside menstruation
+        collection:
+          allOf: [{ $ref: '#/components/schemas/Uuid' }]
+          nullable: true
+        mind: { $ref: '#/components/schemas/UuidArrayNullable' }
+        pain:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/Pain' }]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    UuidArrayNullable:
+      type: array
+      nullable: true
+      description: Array of option_id UUIDs, or null when not logged
+      items: { $ref: '#/components/schemas/Uuid' }
+
+    # --- Multi-select replace-results -------------------------------------
+    # Each multi-select category returns its own selection key plus updatedAt.
+    # (Modeled as explicit schemas rather than one polymorphic shape so the
+    # generated clients get precisely-typed fields per endpoint.)
+    EmotionsResult:
+      type: object
+      description: Replace-result for the emotions multi-select.
+      required: [emotions, updatedAt]
+      properties:
+        emotions: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    SleepResult:
+      type: object
+      description: Replace-result for the sleep multi-select.
+      required: [sleep, updatedAt]
+      properties:
+        sleep: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    SexResult:
+      type: object
+      description: Replace-result for the sex/sex-life multi-select (encrypted at rest).
+      required: [sex, updatedAt]
+      properties:
+        sex: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    DischargeResult:
+      type: object
+      description: Replace-result for the discharge multi-select.
+      required: [discharge, updatedAt]
+      properties:
+        discharge: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    SkinResult:
+      type: object
+      description: Replace-result for the skin/face multi-select.
+      required: [skin, updatedAt]
+      properties:
+        skin: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    DigestionResult:
+      type: object
+      description: Replace-result for the digestion multi-select.
+      required: [digestion, updatedAt]
+      properties:
+        digestion: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    MindResult:
+      type: object
+      description: Replace-result for the mind/cognitive multi-select.
+      required: [mind, updatedAt]
+      properties:
+        mind: { $ref: '#/components/schemas/UuidArray' }
+        updatedAt: { type: string, format: date-time }
+
+    # --- Single-select replace-results ------------------------------------
+    # Each single-select category returns its own nullable UUID plus updatedAt.
+    EnergyResult:
+      type: object
+      description: Replace-result for the energy single-select.
+      required: [energy, updatedAt]
+      properties:
+        energy: { $ref: '#/components/schemas/UuidNullable' }
+        updatedAt: { type: string, format: date-time }
+
+    FlowResult:
+      type: object
+      description: Replace-result for the blood-flow single-select (menstruation only).
+      required: [flow, updatedAt]
+      properties:
+        flow: { $ref: '#/components/schemas/UuidNullable' }
+        updatedAt: { type: string, format: date-time }
+
+    CollectionResult:
+      type: object
+      description: Replace-result for the collection-method single-select (menstruation only).
+      required: [collection, updatedAt]
+      properties:
+        collection: { $ref: '#/components/schemas/UuidNullable' }
+        updatedAt: { type: string, format: date-time }
+
+    PainLocation:
+      type: object
+      required: [locationId, severity]
+      properties:
+        locationId: { $ref: '#/components/schemas/Uuid' }
+        severity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          nullable: true
+          description: 1-10, or null when selected but unrated
+
+    Pain:
+      type: object
+      required: [id, locations]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        locations:
+          type: array
+          items: { $ref: '#/components/schemas/PainLocation' }
+
+    SleepPhase:
+      type: object
+      nullable: true
+      required: [mostCommon, sampleSize]
+      properties:
+        mostCommon:
+          type: array
+          description: Up to 3 sleep option IDs, most frequent first
+          items: { $ref: '#/components/schemas/Uuid' }
+        sampleSize: { type: integer }
+
+    CategoryOrder:
+      type: object
+      required: [categoryOrder]
+      properties:
+        categoryOrder:
+          type: array
+          description: Category slugs; must contain every slug exactly once
+          items: { type: string }
+
+    SymptomOption:
+      type: object
+      required: [id, slug, label, sortOrder]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        slug: { type: string }
+        label: { type: string }
+        sortOrder: { type: integer }
+
+    SymptomCategory:
+      type: object
+      required: [id, slug, label, selectionType, phase, sortOrder, options]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        slug: { type: string }
+        label: { type: string }
+        selectionType:
+          type: string
+          enum: [single, multi]
+        phase:
+          type: string
+          enum: [always, menstruation]
+        sortOrder: { type: integer }
+        options:
+          type: array
+          items: { $ref: '#/components/schemas/SymptomOption' }
+
+    PainLocationRef:
+      type: object
+      required: [id, slug, label, sortOrder]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        slug: { type: string }
+        label: { type: string }
+        sortOrder: { type: integer }
+
+    PainRegion:
+      type: object
+      required: [id, slug, label, sortOrder, locations]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        slug: { type: string }
+        label: { type: string }
+        sortOrder: { type: integer }
+        locations:
+          type: array
+          items: { $ref: '#/components/schemas/PainLocationRef' }

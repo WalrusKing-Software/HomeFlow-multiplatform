@@ -1,0 +1,180 @@
+# IMPLEMENTATION-PHASES.md — Build Order (KMP)
+
+Each phase builds on a stable, testable foundation before the next begins. Do not
+start a phase until the previous one passes its **Done when** checklist. The
+sequencing reflects the Kotlin-everywhere layout: the **shared contract first**,
+then the server, then the clients — because both the server and the clients depend
+on `:shared`, and the clients depend on a working server.
+
+> Start every session by reading `CLAUDE.md`, then the doc(s) for the phase
+> (`SHARED-MODULE.md`, `ARCHITECTURE-server.md`, `ARCHITECTURE-client.md`,
+> `data-model.md`, `API.md`, `KEYCLOAK.md`).
+
+---
+
+## Phase 0 — Project Scaffold & Gradle
+
+**Goal:** the KMP multi-module project builds; all three modules compile empty.
+
+- Root Gradle build with modules `:shared`, `:server`, `:composeApp`; versions in
+  `gradle/libs.versions.toml`.
+- `:shared` → KMP library (jvm + android targets; add iOS later only if ever wanted).
+- `:composeApp` → Compose Multiplatform (android + desktop/jvm targets).
+- `:server` → JVM application (Ktor).
+- `.gitignore`, `.gitattributes` (LF), CI skeleton, secret-scan hook.
+
+**Done when:** `./gradlew build` succeeds on an empty scaffold; `:composeApp:run`
+opens an empty desktop window; `:composeApp:assembleDebug` produces an APK.
+
+---
+
+## Phase 1 — Shared Contract (`:shared`)
+
+**Goal:** the API contract and domain core exist once, compiled into all modules.
+
+- DTOs (`@Serializable`) for every resource in `API.md` / `data-model.md`.
+- `ApiError` + `ErrorCode`.
+- Domain math ported and **deduplicated** from the web app (`predictPhase`,
+  `cycleStats`, `ovulationPredictions`, sleep bucketing) — reconcile the divergent
+  ovulation window into one definition.
+- Shared validation rules.
+
+**Done when:** `:shared:allTests` passes (domain math + validation unit tests);
+`:server` and `:composeApp` both compile against the DTOs.
+
+---
+
+## Phase 2 — Docker Infra & DB
+
+**Goal:** the container stack starts; schema + reference data are in Postgres.
+
+- `docker-compose.yml` (+ `dev.yml`), `infra/postgres/init/`, `infra/caddy/`,
+  `infra/keycloak/realm-export.json` (see `DOCKER.md`).
+- Flyway migrations: `V1__initial_schema.sql` (all tables/constraints/indexes from
+  `data-model.md`), `V2__seed_ref_data.sql` (idempotent).
+- Exposed `Tables.kt` mirroring the schema; `config/Database.kt` (Hikari) connects.
+
+**Done when:** `make dev` brings up postgres + keycloak; Flyway migrates a fresh DB
+and re-runs cleanly; reference data present (counts spot-checked); Exposed connects.
+
+---
+
+## Phase 3 — Server Auth & User Bootstrap
+
+**Goal:** the Ktor server validates Keycloak JWTs and bootstraps the user.
+
+- `config/Config.kt` (fail-fast), `config/KeycloakConfig.kt`.
+- `Authentication.kt` (JWKS, RS256, `iss`/`aud`/`exp`, `UserPrincipal` upsert),
+  `StatusPages.kt` (ApiError), `RateLimiting.kt`, `Serialization.kt`.
+- `users` module: `GET /api/v1/users/me`, `DELETE /api/v1/users/me` (health data →
+  users row → Keycloak Admin API); `KeycloakAdminClient`.
+
+**Done when:** no/expired/tampered JWT → 401; valid JWT reaches the handler;
+`users/me` returns the record; first login upserts (no duplicates); account
+deletion removes data + the Keycloak account; all errors use the ApiError shape.
+
+---
+
+## Phase 4 — Server: Cycles & Daily-Log Anchor
+
+- `cycles` module: all 5 routes from `API.md` incl. auto-close; user-scoped repo.
+- `daily-logs` anchor: `POST` (validate cycle ownership + date in range, 409 on
+  duplicate), `GET /:date` (assembled day; sub-logs null/empty for now), `PATCH
+  /:date/notes` (encrypted via `lib/Encryption.kt`).
+
+**Done when:** create/fetch/close cycles; new cycle auto-closes the previous;
+anchor create with validation (409 duplicate, 400 out-of-range); notes stored
+ciphertext, returned decrypted; missing date → 404.
+
+---
+
+## Phase 5 — Server: Symptom Sub-Logs & Ref Data
+
+- All `PUT /daily-logs/:date/{emotions,sleep,energy,sex,discharge,skin,digestion,
+  flow,collection,mind}` (validate category, replace set); sex encrypted.
+- `pain`: `PUT /daily-logs/:date/pain` (upsert + replace locations).
+- `GET /daily-logs/:date` now fully assembled.
+- `ref-data`: `GET /ref-data/symptom-categories`, `/ref-data/pain-regions`.
+
+**Done when:** every PUT saves/clears correctly; bad option IDs → 400; full day
+assembles; sex encrypted+decrypted; pain severity/locations correct (null valid).
+
+---
+
+## Phase 6 — Server: Analytics & Preferences
+
+- `analytics`: `cycle-stats`, `period-length-chart`, `ovulation-prediction`,
+  `sleep-predictions` — all delegate to `:shared` domain math; return 200 with null
+  fields when data is thin (never 404).
+- `preferences`: `GET` / `PUT` (dashboard category order; defaults from
+  `ref_symptom_categories.sort_order`).
+
+**Done when:** analytics match `AnalyticsTest` exact values; graceful nulls under 2
+cycles; preferences persist and validate. **Server API is now feature-complete.**
+
+---
+
+## Phase 7 — Client: Auth Spike (both platforms)
+
+- Ktor `HttpClient` + auth plugin (`ARCHITECTURE-client.md`).
+- `OidcClient`/`TokenStore`/`AppLockGate` `expect` + `actual` for android & desktop.
+- Flow: login → secure store → app-lock gate → silent refresh → `GET /users/me`.
+- `FLAG_SECURE` (android); no body logging anywhere.
+
+**Done when:** fresh login works on **both** desktop and Android against the
+deployed stack; refresh token in secure storage, access token in memory; relaunch
+hits the app-lock gate then silent-refreshes; logout revokes + clears.
+
+---
+
+## Phase 8 — Client: Read MVP
+
+- Repository + ref-data label cache; `Loadable`/`ApiResult` chrome.
+- Screens: Dashboard (current cycle + today + at-a-glance), Day (date stepper, all
+  categories resolved to labels + pain + notes), Cycles list, Analytics (stats,
+  predictions, period-length chart, sleep by phase).
+
+**Done when:** all four screens render real data on both platforms; null analytics
+render empty states; phase indicator correct (uses `:shared` `predictPhase`).
+
+---
+
+## Phase 9 — Client: Write MVP
+
+- Full daily logging (multi/single-select cards, notes, pain UI), cycle
+  start/close, preference reordering. Mirrors web Phases 8–10/12.
+
+**Done when:** every category logs/clears and persists; pain severity + locations
+save; cycle start auto-closes prior; reordering persists.
+
+---
+
+## Phase 10 — Hardening & Release
+
+- Verify row-scoping, ciphertext-at-rest, no body logging, secure token storage.
+- Tailscale canonical hostname + cert (`DEPLOYMENT.md` §11); prod compose has no
+  debug ports.
+- Account deletion UX; error UX.
+- Signed builds: desktop installers (`packageDistributionForCurrentOS`) + Android
+  AAB (`bundleRelease`, signed).
+
+**Done when:** security checklist (`ARCHITECTURE-client.md`) passes; prod stack
+starts with only Caddy published; installers/AAB produced; backup/restore verified.
+
+---
+
+## Summary
+
+| Phase | Focus |
+|---|---|
+| 0 | Gradle KMP scaffold |
+| 1 | `:shared` contract + domain math |
+| 2 | Docker infra + DB + migrations |
+| 3 | Server auth + user bootstrap |
+| 4 | Server cycles + log anchor |
+| 5 | Server sub-logs + ref data |
+| 6 | Server analytics + preferences (API complete) |
+| 7 | Client auth spike (desktop + android) |
+| 8 | Client read MVP |
+| 9 | Client write MVP |
+| 10 | Hardening + signed release |

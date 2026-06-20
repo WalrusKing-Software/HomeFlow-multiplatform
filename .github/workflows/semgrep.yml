@@ -1,0 +1,42 @@
+name: SAST (Semgrep)
+
+# Static application security testing. Runs the Semgrep OSS engine with curated
+# registry rule packs. Free on private repositories (no SEMGREP_APP_TOKEN needed)
+# — unlike CodeQL code scanning, which requires GitHub Advanced Security on a
+# private repo. `semgrep ci` exits non-zero on findings, which fails this check
+# and blocks the merge when this job is a required status check.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    # Pin to a major tag for reproducibility; bump deliberately.
+    container:
+      image: semgrep/semgrep:1.96.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        env:
+          # Registry packs relevant to this Kotlin (JVM + Compose Multiplatform)
+          # + Ktor stack.
+          SEMGREP_RULES: >-
+            p/default
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/kotlin
+            p/java
+        run: semgrep ci
