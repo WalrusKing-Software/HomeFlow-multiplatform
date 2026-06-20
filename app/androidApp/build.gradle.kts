@@ -22,12 +22,21 @@ dependencies {
 
 android {
     namespace = "org.homeflow"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+    compileSdk =
+        libs.versions.android.compileSdk
+            .get()
+            .toInt()
 
     defaultConfig {
         applicationId = "org.homeflow"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        minSdk =
+            libs.versions.android.minSdk
+                .get()
+                .toInt()
+        targetSdk =
+            libs.versions.android.targetSdk
+                .get()
+                .toInt()
         // versionName tracks the project version (gradle.properties); bump
         // versionCode manually on every distributed build (see __docs/BRANCHING.md).
         versionCode = 1

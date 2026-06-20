@@ -23,8 +23,10 @@ already `api(projects.core)`. Version is wired from `gradle.properties` in the r
 build. `.gitignore`/`.gitattributes` (LF) in place.
 
 **Remaining Phase 0 wiring (before hooks/CI go live):**
-- Wire the **ktlint** + **detekt** Gradle plugins (the Husky hooks and the CI
-  `build-checks` job call `ktlintCheck`/`detekt`; they no-op until these exist).
+- ✅ **ktlint + detekt** Gradle plugins wired across all modules (applied via
+  `subprojects` in the root build; config in `.editorconfig` and
+  `config/detekt/detekt.yml`). `./gradlew ktlintCheck detekt` and `./gradlew check`
+  pass on the scaffold — so the Husky hooks and the CI `build-checks` job are now live.
 - Wire the **Flyway** Gradle plugin on `:server` (`flywayMigrate` task).
 - Add `docker-compose.yml` / `docker-compose.dev.yml` and `infra/` (Caddy,
   Postgres init, Keycloak realm export) — see `DOCKER.md`.
