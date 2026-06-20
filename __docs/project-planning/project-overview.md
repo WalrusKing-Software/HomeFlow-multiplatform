@@ -50,7 +50,7 @@ Feature specifics can be found in the [Features Document](./features.md).
 > (Node/Fastify + SvelteKit) has been replaced; see `README.md` /
 > `ARCHITECTURE-server.md` / `ARCHITECTURE-client.md` for the authoritative stack.
 
-- **Shared** — Kotlin Multiplatform (`:shared`): kotlinx.serialization DTOs,
+- **Shared** — Kotlin Multiplatform (`:core`): kotlinx.serialization DTOs,
   cycle/analytics domain math, validation, error codes
 - **Server** — Kotlin, Ktor (JVM), Exposed, HikariCP, Flyway, PostgreSQL, Keycloak
 - **Clients** — Compose Multiplatform + Material 3 (desktop JVM + Android), Ktor client

@@ -7,7 +7,7 @@ carry over unchanged**, only the technology is different. Read this before any
 work under `server/`.
 
 > Spec sources: `data-model.md` (schema), `API.md` (routes), `KEYCLOAK.md`
-> (auth), `threat-model.md` (security). DTOs and domain math come from `:shared`
+> (auth), `threat-model.md` (security). DTOs and domain math come from `:core`
 > — see `SHARED-MODULE.md`. This doc covers how the server is wired.
 
 ---
@@ -17,7 +17,7 @@ work under `server/`.
 | Concern | Choice | Notes |
 |---|---|---|
 | HTTP framework | **Ktor** (Netty engine) | Coroutine-based; runs on the Pi's JVM |
-| Serialization | **kotlinx.serialization** | `ContentNegotiation` + the `:shared` DTOs — no codegen |
+| Serialization | **kotlinx.serialization** | `ContentNegotiation` + the `:core` DTOs — no codegen |
 | DB access | **Exposed** (JetBrains, DSL) | Type-safe SQL builder; the Kysely analogue |
 | Connection pool | **HikariCP** | |
 | Migrations | **Flyway** | SQL files in `server/src/main/resources/db/migration/`, run manually |
@@ -37,9 +37,9 @@ work under `server/`.
 ## Module / package layout
 
 ```
-server/
-  src/main/kotlin/org/homeflow/server/
-    Application.kt              # Ktor entry point — installs plugins, wires modules
+server/                          # the :server module (Ktor); package root org.homeflow
+  src/main/kotlin/org/homeflow/
+    Application.kt              # Ktor entry point (org.homeflow.ApplicationKt) — installs plugins, wires modules
     config/
       Config.kt                # env loading + validation; fails fast on misconfig
       Database.kt              # HikariCP DataSource + Exposed Database (single instance)
@@ -67,7 +67,7 @@ server/
 ```
 
 `ApiError`, `ErrorCode`, the request/response DTOs, and the cycle/analytics math
-live in `:shared` (not here). The server depends on `:shared` and reuses them
+live in `:core` (not here). The server depends on `:core` and reuses them
 directly — there is no separate "schema" layer.
 
 ---
@@ -189,7 +189,7 @@ install(Authentication) {
 
 AES-256-GCM at the application layer for `daily_logs.notes` and
 `daily_log_sex.encrypted_payload`, in **service functions only** — never in
-repositories, routes, `:shared`, or any client.
+repositories, routes, `:core`, or any client.
 
 - Key: 32 bytes from `APP_ENCRYPTION_KEY` (base64), never hardcoded.
 - Stored as `base64(iv):base64(ciphertext):base64(tag)`, fresh 12-byte IV per call.
@@ -209,7 +209,7 @@ object Encryption {
 
 ## Error handling
 
-All errors return the shape defined once in `:shared` (`ApiError`):
+All errors return the shape defined once in `:core` (`ApiError`):
 
 ```json
 { "error": { "code": "RESOURCE_NOT_FOUND", "message": "Daily log not found for the given date." } }
@@ -243,9 +243,9 @@ dev). No HTTP body logging is ever installed.
 
 - Files: `{Domain}{Layer}.kt` — `CyclesService.kt`, `CyclesRepository.kt`.
 - Repository functions: verb + noun — `findDailyLog`, `insertEmotions`, `deleteAllUserData`.
-- Service functions: intent — `logEmotions`, `closeCycle`, `predictOvulation` (these often delegate to `:shared` domain math).
+- Service functions: intent — `logEmotions`, `closeCycle`, `predictOvulation` (these often delegate to `:core` domain math).
 - DB tables/columns: `snake_case` (plural entity tables, singular junction tables), exactly as `data-model.md`.
-- DTOs: `*Dto` / `*Request` / `*Response` in `:shared`.
+- DTOs: `*Dto` / `*Request` / `*Response` in `:core`.
 
 ---
 
@@ -259,4 +259,4 @@ dev). No HTTP body logging is ever installed.
 | Encryption | AES-256-GCM, service layer | threat model |
 | Row scoping | `userId` from JWT on every health query | threat model |
 | Logging | no PII, no bodies | threat model |
-| Shared contract | DTOs + domain math in `:shared` | single source of truth |
+| Shared contract | DTOs + domain math in `:core` | single source of truth |
