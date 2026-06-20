@@ -32,12 +32,24 @@ build. `.gitignore`/`.gitattributes` (LF) in place.
   plugin is incompatible with Gradle 9 + the configuration cache. Reads
   `DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`; migration SQL goes in
   `server/src/main/resources/db/migration/` (Phase 2).
-- Add `docker-compose.yml` / `docker-compose.dev.yml` and `infra/` (Caddy,
-  Postgres init, Keycloak realm export) — see `DOCKER.md`.
+- ✅ **Docker infra** in place and verified live: `docker-compose.yml` +
+  `docker-compose.dev.yml` (`make dev`/`make prod`), `server/Dockerfile`
+  (multi-stage JVM; installs the Android SDK because `:core` has an Android target),
+  `.dockerignore`, `infra/caddy/Caddyfile`, `infra/postgres/init/` (keycloak DB +
+  restricted `app_user` role), `infra/keycloak/realm-export.json`. Bringing the
+  stack up confirmed: Postgres healthy with both DBs + app role; Keycloak imports
+  the `homeflow` realm (15-min access tokens, 30-day offline sessions for
+  persistent mobile/desktop login, registration disabled, brute-force on; the
+  backend/android/desktop clients with PKCE-S256 + audience mappers); the Ktor
+  backend builds and responds; Caddy proxies `/realms/*` → Keycloak (200) and
+  `/api`,`/health` → backend with the security headers applied.
+- The custom password + WebAuthn-passkey 2FA browser flow (`browser-with-passkey`)
+  and the `webauthn-register` default required action are deferred to **Phase 3**
+  (auth); the realm currently uses Keycloak's default browser flow. See `KEYCLOAK.md`.
 
 **Done when:** `./gradlew build` succeeds; `:app:desktopApp:run` opens an empty
 desktop window; `:app:androidApp:assembleDebug` produces an APK; `ktlintCheck` and
-`detekt` run.
+`detekt` run; `make dev` brings the full stack up with the realm imported.
 
 ---
 

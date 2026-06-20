@@ -18,13 +18,29 @@ This document covers:
 
 ## Clients and Their Purposes
 
+> **Multiplatform note (this repo).** This is the Kotlin rebuild — there is **no
+> web frontend**. The actual realm (`infra/keycloak/realm-export.json`, imported on
+> first Keycloak boot) defines **three** clients: `homeflow-backend` (confidential),
+> `homeflow-android` (public, native), and **`homeflow-desktop`** (public, loopback
+> redirect) — the desktop client replaces the old `homeflow-frontend` web client.
+> Both `homeflow-android` and `homeflow-desktop` are PKCE-S256 public clients that
+> request `offline_access` for long-lived sessions, and each carries its own
+> audience mapper for `homeflow-backend`. Where the prose below says
+> "Fastify backend" or `homeflow-frontend`, read "Ktor backend" / `homeflow-desktop`.
+> The realm-export.json is the source of truth.
+>
+> The realm export intentionally uses Keycloak's **default browser flow** for now;
+> the custom password + WebAuthn-passkey 2FA flow (`browser-with-passkey`) and the
+> `webauthn-register` default required action described below are bound in the auth
+> phase (IMPLEMENTATION-PHASES Phase 3), not at infra bring-up.
+
 This app uses **three separate Keycloak clients**. This is a common source of confusion — do not consolidate them into one.
 
 | Client ID | Type | Used by | Purpose |
 |---|---|---|---|
-| `homeflow-frontend` | Public (no secret) | SvelteKit frontend | OIDC Authorization Code flow — the browser redirect to Keycloak login |
-| `homeflow-backend` | Confidential (has secret) | Fastify backend | JWT audience validation + Keycloak Admin API calls (account deletion) |
+| `homeflow-backend` | Confidential (has secret) | Ktor backend | JWT audience validation + Keycloak Admin API calls (account deletion) |
 | `homeflow-android` | Public (no secret) | Native Android app | OIDC Authorization Code + PKCE flow in a Chrome Custom Tab; uses `offline_access` for long-lived mobile sessions |
+| `homeflow-desktop` | Public (no secret) | Desktop app | OIDC Authorization Code + PKCE flow via system browser + loopback redirect; uses `offline_access` for long-lived desktop sessions |
 
 **Why separate clients?**
 
