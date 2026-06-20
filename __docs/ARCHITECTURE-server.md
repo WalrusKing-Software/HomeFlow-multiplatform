@@ -124,9 +124,10 @@ which has DML only — no DDL. Migrations run separately as the superuser.
 
 - Versioned SQL in `server/src/main/resources/db/migration/`
   (`V1__initial_schema.sql`, `V2__seed_ref_data.sql`, …).
-- **Manual, never automatic on startup** — run via a Gradle task or the one-off
-  migration container (see `DEPLOYMENT.md`). Auto-migrate-on-boot is intentionally
-  disabled.
+- **Manual, never automatic on startup** — run via the `:server:flywayMigrate`
+  Gradle task (a custom `JavaExec` wrapping the Flyway CLI; `flywayInfo` /
+  `flywayValidate` also exist) or the one-off migration container (see
+  `DEPLOYMENT.md`). Auto-migrate-on-boot is intentionally disabled.
 - Seed reference data (symptom categories/options, pain regions/locations) with
   idempotent `INSERT ... ON CONFLICT DO NOTHING` so re-runs are safe.
 - Because Exposed `Table` objects are hand-written (not generated), keep them in

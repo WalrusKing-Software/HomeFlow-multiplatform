@@ -27,7 +27,11 @@ build. `.gitignore`/`.gitattributes` (LF) in place.
   `subprojects` in the root build; config in `.editorconfig` and
   `config/detekt/detekt.yml`). `./gradlew ktlintCheck detekt` and `./gradlew check`
   pass on the scaffold — so the Husky hooks and the CI `build-checks` job are now live.
-- Wire the **Flyway** Gradle plugin on `:server` (`flywayMigrate` task).
+- ✅ **Flyway** wired on `:server` as custom `JavaExec` tasks (`flywayMigrate`,
+  `flywayInfo`, `flywayValidate`) driving the Flyway CLI — the `org.flywaydb.flyway`
+  plugin is incompatible with Gradle 9 + the configuration cache. Reads
+  `DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`; migration SQL goes in
+  `server/src/main/resources/db/migration/` (Phase 2).
 - Add `docker-compose.yml` / `docker-compose.dev.yml` and `infra/` (Caddy,
   Postgres init, Keycloak realm export) — see `DOCKER.md`.
 
