@@ -1,0 +1,29 @@
+# Dev overlay — opt-in via `make dev`, NEVER auto-merged into production.
+# Adds host-published ports for local tooling, relaxes Keycloak's hostname/TLS
+# rules (start-dev), and turns on debug logging. See __docs/DOCKER.md.
+#
+# Postgres is published on 5433 (not 5432) so it does not collide with a Postgres
+# already running on the host's 5432.
+
+services:
+  postgres:
+    container_name: homeflow-postgres-dev
+    ports:
+      - "5433:5432"
+
+  keycloak:
+    container_name: homeflow-keycloak-dev
+    # start-dev disables hostname-strict + HTTPS requirement for local work.
+    command: start-dev --import-realm
+    environment:
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8180:8080"
+
+  backend:
+    container_name: homeflow-backend-dev
+    environment:
+      LOG_LEVEL: debug
+
+  caddy:
+    container_name: homeflow-caddy-dev

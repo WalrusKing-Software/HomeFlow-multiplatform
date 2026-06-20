@@ -21,10 +21,12 @@ apps, not a served web app).
                             └──▶ [postgres] (same container, separate DB)
 ```
 
-> **Naming convention:** production containers use a `-prod` suffix
-> (`postgres-prod`, …); the dev overlay (`docker-compose.dev.yml`, never
-> auto-merged) uses `-dev`. Internal DNS resolves *service* names (`backend`,
-> `postgres`), so `http://backend:8080` works in both.
+> **Naming convention:** container names are prefixed with `homeflow-` and
+> suffixed by environment — production uses `homeflow-postgres-prod`, …; the dev
+> overlay (`docker-compose.dev.yml`, never auto-merged) uses `homeflow-…-dev`.
+> The `homeflow-` prefix avoids collisions with other projects on the same host.
+> Internal DNS resolves *service* names (`backend`, `postgres`), so
+> `http://backend:8080` works in both.
 
 > **No frontend container.** The web app's `frontend` service is gone — clients
 > are installed apps. Caddy routes everything to the backend API. If you ever add
