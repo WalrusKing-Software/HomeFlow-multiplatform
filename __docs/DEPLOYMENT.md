@@ -143,8 +143,16 @@ docker run --rm --network <project>_app-network \
 
 > Alternatively wire a dedicated `migrate` Compose service or a
 > `docker-compose.migrate.yml`. The throwaway-image method needs no extra repo
-> wiring and is fine for a single node. Configure the Flyway Gradle plugin
-> (`org.flywaydb.flyway`) on `:server` pointed at `src/main/resources/db/migration`.
+> wiring and is fine for a single node.
+>
+> **How Flyway is wired:** `:server` defines `flywayMigrate` / `flywayInfo` /
+> `flywayValidate` as custom `JavaExec` tasks that run the Flyway CLI
+> (`org.flywaydb:flyway-commandline` + the Postgres driver), pointed at
+> `src/main/resources/db/migration`. The official `org.flywaydb.flyway` Gradle
+> plugin is **not** used — it relies on Gradle APIs removed in Gradle 9 and is
+> incompatible with the configuration cache. The custom tasks read
+> `DATABASE_URL` / `DATABASE_USER` / `DATABASE_PASSWORD` from the environment and
+> set `cleanDisabled=true` so `clean` can never wipe the database.
 
 ---
 
