@@ -1,0 +1,31 @@
+# Detekt configuration for HomeFlow-multiplatform.
+# `buildUponDefaultConfig = true` (root build) means this file only needs to
+# state overrides — every rule not mentioned keeps its detekt default.
+# Run: ./gradlew detekt
+
+build:
+  maxIssues: 0   # fail the build on any finding (CI build-checks gate)
+
+complexity:
+  LongMethod:
+    # Compose @Composable functions and Ktor routing blocks read long but flat.
+    threshold: 80
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 8
+
+style:
+  MagicNumber:
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+  MaxLineLength:
+    maxLineLength: 120
+  ReturnCount:
+    max: 4
+
+naming:
+  FunctionNaming:
+    # @Composable functions are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
