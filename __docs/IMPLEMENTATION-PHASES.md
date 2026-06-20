@@ -81,18 +81,23 @@ desktop window; `:app:androidApp:assembleDebug` produces an APK; `ktlintCheck` a
 
 ---
 
-## Phase 2 — Docker Infra & DB
+## Phase 2 — Docker Infra & DB ✅
 
 **Goal:** the container stack starts; schema + reference data are in Postgres.
 
-- `docker-compose.yml` (+ `dev.yml`), `infra/postgres/init/`, `infra/caddy/`,
-  `infra/keycloak/realm-export.json` (see `DOCKER.md`).
-- Flyway migrations: `V1__initial_schema.sql` (all tables/constraints/indexes from
-  `data-model.md`), `V2__seed_ref_data.sql` (idempotent).
-- Exposed `Tables.kt` mirroring the schema; `config/Database.kt` (Hikari) connects.
+- ✅ `docker-compose.yml` (+ `dev.yml`), `infra/postgres/init/`, `infra/caddy/`,
+  `infra/keycloak/realm-export.json` (done in Phase 0; see `DOCKER.md`).
+- ✅ Flyway migrations: `V1__initial_schema.sql` (all tables/constraints/indexes from
+  `data-model.md` + the `daily_log_sex` encryption addendum), `V2__seed_ref_data.sql`
+  (idempotent `INSERT ... ON CONFLICT DO NOTHING`).
+- ✅ Exposed `db/Tables.kt` mirroring the schema; `config/Database.kt` (HikariCP,
+  restricted app role) connects.
 
 **Done when:** `make dev` brings up postgres + keycloak; Flyway migrates a fresh DB
 and re-runs cleanly; reference data present (counts spot-checked); Exposed connects.
+**Status:** done — `SchemaMigrationTest` (Testcontainers Postgres 16) applies both
+migrations, confirms a clean re-run, and reads the seed via Exposed (10 categories,
+65 options, 5 pain regions, 19 pain locations); `./gradlew :server:check` is green.
 
 ---
 

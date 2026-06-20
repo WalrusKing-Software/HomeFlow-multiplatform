@@ -14,9 +14,19 @@ dependencies {
     implementation(libs.logback)
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
-    runtimeOnly(libs.postgresql)
+    // Database layer: Exposed DSL over a HikariCP pool, kotlinx-datetime column types.
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.kotlinDatetime)
+    implementation(libs.hikaricp)
+    implementation(libs.postgresql)
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
+    // Integration tests run against a real Postgres (Testcontainers) with the
+    // production Flyway migrations applied programmatically (see __docs/TESTING.md).
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.flyway.core)
+    testImplementation(libs.flyway.databasePostgresql)
 }
 
 // ── Flyway migrations (manual only) ──────────────────────────────────────────
