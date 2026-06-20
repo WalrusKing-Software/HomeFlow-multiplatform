@@ -29,10 +29,11 @@ This document covers:
 > "Fastify backend" or `homeflow-frontend`, read "Ktor backend" / `homeflow-desktop`.
 > The realm-export.json is the source of truth.
 >
-> The realm export intentionally uses Keycloak's **default browser flow** for now;
-> the custom password + WebAuthn-passkey 2FA flow (`browser-with-passkey`) and the
-> `webauthn-register` default required action described below are bound in the auth
-> phase (IMPLEMENTATION-PHASES Phase 3), not at infra bring-up.
+> As of Phase 3 the realm export **binds the custom `browser-with-passkey` flow**
+> (password → conditional WebAuthn 2FA) as the browser flow and enables the
+> `webauthn-register` default required action, both described below. The passwordless
+> flow is not bound. The realm imports cleanly; the live passkey gesture is still
+> verified manually on first login.
 
 This app uses **three separate Keycloak clients**. This is a common source of confusion — do not consolidate them into one.
 

@@ -38,3 +38,23 @@ Ktor server). Pre-implementation: documentation and specification only.
   - Exposed `db/Tables.kt` mirrors the schema for type-safe queries, and
     `config/Database.kt` connects the server over a HikariCP pool as the
     restricted runtime app role.
+- **Server authentication & user bootstrap (Phase 3).** The Ktor server now
+  authenticates every API request against Keycloak and manages the single
+  account:
+  - All `/api/v1` routes require a valid Keycloak JWT: the signature (RS256, via
+    cached JWKS), `iss`, `aud` (`homeflow-backend`), and `exp` are validated, and
+    a missing, expired, tampered, or wrong-audience token is rejected with `401`
+    in the canonical `ApiError` shape.
+  - First login transparently creates the app-side user record (keyed on the
+    Keycloak `sub`), so repeated logins never duplicate it.
+  - `GET /api/v1/users/me` returns the current user's internal record, and
+    `DELETE /api/v1/users/me` permanently deletes all of the user's data (one
+    cascading delete) and then the Keycloak identity.
+  - `GET /health` responds without auth for container/proxy probes.
+  - Fail-fast configuration (`config/Config.kt`, `config/KeycloakConfig.kt`)
+    validates the environment on startup, errors are returned through a single
+    typed-error handler, and a coarse global request rate limit is applied.
+  - The Keycloak realm now enforces **password + WebAuthn-passkey 2FA**: the
+    `browser-with-passkey` flow is bound as the browser flow and new users are
+    prompted to register a passkey on first login (`webauthn-register` default
+    action).
