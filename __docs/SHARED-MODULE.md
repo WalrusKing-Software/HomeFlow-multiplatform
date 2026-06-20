@@ -1,11 +1,11 @@
 # SHARED-MODULE.md — the `commonMain` boundary
 
 This document defines what lives in the shared Kotlin Multiplatform module
-(`:shared`) versus what stays server-only or platform-specific. **This boundary
+(`:core`) versus what stays server-only or platform-specific. **This boundary
 is the entire justification for the Kotlin-everywhere architecture** — if the
 shared module is thin, we gained nothing over the old OpenAPI-codegen setup; if
 it leaks server concerns into clients, we create security problems. Read this
-before adding anything to `:shared`.
+before adding anything to `:core`.
 
 ---
 
@@ -33,27 +33,34 @@ contract is a compile-time guarantee and the math cannot diverge.
 
 ```
 HomeFlow-multiplatform/
-  shared/                         ← KMP library, the contract + domain core
-    src/commonMain/kotlin/org/homeflow/shared/
+  core/                           ← the :core module — KMP library, the contract + domain
+    src/commonMain/kotlin/org/homeflow/core/
       dto/                        API request/response models (kotlinx.serialization)
       domain/                     pure cycle/analytics math (no I/O)
       validation/                 input rules shared by server + client
       ApiError.kt                 the canonical error shape + codes
-  server/                         ← Ktor application (depends on :shared)
-  composeApp/                     ← Compose Multiplatform clients (depends on :shared)
-    src/commonMain/               shared UI + repository + view models
-    src/androidMain/              Keystore, BiometricPrompt, FLAG_SECURE
-    src/desktopMain/              OS keychain, loopback OIDC redirect, packaging
+  server/                         ← :server (Ktor); depends on :core
+  app/
+    shared/                       ← :app:shared (Compose lib); depends on :core
+      src/commonMain/             shared UI + repository + view models
+      src/androidMain/            Keystore, BiometricPrompt, FLAG_SECURE
+      src/jvmMain/                OS keychain, loopback OIDC redirect
+    androidApp/                   ← :app:androidApp — Android entry point
+    desktopApp/                   ← :app:desktopApp — desktop entry + packaging
 ```
 
-`:shared` must have **zero** server-only or Android-only dependencies. It is
+> Two shared tiers: **`:core`** is pure (no Compose, no OS APIs) so the server can
+> depend on it; **`:app:shared`** is the Compose-aware client-shared module. The
+> server must depend only on `:core`, never on `:app:shared`.
+
+`:core` must have **zero** server-only or Android-only dependencies. It is
 pure Kotlin + kotlinx.serialization + kotlinx.datetime. If something needs a
 JDBC driver, the Android Keystore, or a JVM crypto provider, it does **not**
-belong in `:shared`.
+belong in `:core`.
 
 ---
 
-## What goes in `:shared`
+## What goes in `:core`
 
 ### 1. DTOs — `dto/` (kotlinx.serialization)
 
@@ -123,7 +130,7 @@ are shared.
 
 ---
 
-## What stays server-only (NOT in `:shared`)
+## What stays server-only (NOT in `:core`)
 
 These touch secrets, the database, or the IdP. They must never compile into a
 client binary.
@@ -142,11 +149,11 @@ client binary.
 
 ---
 
-## What is platform-specific (in `composeApp`, not `:shared`)
+## What is platform-specific (in `:app:shared`, not `:core`)
 
 Same interface in `commonMain`, different `actual` implementation per platform:
 
-| Concern | `androidMain` | `desktopMain` |
+| Concern | `androidMain` | `jvmMain` |
 |---|---|---|
 | Token storage | Keystore-backed `EncryptedSharedPreferences` | OS keychain (e.g. via a secret-service / DPAPI binding) |
 | App-open gate | `BiometricPrompt` (strong, device-credential fallback) | OS credential prompt or app passphrase |
@@ -161,5 +168,5 @@ platform-agnostic.
 ## The one rule
 
 > If a piece of code needs a secret, a database handle, or an OS API, it does not
-> go in `:shared`. Everything else that the server and a client would otherwise
+> go in `:core`. Everything else that the server and a client would otherwise
 > write twice — DTOs, cycle math, validation, error codes — does.

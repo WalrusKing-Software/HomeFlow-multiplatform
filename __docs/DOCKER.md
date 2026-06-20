@@ -65,7 +65,7 @@ apps, not a served web app).
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY . .
-# Build only the server (and its :shared dependency). Use the Gradle wrapper.
+# Build only the server (and its :core dependency). Use the Gradle wrapper.
 RUN ./gradlew :server:installDist --no-daemon
 
 # ── Stage: runtime — minimal JRE, non-root ───────────────────────────────────

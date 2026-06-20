@@ -1,12 +1,15 @@
 # ARCHITECTURE-client.md — Compose Multiplatform Clients
 
-One Compose Multiplatform codebase (`composeApp`) produces both the **desktop**
-(JVM) and **Android** apps. They are parallel clients to the Ktor server: same
-Keycloak realm, same single user, same `/api/v1`. The server needs **zero**
-client-specific changes — it authenticates stateless `Authorization: Bearer` JWTs.
+The client lives across three modules — **`:app:shared`** (shared Compose UI +
+logic, with per-platform `androidMain`/`jvmMain` source sets), **`:app:androidApp`**
+and **`:app:desktopApp`** (thin entry points) — producing both the **desktop**
+(JVM) and **Android** apps from one codebase. They are parallel clients to the Ktor
+server: same Keycloak realm, same single user, same `/api/v1`. The server needs
+**zero** client-specific changes — it authenticates stateless `Authorization:
+Bearer` JWTs.
 
 This is the platform-neutral successor to the original native-Android `ANDROID.md`.
-Read it before any work under `composeApp/`. DTOs + domain math come from `:shared`
+Read it before any work under `app/`. DTOs + domain math come from `:core`
 (`SHARED-MODULE.md`); auth/realm config is in `KEYCLOAK.md`; the API shape in
 `API.md` + `openapi.yaml`.
 
@@ -31,32 +34,35 @@ Read it before any work under `composeApp/`. DTOs + domain math come from `:shar
 ## Source layout
 
 ```
-composeApp/
-  src/commonMain/kotlin/org/homeflow/client/
-    App.kt                     # root composable: auth gate → signed-in shell
-    di/                        # dependency wiring (Koin or manual)
-    data/
-      HomeFlowApi.kt           # Ktor client calls, typed via :shared DTOs
-      HomeFlowRepository.kt    # read/write surface for screens + ref-data label cache
-      ApiResult.kt             # Success/Failure wrapper over one backend call
-    auth/
-      AuthController.kt         # orchestrates login → token → gate → silent refresh
-      OidcClient.kt            # expect: platform OIDC (Auth Code + PKCE)
-      TokenStore.kt            # expect: platform secure storage for the refresh token
-      AppLockGate.kt           # expect: biometric / credential gate on app open
-    ui/
-      shell/                   # top bar + navigation over the screens
-      screens/                 # Dashboard, Day, Cycles, Analytics (+ later: write, settings)
-      components/              # SectionCard, KeyValueRow, EmptyHint, Loadable, …
-      theme/                   # Material 3 theme (color, type, shapes)
-  src/androidMain/kotlin/...   # actual: AppAuth, Keystore/EncryptedSharedPreferences,
+app/
+  shared/                              # the :app:shared module (Compose lib); pkg org.homeflow.app.shared
+    src/commonMain/kotlin/org/homeflow/app/shared/
+      App.kt                   # root composable: auth gate → signed-in shell
+      di/                      # dependency wiring (Koin or manual)
+      data/
+        HomeFlowApi.kt         # Ktor client calls, typed via :core DTOs
+        HomeFlowRepository.kt  # read/write surface for screens + ref-data label cache
+        ApiResult.kt           # Success/Failure wrapper over one backend call
+      auth/
+        AuthController.kt       # orchestrates login → token → gate → silent refresh
+        OidcClient.kt          # expect: platform OIDC (Auth Code + PKCE)
+        TokenStore.kt          # expect: platform secure storage for the refresh token
+        AppLockGate.kt         # expect: biometric / credential gate on app open
+      ui/
+        shell/                 # top bar + navigation over the screens
+        screens/               # Dashboard, Day, Cycles, Analytics (+ later: write, settings)
+        components/            # SectionCard, KeyValueRow, EmptyHint, Loadable, …
+        theme/                 # Material 3 theme (color, type, shapes)
+    src/androidMain/kotlin/... # actual: AppAuth, Keystore/EncryptedSharedPreferences,
                                #         BiometricPrompt, FLAG_SECURE, custom-scheme redirect
-  src/desktopMain/kotlin/...   # actual: system-browser + loopback redirect OIDC,
-                               #         OS keychain (DPAPI/secret-service/Keychain), packaging
+    src/jvmMain/kotlin/...     # actual: system-browser + loopback redirect OIDC,
+                               #         OS keychain (DPAPI/secret-service/Keychain)
+  androidApp/                  # the :app:androidApp module — MainActivity, manifest (pkg org.homeflow)
+  desktopApp/                  # the :app:desktopApp module — main() (org.homeflow.MainKt) + packaging
 ```
 
 `HomeFlowApi` uses the **Ktor client** (multiplatform) with
-`ContentNegotiation(kotlinx.serialization)` and the **`:shared` DTOs** directly —
+`ContentNegotiation(kotlinx.serialization)` and the **`:core` DTOs** directly —
 there is no OpenAPI codegen and no hand-maintained model copy.
 
 ---
@@ -74,7 +80,7 @@ A single configured Ktor `HttpClient` in `commonMain`:
 - Per-platform engine: OkHttp on Android, CIO/Java on desktop (an `expect` factory).
 
 `ApiResult<T>` wraps each call so screens render Loading / Loaded / Error uniformly
-(`Loadable` composable), and `ApiError` from `:shared` is pattern-matched on `code`.
+(`Loadable` composable), and `ApiError` from `:core` is pattern-matched on `code`.
 
 ---
 
@@ -125,7 +131,7 @@ place the apps key off:
 
 ## Per-platform responsibilities (`expect`/`actual`)
 
-| Concern | `androidMain` | `desktopMain` |
+| Concern | `androidMain` | `jvmMain` |
 |---|---|---|
 | OIDC | AppAuth + Custom Tab, custom-scheme redirect | system browser + loopback listener |
 | Token storage | Keystore-backed `EncryptedSharedPreferences` | OS keychain (DPAPI / secret-service / macOS Keychain) |
@@ -141,11 +147,13 @@ browser, biometrics, or a window flag goes behind an `expect`/`actual`.
 
 ## Build & run
 
-- **Gradle root is the repo root** (KMP multi-module: `:shared`, `:server`,
-  `:composeApp`). Versions managed in `gradle/libs.versions.toml`.
-- Desktop run: `./gradlew :composeApp:run`. Package:
-  `./gradlew :composeApp:packageDistributionForCurrentOS`.
-- Android: `./gradlew :composeApp:assembleDebug`; run on an emulator (API 35/36)
+- **Gradle root is the repo root** (KMP multi-module: `:core`, `:server`,
+  `:app:shared`, `:app:androidApp`, `:app:desktopApp`). Versions managed in
+  `gradle/libs.versions.toml`.
+- Desktop run: `./gradlew :app:desktopApp:run` (hot reload:
+  `./gradlew :app:desktopApp:hotRun --auto`). Package:
+  `./gradlew :app:desktopApp:packageDistributionForCurrentOS`.
+- Android: `./gradlew :app:androidApp:assembleDebug`; run on an emulator (API 35/36)
   or device.
 
 ---

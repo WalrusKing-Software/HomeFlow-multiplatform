@@ -6,7 +6,7 @@ checks are part of the Gradle build.
 
 | Level | Tool | What it catches |
 |---|---|---|
-| Unit | kotlin.test / JUnit5 | domain math (`:shared`), encryption round-trips, service logic |
+| Unit | kotlin.test / JUnit5 | domain math (`:core`), encryption round-trips, service logic |
 | Integration | JUnit5 + **Testcontainers (Postgres)** | repository correctness, constraints, **user-scoping**, encryption persistence |
 | Client UI | **Compose UI test** (`runComposeUiTest`) | screen rendering, loading/error/loaded states |
 | End-to-end | manual / Ktor `testApplication` | full auth + data round-trip |
@@ -21,14 +21,15 @@ checks are part of the Gradle build.
 ## Where tests live
 
 ```
-shared/src/commonTest/kotlin/        # domain math + validation (pure, multiplatform)
+core/src/commonTest/kotlin/          # domain math + validation (pure, multiplatform)
 server/src/test/kotlin/
   unit/                              # services, Encryption
   integration/                       # Testcontainers-backed repository/service tests
     Fixtures.kt                      # deterministic data factories
     UserScopingTest.kt               # cross-user access rejection (SECURITY)
     AnalyticsTest.kt                 # exact-value assertions on known data
-composeApp/src/commonTest/kotlin/    # Compose UI tests (+ androidUnitTest/desktopTest as needed)
+app/shared/src/commonTest/kotlin/    # Compose UI tests
+app/shared/src/jvmTest/ , src/androidHostTest/   # platform-specific client tests
 ```
 
 ---
@@ -37,7 +38,7 @@ composeApp/src/commonTest/kotlin/    # Compose UI tests (+ androidUnitTest/deskt
 
 ### Unit (no DB)
 
-- **`:shared` domain math** — the highest-value unit tests, because this code is
+- **`:core` domain math** — the highest-value unit tests, because this code is
   shared by server and clients:
   - `predictPhase` assigns the correct phase across the cycle (and the reconciled
     ovulation window — see `SHARED-MODULE.md`).
@@ -105,11 +106,11 @@ use a password-only test user in the **dev realm only**, never production.
 ## Running
 
 ```bash
-./gradlew :shared:allTests              # shared domain/validation (all targets)
-./gradlew :server:test                  # server unit + integration (Testcontainers needs Docker)
-./gradlew :composeApp:testDebugUnitTest # Android-side unit/UI
-./gradlew :composeApp:desktopTest       # desktop-side
-./gradlew check                         # everything + lint
+./gradlew :core:allTests                  # shared domain/validation (all targets)
+./gradlew :server:test                    # server unit + integration (Testcontainers needs Docker)
+./gradlew :app:shared:testAndroidHostTest # Android-side unit/UI
+./gradlew :app:shared:jvmTest             # desktop-side
+./gradlew check                           # everything + lint
 ```
 
 Testcontainers requires a running Docker daemon on the machine executing the

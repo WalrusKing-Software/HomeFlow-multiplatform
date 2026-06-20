@@ -1,36 +1,35 @@
-# --- Secrets / local config -------------------------------------------------
+*.iml
+.kotlin
+.gradle
+**/build/
+xcuserdata
+!src/**/build/
+local.properties
+.idea
+.DS_Store
+captures
+.externalNativeBuild
+.cxx
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings
+node_modules/
+
+# --- Secrets / signing / sensitive (HomeFlow) -------------------------------
 .env
 .env.*
 !.env.example
-local.properties
 *.keystore
 *.jks
 backups/
 
-# --- Gradle -----------------------------------------------------------------
-.gradle/
-build/
-**/build/
-!gradle/wrapper/gradle-wrapper.jar
-.kotlin/
-
-# --- Android ----------------------------------------------------------------
-captures/
+# --- Distribution artifacts (when built outside build/) ---------------------
 *.apk
 *.aab
-*.ap_
-*.dex
-
-# --- Compose Desktop packaging ----------------------------------------------
 *.dmg
 *.msi
 *.deb
 *.pkg
-
-# --- IDEs / OS --------------------------------------------------------------
-.idea/
-*.iml
-.fleet/
-.vscode/
-.DS_Store
-Thumbs.db

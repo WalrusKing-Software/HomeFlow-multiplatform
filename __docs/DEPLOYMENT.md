@@ -270,7 +270,7 @@ set the WebAuthn RP-ID to that name; **re-register the passkey**; recreate
 `keycloak caddy backend`.
 
 **11d — point the apps at the host:** set `AuthConfig.HOST =
-"homeflow.<tailnet>.ts.net"` in `composeApp`. The Android custom-scheme redirect is
+"homeflow.<tailnet>.ts.net"` in `app/shared`. The Android custom-scheme redirect is
 hostname-independent; the desktop loopback redirect is too — only `HOST` changes.
 
 **11e — verify** from a device on cellular: the OIDC discovery `iss` is the

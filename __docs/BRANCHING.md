@@ -2,12 +2,12 @@
 
 Defines the git model and the checks that run before a merge. Adapted from the web
 monorepo's two-train model. **This repo is one product with three deliverables**
-(`:server`, `:composeApp` desktop, `:composeApp` android) that share a single
-contract (`:shared`) — so it starts as a **single release train**, not the web
+(`:server`, `:app:desktopApp`, `:app:androidApp`) that share a single
+contract (`:core`) — so it starts as a **single release train**, not the web
 repo's split web/mobile trains.
 
 > **Open decision (single vs. split trains).** Because the clients and server share
-> `:shared`, releasing them together keeps the contract coherent and is simplest
+> `:core`, releasing them together keeps the contract coherent and is simplest
 > early on — this is the recommended default below. If desktop and android later
 > need to ship on independent cadences, split into per-component trains exactly like
 > the web repo did (`release/<component>-x.y.z`, `<component>-vX.Y.Z` tags). Revisit
@@ -78,8 +78,8 @@ build. Desktop installer version = the same `X.Y.Z`.
 Tag-triggered workflows:
 - `v*` → `./gradlew :server:installDist` + build/push the backend image; deploy per
   `DEPLOYMENT.md`.
-- `v*` → `./gradlew :composeApp:bundleRelease` (signed AAB) and
-  `:composeApp:packageDistributionForCurrentOS` (desktop installers), attached to a
+- `v*` → `./gradlew :app:androidApp:bundleRelease` (signed AAB) and
+  `:app:desktopApp:packageDistributionForCurrentOS` (desktop installers), attached to a
   GitHub Release. Desktop installers are per-OS, so build the macOS/Windows/Linux
   artifacts on their respective runners.
 
