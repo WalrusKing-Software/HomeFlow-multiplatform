@@ -1,0 +1,36 @@
+# --- Secrets / local config -------------------------------------------------
+.env
+.env.*
+!.env.example
+local.properties
+*.keystore
+*.jks
+backups/
+
+# --- Gradle -----------------------------------------------------------------
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# --- Android ----------------------------------------------------------------
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# --- Compose Desktop packaging ----------------------------------------------
+*.dmg
+*.msi
+*.deb
+*.pkg
+
+# --- IDEs / OS --------------------------------------------------------------
+.idea/
+*.iml
+.fleet/
+.vscode/
+.DS_Store
+Thumbs.db

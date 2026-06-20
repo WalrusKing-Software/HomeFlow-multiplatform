@@ -1,0 +1,15 @@
+# Gitleaks configuration for the HomeFlow-multiplatform repo.
+# Extends the upstream default ruleset. Add allowlist entries here only for
+# known, intentional, non-secret test fixtures so they do not bury real leaks
+# in noise.
+#
+# Run:  docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest detect \
+#         --source=/repo --config=/repo/.gitleaks.toml -v
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional, non-secret test fixtures and documentation placeholders"
+# regexes = [ ]
+# paths   = [ ]
