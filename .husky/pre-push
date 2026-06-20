@@ -1,0 +1,16 @@
+#!/bin/sh
+# Pre-push: static analysis + compile (the heavier checks).
+#
+# Tests are NOT run here — they run manually (see __docs/TESTING.md). Guarded on
+# ./gradlew so it is a no-op until the Gradle project is scaffolded (Phase 0).
+
+set -e
+
+if [ -x ./gradlew ]; then
+  echo "Running detekt (static analysis)..."
+  ./gradlew detekt --daemon
+
+  echo "Compiling all modules..."
+  # Compile main + test sources across modules without running tests.
+  ./gradlew compileKotlinMetadata compileKotlin compileTestKotlin --daemon || ./gradlew assemble --daemon
+fi

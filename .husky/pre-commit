@@ -1,0 +1,29 @@
+#!/bin/sh
+# Pre-commit: Kotlin format/lint, secret scan, version bump.
+#
+# Activate without Node by pointing git at this directory:
+#   git config core.hooksPath .husky
+# (or install Husky: `npm i -D husky && npx husky` if you add a package.json).
+#
+# The Gradle steps are guarded on ./gradlew existing, so this hook is a safe
+# no-op until the Gradle project is scaffolded (Phase 0).
+
+set -e
+
+if [ -x ./gradlew ]; then
+  echo "Running ktlint format check..."
+  ./gradlew ktlintCheck --daemon
+fi
+
+echo "Scanning for secrets..."
+sh ./scripts/check-secrets.sh
+
+# Bump the patch version on every commit (writes gradle.properties).
+# Skip during a merge so a merge commit doesn't double-bump.
+if [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then
+  echo "Merge in progress — skipping version bump."
+elif [ -f ./gradle.properties ]; then
+  echo "Bumping version..."
+  sh ./scripts/bump-version.sh
+  git add gradle.properties
+fi

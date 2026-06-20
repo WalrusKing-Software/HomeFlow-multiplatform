@@ -1,0 +1,44 @@
+name: CI
+
+# Quality gate. Mirrors the local Husky hooks (ktlint, detekt, compile) and adds
+# the test suite so a PR can never merge code that does not build or pass tests.
+# The job name below (`build-checks`) is referenced as a required status check by
+# the branch-protection rulesets in `.github/rulesets/`.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-checks:
+    name: build-checks
+    runs-on: ubuntu-latest   # provides a Docker daemon for Testcontainers integration tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Lint (ktlint)
+        run: ./gradlew ktlintCheck --no-daemon
+      - name: Static analysis (detekt)
+        run: ./gradlew detekt --no-daemon
+      - name: Build + test
+        # `check` compiles all modules and runs unit + Testcontainers integration
+        # tests. Testcontainers needs Docker, which ubuntu-latest provides.
+        run: ./gradlew check --no-daemon
