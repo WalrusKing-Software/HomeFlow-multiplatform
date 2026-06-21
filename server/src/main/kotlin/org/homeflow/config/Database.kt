@@ -24,6 +24,9 @@ data class DatabaseConfig(
     val password: String,
     val maxPoolSize: Int = DEFAULT_MAX_POOL_SIZE,
 ) {
+    // `$host` here is the configured DB host (POSTGRES_HOST), not an attacker-controlled
+    // HTTP Host header. The generic nginx request-host rule is a false positive here.
+    // nosemgrep: generic.nginx.security.request-host-used
     val jdbcUrl: String get() = "jdbc:postgresql://$host:$port/$database"
 
     companion object {
