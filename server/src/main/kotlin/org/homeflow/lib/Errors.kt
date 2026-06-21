@@ -6,6 +6,7 @@ import io.ktor.server.response.respond
 import org.homeflow.core.ApiError
 import org.homeflow.core.ErrorBody
 import org.homeflow.core.ErrorCode
+import org.homeflow.core.validation.ValidationResult
 
 /**
  * Typed application errors. Services and routes throw these; the `StatusPages`
@@ -60,3 +61,12 @@ suspend fun ApplicationCall.respondError(
     code: ErrorCode,
     message: String,
 ) = respond(code.httpStatus(), ApiError(ErrorBody(code, message)))
+
+/**
+ * Bridges a shared `:core` [ValidationResult] into the server's error channel:
+ * an [ValidationResult.Invalid] becomes a [ValidationException] (→ 400), carrying the
+ * rule's own message. Services run the same rules the client does, as the real boundary.
+ */
+fun ValidationResult.orThrow() {
+    if (this is ValidationResult.Invalid) throw ValidationException(message)
+}

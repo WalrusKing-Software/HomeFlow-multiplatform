@@ -11,8 +11,13 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import org.homeflow.config.Config
 import org.homeflow.config.connectDatabase
+import org.homeflow.lib.Encryption
 import org.homeflow.lib.HttpKeycloakAdminClient
 import org.homeflow.lib.KeycloakAdminClient
+import org.homeflow.modules.cycles.CyclesRepository
+import org.homeflow.modules.cycles.CyclesService
+import org.homeflow.modules.dailylogs.DailyLogsRepository
+import org.homeflow.modules.dailylogs.DailyLogsService
 import org.homeflow.modules.users.UsersRepository
 import org.homeflow.modules.users.UsersService
 import org.homeflow.plugins.buildJwkProvider
@@ -38,6 +43,13 @@ class AppDependencies(
 ) {
     private val usersRepository = UsersRepository(database)
     val usersService = UsersService(usersRepository, keycloakAdminClient)
+
+    private val cyclesRepository = CyclesRepository(database)
+    val cyclesService = CyclesService(cyclesRepository)
+
+    private val dailyLogsRepository = DailyLogsRepository(database)
+    private val encryption = Encryption(config.encryptionKey)
+    val dailyLogsService = DailyLogsService(dailyLogsRepository, cyclesRepository, encryption)
 
     companion object {
         fun fromEnv(): AppDependencies {
@@ -69,5 +81,5 @@ fun Application.module(deps: AppDependencies) {
     configureStatusPages()
     configureRateLimiting(deps.config.rateLimit)
     configureAuthentication(deps.config.keycloak, deps.jwkProvider, deps.usersService)
-    configureRouting(deps.usersService)
+    configureRouting(deps.usersService, deps.cyclesService, deps.dailyLogsService)
 }

@@ -7,8 +7,9 @@ package org.homeflow.config
  * Nothing else in the app reads `System.getenv` directly — see
  * `__docs/ARCHITECTURE-server.md` (Config — fail fast).
  *
- * Application-layer encryption (`APP_ENCRYPTION_KEY`) is wired in Phase 4 with
- * `lib/Encryption.kt`; it is intentionally not read here yet.
+ * [encryptionKey] is the base64 `APP_ENCRYPTION_KEY` for application-layer column
+ * encryption; it is validated (must decode to 32 bytes) when `lib/Encryption.kt` is
+ * constructed from it, so a malformed key still fails fast at startup.
  */
 data class Config(
     val apiPort: Int,
@@ -16,6 +17,7 @@ data class Config(
     val database: DatabaseConfig,
     val keycloak: KeycloakConfig,
     val rateLimit: RateLimitConfig,
+    val encryptionKey: String,
 ) {
     companion object {
         private const val DEFAULT_API_PORT = 8080
@@ -28,6 +30,7 @@ data class Config(
                 database = DatabaseConfig.fromEnv(),
                 keycloak = KeycloakConfig.fromEnv(),
                 rateLimit = RateLimitConfig.fromEnv(),
+                encryptionKey = requireEnv("APP_ENCRYPTION_KEY"),
             )
     }
 }
