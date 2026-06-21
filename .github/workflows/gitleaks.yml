@@ -10,10 +10,12 @@ on:
     branches:
       - main
       - 'release/*'
+      - 'develop-*'
   push:
     branches:
       - main
       - 'release/*'
+      - 'develop-*'
 
 permissions:
   contents: read

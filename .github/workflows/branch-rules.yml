@@ -5,18 +5,21 @@ name: Branch Rules
 # branch a PR is allowed to come from. This check fails the PR when the
 # head -> base flow is not allowed.
 #
-#   main          <-  release/x.y.z        (release PRs only)
-#   release/*     <-  feature/* | bugfix/* (work PRs only)
+#   main          <-  release/x.y.z              (release PRs only)
+#   release/*     <-  develop-* | feature/* | bugfix/*
+#   develop-*     <-  feature/* | bugfix/*       (integration of work branches)
 #
-# Single-train model (server + desktop + android ship together). See
-# __docs/BRANCHING.md; switch to per-component release/<component>-x.y.z here if
-# the clients ever ship on independent cadences.
+# develop-* is the integration branch for the next release: work branches merge
+# into it while the version number is still undecided, then it lands on a
+# release/x.y.z branch as a single clean commit. Single-train model (server +
+# desktop + android ship together). See __docs/BRANCHING.md.
 
 on:
   pull_request:
     branches:
       - main
       - 'release/*'
+      - 'develop-*'
 
 permissions:
   contents: read
@@ -45,6 +48,13 @@ jobs:
               fi
               ;;
             release/*)
+              if [[ "$HEAD" =~ ^develop-.+ || "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
+                echo "OK: PR into '$BASE' from '$HEAD' (develop integration or work/hotfix branch)."
+              else
+                fail "Only 'develop-*' (or 'feature/*'/'bugfix/*' for hotfixes) may be merged into '$BASE' (got head '$HEAD')."
+              fi
+              ;;
+            develop-*)
               if [[ "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
                 echo "OK: work PR into '$BASE' from '$HEAD'."
               else

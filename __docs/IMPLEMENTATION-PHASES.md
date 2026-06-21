@@ -53,19 +53,31 @@ desktop window; `:app:androidApp:assembleDebug` produces an APK; `ktlintCheck` a
 
 ---
 
-## Phase 1 — Shared Contract (`:core`)
+## Phase 1 — Shared Contract (`:core`) ✅
 
 **Goal:** the API contract and domain core exist once, compiled into all modules.
 
-- DTOs (`@Serializable`) for every resource in `API.md` / `data-model.md`.
-- `ApiError` + `ErrorCode`.
-- Domain math ported and **deduplicated** from the web app (`predictPhase`,
-  `cycleStats`, `ovulationPredictions`, sleep bucketing) — reconcile the divergent
-  ovulation window into one definition.
-- Shared validation rules.
+- ✅ DTOs (`@Serializable`) for every resource in `API.md` / `data-model.md`:
+  users, cycles, daily-logs (+ all per-category request/response shapes and pain),
+  analytics, preferences, ref-data, and the import-result summary. `:core` now
+  depends on kotlinx-serialization + kotlinx-datetime. (Source/format-specific
+  import/export file payloads are deferred to the import/export feature, not the
+  shared contract.)
+- ✅ `ApiError` / `ErrorBody` / `ErrorCode`.
+- ✅ Domain math ported and **deduplicated** (`domain/`): `cycleDayNumber`,
+  `cycleLength`, `predictPhase`, `cycleStats`, `periodLengthChart`,
+  `ovulationPredictions`, `bucketSleepByPhase`, plus the `CyclePhase` enum and
+  constants. **Reconciliation decisions** (documented in code): cycle length is
+  **inclusive** (28 for the API's 01-15→02-11 example); the single ovulation window
+  is the 2 days `[ovulationDay-1, ovulationDay]` with `ovulationDay = avgCycle-14`;
+  cycle variation is the **population** stddev over the last ~6 months.
+- ✅ Shared validation rules (`validation/`): cycle start/end, daily-log within
+  cycle, notes length, pain severity/duplicates, category-order completeness —
+  returning `ValidationResult` for use on both client and server.
 
 **Done when:** `:core:allTests` passes (domain math + validation unit tests);
 `:server` and `:app:shared` both compile against the DTOs.
+**Status:** done — 19 unit tests pass on JVM + Android; `./gradlew check` is green.
 
 ---
 
