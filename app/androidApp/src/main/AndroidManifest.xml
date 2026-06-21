@@ -8,6 +8,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- MainActivity is the launcher entry point (MAIN/LAUNCHER), so it must be
+             exported; on API 31+ exported must also be declared explicitly. This is
+             required, not a vulnerability. -->
+        <!-- nosemgrep: java.android.security.exported_activity.exported_activity -->
         <activity
             android:exported="true"
             android:name=".MainActivity">
