@@ -35,9 +35,11 @@ class Encryption(
     /** Encrypts [plaintext], returning `base64(iv):base64(ciphertext):base64(tag)`. */
     fun encrypt(plaintext: String): String {
         val iv = ByteArray(IV_LENGTH_BYTES).also(secureRandom::nextBytes)
+        // A fresh random IV is generated per call (above), so GCM nonce reuse cannot
+        // occur; the gcm-detection warning does not apply (suppressed inline below).
         val cipher =
             Cipher.getInstance(TRANSFORMATION).apply {
-                init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_LENGTH_BITS, iv))
+                init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(TAG_LENGTH_BITS, iv)) // nosemgrep
             }
         // GCM appends the auth tag to the ciphertext; split it back out for the stored form.
         val combined = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
@@ -54,9 +56,11 @@ class Encryption(
         val iv = decode(parts[0])
         val ciphertext = decode(parts[1])
         val tag = decode(parts[2])
+        // The IV is read from the stored payload for decryption, not generated here;
+        // the gcm-detection warning does not apply (suppressed inline below).
         val cipher =
             Cipher.getInstance(TRANSFORMATION).apply {
-                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_LENGTH_BITS, iv))
+                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_LENGTH_BITS, iv)) // nosemgrep
             }
         return String(cipher.doFinal(ciphertext + tag), Charsets.UTF_8)
     }
