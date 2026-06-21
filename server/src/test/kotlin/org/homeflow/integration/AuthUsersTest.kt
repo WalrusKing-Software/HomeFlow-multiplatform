@@ -168,6 +168,7 @@ class AuthUsersTest {
         private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
         private const val AUDIENCE = "homeflow-backend"
         private const val RSA_KEY_SIZE = 2048
+        private const val ENCRYPTION_KEY_BYTES = 32
         private const val TOKEN_TTL_MILLIS = 3_600_000L
         private const val EXPIRED_OFFSET_MILLIS = 120_000L
         private const val HIGH_RATE_LIMIT = 100_000
@@ -235,6 +236,7 @@ class AuthUsersTest {
                         clientSecret = "unused",
                     ),
                 rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
+                encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES)),
             )
 
         private fun localJwkProvider(): JwkProvider =

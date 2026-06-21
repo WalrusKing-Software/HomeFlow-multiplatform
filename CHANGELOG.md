@@ -58,3 +58,18 @@ Ktor server). Pre-implementation: documentation and specification only.
     `browser-with-passkey` flow is bound as the browser flow and new users are
     prompted to register a passkey on first login (`webauthn-register` default
     action).
+- **Server cycles & daily-log anchor (Phase 4).** The server can now record and
+  read cycles and the per-day log anchor:
+  - Full cycle lifecycle over `/api/v1/cycles`: list (newest first), start a new
+    cycle, fetch the current open cycle or any cycle by id, and close a cycle.
+    Starting a new cycle automatically closes the previous open one (its end date
+    becomes the new start minus a day), and a future start date is rejected.
+  - `POST /api/v1/daily-logs` creates the per-day anchor after checking the cycle
+    belongs to you and the date falls within it, and returns `409` if a log
+    already exists for that day; `GET /api/v1/daily-logs/:date` returns the day
+    (symptom categories arrive in Phase 5) or `404` when none exists.
+  - `PATCH /api/v1/daily-logs/:date/notes` stores free-text notes encrypted with
+    AES-256-GCM at the application layer (ciphertext at rest) and returns them
+    decrypted; passing `null` clears them.
+  - Every cycle and daily-log query is scoped to the authenticated user, so
+    another user's cycle or log is reported as not-found, never revealed.
