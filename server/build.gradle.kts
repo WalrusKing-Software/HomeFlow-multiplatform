@@ -14,6 +14,18 @@ dependencies {
     implementation(libs.logback)
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
+    // Auth: RS256 JWKS validation against Keycloak (brings java-jwt + jwks-rsa).
+    implementation(libs.ktor.serverAuth)
+    implementation(libs.ktor.serverAuthJwt)
+    // JSON content negotiation over the shared :core DTOs; typed-error + rate-limit plugins.
+    implementation(libs.ktor.serverContentNegotiation)
+    implementation(libs.ktor.serializationJson)
+    implementation(libs.ktor.serverStatusPages)
+    implementation(libs.ktor.serverRateLimit)
+    // HTTP client for the Keycloak Admin API (account deletion).
+    implementation(libs.ktor.clientCore)
+    implementation(libs.ktor.clientCio)
+    implementation(libs.ktor.clientContentNegotiation)
     // Database layer: Exposed DSL over a HikariCP pool, kotlinx-datetime column types.
     implementation(libs.exposed.core)
     implementation(libs.exposed.jdbc)
@@ -21,6 +33,8 @@ dependencies {
     implementation(libs.hikaricp)
     implementation(libs.postgresql)
     testImplementation(libs.ktor.serverTestHost)
+    testImplementation(libs.ktor.clientContentNegotiation)
+    testImplementation(libs.ktor.clientMock)
     testImplementation(libs.kotlin.testJunit)
     // Integration tests run against a real Postgres (Testcontainers) with the
     // production Flyway migrations applied programmatically (see __docs/TESTING.md).
