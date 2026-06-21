@@ -44,8 +44,8 @@ build. `.gitignore`/`.gitattributes` (LF) in place.
   backend builds and responds; Caddy proxies `/realms/*` → Keycloak (200) and
   `/api`,`/health` → backend with the security headers applied.
 - The custom password + WebAuthn-passkey 2FA browser flow (`browser-with-passkey`)
-  and the `webauthn-register` default required action are deferred to **Phase 3**
-  (auth); the realm currently uses Keycloak's default browser flow. See `KEYCLOAK.md`.
+  and the `webauthn-register` default required action were deferred to **Phase 3**
+  (auth), where they are now bound in the realm export. See `KEYCLOAK.md`.
 
 **Done when:** `./gradlew build` succeeds; `:app:desktopApp:run` opens an empty
 desktop window; `:app:androidApp:assembleDebug` produces an APK; `ktlintCheck` and
@@ -101,19 +101,33 @@ migrations, confirms a clean re-run, and reads the seed via Exposed (10 categori
 
 ---
 
-## Phase 3 — Server Auth & User Bootstrap
+## Phase 3 — Server Auth & User Bootstrap ✅
 
 **Goal:** the Ktor server validates Keycloak JWTs and bootstraps the user.
 
-- `config/Config.kt` (fail-fast), `config/KeycloakConfig.kt`.
-- `Authentication.kt` (JWKS, RS256, `iss`/`aud`/`exp`, `UserPrincipal` upsert),
-  `StatusPages.kt` (ApiError), `RateLimiting.kt`, `Serialization.kt`.
-- `users` module: `GET /api/v1/users/me`, `DELETE /api/v1/users/me` (health data →
-  users row → Keycloak Admin API); `KeycloakAdminClient`.
+- ✅ `config/Config.kt` (fail-fast central config), `config/KeycloakConfig.kt`
+  (issuer/JWKS/token/admin URLs from env).
+- ✅ `plugins/Authentication.kt` (cached JWKS, RS256, `iss`/`aud`/`exp`,
+  `UserPrincipal` upsert), `plugins/StatusPages.kt` (typed `AppException` →
+  `ApiError`), `plugins/RateLimiting.kt` (global limit), `plugins/Serialization.kt`
+  (kotlinx JSON), `plugins/Routing.kt` (+ public `GET /health`); `lib/Errors.kt`.
+- ✅ `users` module: `GET /api/v1/users/me`, `DELETE /api/v1/users/me` (cascading
+  data delete → users row → Keycloak Admin API); `lib/KeycloakAdminClient.kt`
+  (service-account client-credentials, behind an interface for testing).
 
 **Done when:** no/expired/tampered JWT → 401; valid JWT reaches the handler;
 `users/me` returns the record; first login upserts (no duplicates); account
 deletion removes data + the Keycloak account; all errors use the ApiError shape.
+- ✅ Keycloak realm: the `browser-with-passkey` flow (password → conditional
+  WebAuthn 2FA) is defined and bound as the realm browser flow, and
+  `webauthn-register` is enabled as a default required action, in
+  `infra/keycloak/realm-export.json` (deferred here from Phase 0). Verified by a
+  throwaway `start-dev --import-realm` (`Realm 'homeflow' imported`). The live
+  passkey gesture itself is still a manual check on first login (see `KEYCLOAK.md`).
+
+**Status:** done — `AuthUsersTest` (Testcontainers Postgres + in-process RS256
+tokens served via a local JWKS) covers all six done-when criteria (8 tests);
+`./gradlew :server:check` is green; the realm export imports cleanly.
 
 ---
 
