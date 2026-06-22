@@ -26,6 +26,12 @@ VERSION
 !.env.example
 *.keystore
 *.jks
+# TLS certificates / keys (e.g. the exported Caddy dev root CA) — never commit.
+*.crt
+*.cer
+*.pem
+*.p12
+*.key
 backups/
 
 # --- Distribution artifacts (when built outside build/) ---------------------

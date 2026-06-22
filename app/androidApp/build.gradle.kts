@@ -15,6 +15,13 @@ dependencies {
     implementation(projects.app.shared)
 
     implementation(libs.androidx.activity.compose)
+    // MainActivity is a FragmentActivity (BiometricPrompt) and bridges the AppAuth
+    // result launcher via coroutines — both are implementation-scoped in :app:shared.
+    implementation(libs.androidx.fragment)
+    implementation(libs.kotlinx.coroutines.core)
+    // Provides the Theme.AppCompat parent for the app theme (AppAuth's redirect
+    // receiver activity requires an AppCompat-descendant theme). See res/values/themes.xml.
+    implementation(libs.androidx.appcompat)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
@@ -41,6 +48,10 @@ android {
         // versionCode manually on every distributed build (see __docs/BRANCHING.md).
         versionCode = 1
         versionName = project.version.toString()
+        // AppAuth's RedirectUriReceiverActivity captures the OIDC custom-scheme
+        // redirect; the scheme must match homeflow-android's Valid Redirect URI
+        // (org.homeflow.mobile:/oauth2redirect) in the Keycloak realm. See KEYCLOAK.md.
+        manifestPlaceholders["appAuthRedirectScheme"] = "org.homeflow.mobile"
     }
     packaging {
         resources {

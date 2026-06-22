@@ -5,15 +5,21 @@ android-minSdk = "36"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
 androidx-appcompat = "1.7.1"
+androidx-biometric = "1.1.0"
+androidx-browser = "1.8.0"
 androidx-core = "1.19.0"
 androidx-espresso = "3.7.0"
+androidx-fragment = "1.8.5"
 androidx-lifecycle = "2.11.0-beta01"
+androidx-securityCrypto = "1.1.0-alpha06"
 androidx-testExt = "1.3.0"
+appauth = "0.11.1"
 composeMultiplatform = "1.11.1"
 detekt = "1.23.8"
 exposed = "0.56.0"
 flyway = "10.20.1"
 hikari = "6.2.1"
+javaKeyring = "1.0.4"
 junit = "4.13.2"
 kotlin = "2.4.0"
 kotlinx-coroutines = "1.11.0"
@@ -61,6 +67,24 @@ ktor-clientCio = { module = "io.ktor:ktor-client-cio-jvm", version.ref = "ktor" 
 ktor-clientContentNegotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
 ktor-serverTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
 ktor-clientMock = { module = "io.ktor:ktor-client-mock-jvm", version.ref = "ktor" }
+# Multiplatform Ktor client artifacts for the Compose clients (:app:shared).
+# Kept separate from the *-jvm aliases above, which the JVM-only :server uses.
+ktor-client-core-mp = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-contentNegotiation-mp = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-client-auth-mp = { module = "io.ktor:ktor-client-auth", version.ref = "ktor" }
+ktor-serialization-json-mp = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-cio-mp = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-mock-mp = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+# Client auth: OIDC (Android), secure storage, biometric/fragment.
+appauth = { module = "net.openid:appauth", version.ref = "appauth" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidx-browser" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidx-biometric" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "androidx-fragment" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidx-securityCrypto" }
+java-keyring = { module = "com.github.javakeyring:java-keyring", version.ref = "javaKeyring" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 flyway-commandline = { module = "org.flywaydb:flyway-commandline", version.ref = "flyway" }
 flyway-databasePostgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
