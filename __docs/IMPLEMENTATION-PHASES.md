@@ -157,16 +157,27 @@ assembles; sex encrypted+decrypted; pain severity/locations correct (null valid)
 
 ---
 
-## Phase 6 — Server: Analytics & Preferences
+## Phase 6 — Server: Analytics & Preferences ✅
 
-- `analytics`: `cycle-stats`, `period-length-chart`, `ovulation-prediction`,
+- ✅ `analytics`: `cycle-stats`, `period-length-chart`, `ovulation-prediction`,
   `sleep-predictions` — all delegate to `:core` domain math; return 200 with null
-  fields when data is thin (never 404).
-- `preferences`: `GET` / `PUT` (dashboard category order; defaults from
-  `ref_symptom_categories.sort_order`).
+  fields when data is thin (never 404). A thin `AnalyticsService` over an
+  `AnalyticsRepository` that only fetches/shapes row-scoped inputs (closed cycles
+  with bleeding-day counts, the most recent cycle start, and per-day sleep logs);
+  sleep days are bucketed by the `:core` `predictPhase` (using the user's avg
+  cycle/period lengths, defaults when thin) before the shared ranking math.
+- ✅ `preferences`: `GET` / `PUT` (dashboard category order; defaults from
+  `ref_symptom_categories.sort_order`). Stored as a JSON slug array in
+  `user_dashboard_preferences` (upsert); the order is validated with the shared
+  `validateCategoryOrder` rule.
 
 **Done when:** analytics match `AnalyticsTest` exact values; graceful nulls under 2
 cycles; preferences persist and validate. **Server API is now feature-complete.**
+**Status:** done — `AnalyticsPreferencesTest` (Testcontainers Postgres + in-process
+RS256 / local JWKS) covers all four analytics routes (exact cycle-stats values,
+period-length-chart ordering, ovulation projection, sleep bucketing/sample-size
+gating), graceful nulls under two cycles, and the preferences default/persist/
+validate behaviour (10 tests); `./gradlew :server:check` is green.
 
 ---
 

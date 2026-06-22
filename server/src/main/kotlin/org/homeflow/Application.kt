@@ -14,12 +14,16 @@ import org.homeflow.config.connectDatabase
 import org.homeflow.lib.Encryption
 import org.homeflow.lib.HttpKeycloakAdminClient
 import org.homeflow.lib.KeycloakAdminClient
+import org.homeflow.modules.analytics.AnalyticsRepository
+import org.homeflow.modules.analytics.AnalyticsService
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.cycles.CyclesService
 import org.homeflow.modules.dailylogs.DailyLogSubsRepository
 import org.homeflow.modules.dailylogs.DailyLogSubsService
 import org.homeflow.modules.dailylogs.DailyLogsRepository
 import org.homeflow.modules.dailylogs.DailyLogsService
+import org.homeflow.modules.preferences.PreferencesRepository
+import org.homeflow.modules.preferences.PreferencesService
 import org.homeflow.modules.refdata.RefDataRepository
 import org.homeflow.modules.refdata.RefDataService
 import org.homeflow.modules.users.UsersRepository
@@ -62,6 +66,12 @@ class AppDependencies(
     val dailyLogsService =
         DailyLogsService(dailyLogsRepository, cyclesRepository, dailyLogSubsRepository, encryption)
 
+    private val analyticsRepository = AnalyticsRepository(database)
+    val analyticsService = AnalyticsService(analyticsRepository)
+
+    private val preferencesRepository = PreferencesRepository(database)
+    val preferencesService = PreferencesService(preferencesRepository, refDataRepository)
+
     companion object {
         fun fromEnv(): AppDependencies {
             val config = Config.fromEnv()
@@ -98,5 +108,7 @@ fun Application.module(deps: AppDependencies) {
         deps.dailyLogsService,
         deps.dailyLogSubsService,
         deps.refDataService,
+        deps.analyticsService,
+        deps.preferencesService,
     )
 }

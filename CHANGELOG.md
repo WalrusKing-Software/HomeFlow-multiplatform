@@ -92,3 +92,19 @@ Ktor server). Pre-implementation: documentation and specification only.
   - `GET /api/v1/ref-data/symptom-categories` and `GET /api/v1/ref-data/pain-regions`
     return the seeded reference data (categories with their options; regions with
     their locations) that the clients resolve labels against.
+- **Server analytics & preferences (Phase 6) — the server API is now
+  feature-complete.** Your history can now be summarised and your dashboard
+  arranged:
+  - `GET /api/v1/analytics/cycle-stats` returns your average cycle length, cycle
+    length variation, and average period length; `GET /api/v1/analytics/period-length-chart`
+    returns one bleeding-day data point per closed cycle (oldest first);
+    `GET /api/v1/analytics/ovulation-prediction` projects the next three period
+    starts and ovulation dates from your most recent cycle start; and
+    `GET /api/v1/analytics/sleep-predictions` reports the most common sleep
+    options for each cycle phase. Analytics always answer with `200` — when there
+    isn't enough history yet (e.g. fewer than two closed cycles, or a phase with
+    too few logged days) the affected fields come back `null` rather than an error.
+  - `GET /api/v1/preferences` returns your dashboard category order, defaulting to
+    the reference category order until you save your own; `PUT /api/v1/preferences`
+    saves a new order, which must list every category exactly once (a missing,
+    unknown, or duplicated slug is rejected).
