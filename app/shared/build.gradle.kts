@@ -30,6 +30,9 @@ kotlin {
         }
         withHostTest {
             isIncludeAndroidResources = true
+            // android.util.Log (used by the auth Diagnostics actual) is a stub in host
+            // unit tests and throws "not mocked" by default; return defaults instead.
+            isReturnDefaultValues = true
         }
     }
 
