@@ -73,3 +73,22 @@ Ktor server). Pre-implementation: documentation and specification only.
     decrypted; passing `null` clears them.
   - Every cycle and daily-log query is scoped to the authenticated user, so
     another user's cycle or log is reported as not-found, never revealed.
+- **Server symptom sub-logs & reference data (Phase 5).** A day can now be fully
+  tracked and read back:
+  - A `PUT` route for every symptom category — `emotions`, `sleep`, `energy`,
+    `sex`, `discharge`, `skin`, `digestion`, `flow`, `collection`, and `mind` —
+    replaces the day's selections in one call; sending an empty array (or `null`
+    for the single-select categories) clears them. Submitted option IDs are
+    validated against that category's reference data, so an unknown ID or one from
+    the wrong category is rejected with `400`.
+  - `PUT /api/v1/daily-logs/:date/pain` replaces the day's pain log — each
+    selected location with its own 1–10 severity (or unrated) — and an empty list
+    clears it; duplicate locations, unknown locations, and out-of-range severities
+    are rejected.
+  - Sex selections are stored encrypted with AES-256-GCM at the application layer
+    (ciphertext at rest) and returned decrypted, the same as notes.
+  - `GET /api/v1/daily-logs/:date` now returns the fully assembled day with every
+    logged category resolved; a category with nothing logged reads back as null.
+  - `GET /api/v1/ref-data/symptom-categories` and `GET /api/v1/ref-data/pain-regions`
+    return the seeded reference data (categories with their options; regions with
+    their locations) that the clients resolve labels against.
