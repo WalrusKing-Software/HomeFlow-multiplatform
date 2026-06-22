@@ -181,7 +181,7 @@ validate behaviour (10 tests); `./gradlew :server:check` is green.
 
 ---
 
-## Phase 7 — Client: Auth Spike (both platforms)
+## Phase 7 — Client: Auth Spike (both platforms) (DONE)
 
 - Ktor `HttpClient` + auth plugin (`ARCHITECTURE-client.md`).
 - `OidcClient`/`TokenStore`/`AppLockGate` `expect` + `actual` for android & desktop.

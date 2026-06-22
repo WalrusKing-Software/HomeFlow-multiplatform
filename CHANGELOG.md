@@ -108,3 +108,18 @@ Ktor server). Pre-implementation: documentation and specification only.
     the reference category order until you save your own; `PUT /api/v1/preferences`
     saves a new order, which must list every category exactly once (a missing,
     unknown, or duplicated slug is rejected).
+- **Client auth spike — desktop & Android (Phase 7).** The Compose apps can now
+  sign you in and reach the server:
+  - Log in through Keycloak with Authorization Code + PKCE (S256) in the system
+    browser (desktop, via a loopback redirect listener) or a Chrome Custom Tab
+    (Android, via AppAuth) — reusing the existing password + passkey 2FA — then
+    load your account with `GET /api/v1/users/me`.
+  - The long-lived offline refresh token is stored only in OS-secure storage
+    (Android Keystore-backed encrypted prefs; desktop OS keychain), the access
+    token is kept in memory only, and the access token is refreshed silently
+    (reactively on a `401`).
+  - Re-opening the app requires a strong factor before the stored session is used:
+    a biometric/device-credential prompt on Android, an app passphrase on desktop.
+  - Logging out best-effort revokes the refresh token at Keycloak and clears
+    secure storage; Android additionally blocks screenshots/recents with
+    `FLAG_SECURE`. No HTTP request/response bodies or tokens are ever logged.
