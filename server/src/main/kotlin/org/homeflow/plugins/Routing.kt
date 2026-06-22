@@ -7,8 +7,11 @@ import io.ktor.server.routing.routing
 import org.homeflow.core.dto.HealthDto
 import org.homeflow.modules.cycles.CyclesService
 import org.homeflow.modules.cycles.cyclesRoutes
+import org.homeflow.modules.dailylogs.DailyLogSubsService
 import org.homeflow.modules.dailylogs.DailyLogsService
 import org.homeflow.modules.dailylogs.dailyLogsRoutes
+import org.homeflow.modules.refdata.RefDataService
+import org.homeflow.modules.refdata.refDataRoutes
 import org.homeflow.modules.users.UsersService
 import org.homeflow.modules.users.usersRoutes
 
@@ -21,6 +24,8 @@ fun Application.configureRouting(
     usersService: UsersService,
     cyclesService: CyclesService,
     dailyLogsService: DailyLogsService,
+    dailyLogSubsService: DailyLogSubsService,
+    refDataService: RefDataService,
 ) {
     routing {
         get("/health") {
@@ -28,6 +33,7 @@ fun Application.configureRouting(
         }
         usersRoutes(usersService)
         cyclesRoutes(cyclesService)
-        dailyLogsRoutes(dailyLogsService)
+        dailyLogsRoutes(dailyLogsService, dailyLogSubsService)
+        refDataRoutes(refDataService)
     }
 }

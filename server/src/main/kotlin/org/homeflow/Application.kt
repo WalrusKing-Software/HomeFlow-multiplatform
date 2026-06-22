@@ -16,8 +16,12 @@ import org.homeflow.lib.HttpKeycloakAdminClient
 import org.homeflow.lib.KeycloakAdminClient
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.cycles.CyclesService
+import org.homeflow.modules.dailylogs.DailyLogSubsRepository
+import org.homeflow.modules.dailylogs.DailyLogSubsService
 import org.homeflow.modules.dailylogs.DailyLogsRepository
 import org.homeflow.modules.dailylogs.DailyLogsService
+import org.homeflow.modules.refdata.RefDataRepository
+import org.homeflow.modules.refdata.RefDataService
 import org.homeflow.modules.users.UsersRepository
 import org.homeflow.modules.users.UsersService
 import org.homeflow.plugins.buildJwkProvider
@@ -41,15 +45,22 @@ class AppDependencies(
     val jwkProvider: JwkProvider,
     keycloakAdminClient: KeycloakAdminClient,
 ) {
+    private val encryption = Encryption(config.encryptionKey)
+
     private val usersRepository = UsersRepository(database)
     val usersService = UsersService(usersRepository, keycloakAdminClient)
 
     private val cyclesRepository = CyclesRepository(database)
     val cyclesService = CyclesService(cyclesRepository)
 
+    private val refDataRepository = RefDataRepository(database)
+    val refDataService = RefDataService(refDataRepository)
+
     private val dailyLogsRepository = DailyLogsRepository(database)
-    private val encryption = Encryption(config.encryptionKey)
-    val dailyLogsService = DailyLogsService(dailyLogsRepository, cyclesRepository, encryption)
+    private val dailyLogSubsRepository = DailyLogSubsRepository(database)
+    val dailyLogSubsService = DailyLogSubsService(dailyLogSubsRepository, refDataRepository, encryption)
+    val dailyLogsService =
+        DailyLogsService(dailyLogsRepository, cyclesRepository, dailyLogSubsRepository, encryption)
 
     companion object {
         fun fromEnv(): AppDependencies {
@@ -81,5 +92,11 @@ fun Application.module(deps: AppDependencies) {
     configureStatusPages()
     configureRateLimiting(deps.config.rateLimit)
     configureAuthentication(deps.config.keycloak, deps.jwkProvider, deps.usersService)
-    configureRouting(deps.usersService, deps.cyclesService, deps.dailyLogsService)
+    configureRouting(
+        deps.usersService,
+        deps.cyclesService,
+        deps.dailyLogsService,
+        deps.dailyLogSubsService,
+        deps.refDataService,
+    )
 }

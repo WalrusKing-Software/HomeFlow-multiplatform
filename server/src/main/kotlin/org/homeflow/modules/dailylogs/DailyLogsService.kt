@@ -1,10 +1,15 @@
 package org.homeflow.modules.dailylogs
 
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import org.homeflow.core.dto.CreateDailyLogRequest
 import org.homeflow.core.dto.DailyLogAnchorDto
 import org.homeflow.core.dto.DailyLogDto
 import org.homeflow.core.dto.NotesResponse
 import org.homeflow.core.dto.NotesUpdateRequest
+import org.homeflow.core.dto.PainDto
+import org.homeflow.core.dto.PainLocationDto
 import org.homeflow.core.validation.validateDailyLogWithinCycle
 import org.homeflow.core.validation.validateNotes
 import org.homeflow.lib.ConflictException
@@ -18,40 +23,67 @@ import org.homeflow.lib.toUuidOrNull
 import org.homeflow.modules.cycles.CycleRow
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.users.UserPrincipal
+import java.util.UUID
 
 /**
  * The per-day anchor: creating it, fetching the assembled day, and updating its
- * encrypted notes. Symptom sub-logs are added in Phase 5 — for now [getDailyLog]
- * returns the anchor with every category null/empty. Cycle ownership and the
- * date-in-range rule are validated here (reusing `:core` rules) before any write.
+ * encrypted notes. [getDailyLog] now assembles every symptom sub-log (read via
+ * [DailyLogSubsRepository]). Cycle ownership and the date-in-range rule are validated
+ * here (reusing `:core` rules) before any write.
  *
- * Notes are encrypted/decrypted in this service only (never the repository, route,
- * or client) — see `__docs/ARCHITECTURE-server.md` "Encryption".
+ * Notes and the sex payload are encrypted/decrypted in this service only (never the
+ * repository, route, or client) — see `__docs/ARCHITECTURE-server.md` "Encryption".
  */
 class DailyLogsService(
     private val dailyLogsRepository: DailyLogsRepository,
     private val cyclesRepository: CyclesRepository,
+    private val subsRepository: DailyLogSubsRepository,
     private val encryption: Encryption,
 ) {
     /**
-     * The full day log for [dateStr]; 404 if no anchor exists. Notes are decrypted
-     * here; sub-log categories are null/empty until Phase 5 assembles them.
+     * The full day log for [dateStr]; 404 if no anchor exists. Notes and sex are
+     * decrypted here; a category with no rows logged is returned as null.
      */
     fun getDailyLog(
         principal: UserPrincipal,
         dateStr: String,
     ): DailyLogDto {
         val date = parseIsoDate(dateStr)
-        val row =
-            dailyLogsRepository.findByDate(principal.id, date)
+        val day =
+            subsRepository.assembleDay(principal.id, date)
                 ?: throw NotFoundException("No log exists for this date.")
+        val anchor = day.anchor
+        val sex =
+            day.sexEncryptedPayload?.let {
+                Json.decodeFromString(ID_LIST_SERIALIZER, encryption.decrypt(it))
+            }
         return DailyLogDto(
-            id = row.id.toString(),
-            logDate = row.logDate.toString(),
-            cycleId = row.cycleId.toString(),
-            notes = row.notes?.let(encryption::decrypt),
-            createdAt = row.createdAt.toIsoString(),
-            updatedAt = row.updatedAt.toIsoString(),
+            id = anchor.id.toString(),
+            logDate = anchor.logDate.toString(),
+            cycleId = anchor.cycleId.toString(),
+            notes = anchor.notes?.let(encryption::decrypt),
+            emotions = day.emotions.asNullableStrings(),
+            sleep = day.sleep.asNullableStrings(),
+            energy = day.energy?.toString(),
+            sex = sex,
+            discharge = day.discharge.asNullableStrings(),
+            skin = day.skin.asNullableStrings(),
+            digestion = day.digestion.asNullableStrings(),
+            flow = day.flow?.toString(),
+            collection = day.collection?.toString(),
+            mind = day.mind.asNullableStrings(),
+            pain =
+                day.pain?.let { pain ->
+                    PainDto(
+                        id = pain.painLogId.toString(),
+                        locations =
+                            pain.locations.map {
+                                PainLocationDto(locationId = it.locationId.toString(), severity = it.severity)
+                            },
+                    )
+                },
+            createdAt = anchor.createdAt.toIsoString(),
+            updatedAt = anchor.updatedAt.toIsoString(),
         )
     }
 
@@ -113,5 +145,12 @@ class DailyLogsService(
                 ?: throw ValidationException("Invalid cycleId: expected a UUID.")
         return cyclesRepository.findById(principal.id, cycleId)
             ?: throw ValidationException("cycleId must reference one of your cycles.")
+    }
+
+    /** A category with no rows logged renders as null (not `[]`) per `__docs/API.md`. */
+    private fun List<UUID>.asNullableStrings(): List<String>? = if (isEmpty()) null else map(UUID::toString)
+
+    private companion object {
+        val ID_LIST_SERIALIZER = ListSerializer(String.serializer())
     }
 }
