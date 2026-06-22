@@ -269,11 +269,17 @@ class AuthUsersTest {
                 .withExpiresAt(expiresAt)
                 .sign(Algorithm.RSA256(publicKey, privateKey))
 
-        /** Corrupts only the signature segment so the token parses but fails verification. */
+        /**
+         * Corrupts the signature segment so the token parses but fails verification.
+         * Flips the *first* signature character, whose six bits are all significant.
+         * (The last base64url char of a 256-byte signature carries padding bits, so
+         * flipping it often decodes to identical signature bytes — leaving the token
+         * validly signed and the test flaky.)
+         */
         private fun tamper(token: String): String {
             val parts = token.split(".")
             val sig = parts[2]
-            val flipped = sig.dropLast(1) + if (sig.last() == 'a') 'b' else 'a'
+            val flipped = (if (sig.first() == 'A') 'B' else 'A') + sig.drop(1)
             return "${parts[0]}.${parts[1]}.$flipped"
         }
 
