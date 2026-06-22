@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      AppAuth's RedirectUriReceiverActivity is AppCompat-based, so the application theme
+      must descend from Theme.AppCompat or it crashes on the OIDC redirect with
+      "You need to use a Theme.AppCompat theme (or descendant) with this activity."
+      The Compose UI draws its own Material 3 theme; this only sets the window/host theme.
+    -->
+    <style name="Theme.HomeFlow" parent="Theme.AppCompat.Light.NoActionBar" />
+</resources>

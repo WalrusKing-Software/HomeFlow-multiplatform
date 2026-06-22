@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -35,6 +36,14 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
+            // Android auth actuals: OIDC (AppAuth + Custom Tab), Keystore-backed
+            // secure storage, biometric app-lock gate, OkHttp engine.
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.appauth)
+            implementation(libs.androidx.browser)
+            implementation(libs.androidx.biometric)
+            implementation(libs.androidx.fragment)
+            implementation(libs.androidx.security.crypto)
         }
         commonMain.dependencies {
             api(projects.core)
@@ -46,13 +55,41 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.datetime)
+            // Multiplatform Ktor client + auth/bearer + JSON negotiation.
+            implementation(libs.ktor.client.core.mp)
+            implementation(libs.ktor.client.contentNegotiation.mp)
+            implementation(libs.ktor.client.auth.mp)
+            implementation(libs.ktor.serialization.json.mp)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock.mp)
+        }
+        jvmMain.dependencies {
+            // Desktop auth actuals: CIO engine, OS-keychain secure storage.
+            implementation(libs.ktor.client.cio.mp)
+            implementation(libs.java.keyring)
         }
     }
 }
 
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
+}
+
+// AppAuth (an androidMain dependency) contributes a manifest entry using the
+// ${appAuthRedirectScheme} placeholder; supply a value so the library's own
+// (test) manifest merge resolves it. The real app value is set in :app:androidApp.
+extensions.configure<com.android.build.api.variant.KotlinMultiplatformAndroidComponentsExtension> {
+    onVariants { variant ->
+        val scheme = "org.homeflow.mobile"
+        variant.manifestPlaceholders.put("appAuthRedirectScheme", scheme)
+        // Test components merge their own manifest, so they need the value too.
+        variant.hostTests.values.forEach { it.manifestPlaceholders.put("appAuthRedirectScheme", scheme) }
+        variant.deviceTests.values.forEach { it.manifestPlaceholders.put("appAuthRedirectScheme", scheme) }
+    }
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only network security config. The <debug-overrides> block applies ONLY to
+  debuggable builds, so the release app is unaffected and still trusts the system CAs
+  exclusively. It lets the debug app trust a user-installed CA — e.g. Caddy's internal
+  root CA imported onto the emulator — so a `make dev` stack reached over https://localhost
+  (via `adb reverse tcp:443 tcp:443`) doesn't fail TLS validation. See KEYCLOAK.md / Phase 7.
+-->
+<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
