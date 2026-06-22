@@ -2,7 +2,7 @@
 # __docs/DEPLOYMENT.md. The dev overlay is applied ONLY by `make dev` — it is
 # never auto-merged, so `make prod` runs the hardened base stack alone.
 
-.PHONY: dev prod build down logs migrate smoke-phase4
+.PHONY: dev prod build down logs migrate smoke-phase4 smoke-phase6
 
 dev:   ## Start the stack with the dev overlay (debug ports, bind mounts)
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -24,3 +24,6 @@ migrate: ## Run Flyway migrations (DB must be reachable; see DEPLOYMENT.md for p
 
 smoke-phase4: ## Smoke-test Phase 4 against the running dev stack (needs SMOKE_PASSWORD; see script header)
 	bash scripts/smoke-phase4.sh
+
+smoke-phase6: ## Smoke-test the full API (phases 4–6) against the dev stack (needs SMOKE_PASSWORD; see script header)
+	bash scripts/smoke-phase6.sh
