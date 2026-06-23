@@ -3,9 +3,12 @@ package org.homeflow.app.shared.auth
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import org.homeflow.app.shared.config.AuthConfig
+import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.buildHttpClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -101,6 +104,47 @@ class AuthControllerTest {
             val locked = assertIs<AuthState.Locked>(controller.state.value)
             assertEquals(false, locked.needsEnrollment)
             assertEquals(1, gate.enrollCount)
+        }
+
+    @Test
+    fun delete_account_issues_delete_then_clears_storage_and_logs_out() =
+        runTest {
+            val store = FakeTokenStore(token = "stored-rt")
+            var deleteCall: Pair<HttpMethod, String>? = null
+            val engine =
+                MockEngine { request ->
+                    deleteCall = request.method to request.url.encodedPath
+                    respond(content = "", status = HttpStatusCode.NoContent)
+                }
+            val controller = controller(store = store, engine = engine)
+
+            val result = controller.deleteAccount()
+
+            assertIs<ApiResult.Success<Unit>>(result)
+            assertEquals(HttpMethod.Delete, deleteCall?.first)
+            assertEquals("/api/v1/users/me", deleteCall?.second)
+            assertIs<AuthState.LoggedOut>(controller.state.value)
+            assertNull(store.token)
+        }
+
+    @Test
+    fun delete_account_failure_leaves_session_intact() =
+        runTest {
+            val store = FakeTokenStore(token = "stored-rt")
+            val engine =
+                MockEngine {
+                    respond(
+                        content = """{"error":{"code":"INTERNAL_ERROR","message":"boom"}}""",
+                        status = HttpStatusCode.InternalServerError,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+            val controller = controller(store = store, engine = engine)
+
+            val result = controller.deleteAccount()
+
+            assertIs<ApiResult.Failure>(result)
+            assertEquals("stored-rt", store.token)
         }
 
     @Test

@@ -41,6 +41,12 @@ class HomeFlowApi(
 ) {
     suspend fun getMe(): ApiResult<UserDto> = client.apiGet("users/me")
 
+    /**
+     * Permanently delete the account: all health data + the Keycloak identity (server-side).
+     * The server replies `204 No Content`, so this is an [ApiResult]`<Unit>`.
+     */
+    suspend fun deleteAccount(): ApiResult<Unit> = client.apiSendEmpty(HttpMethod.Delete, "users/me")
+
     // ── Cycles ───────────────────────────────────────────────────────────────
     suspend fun getCycles(): ApiResult<CyclesResponse> = client.apiGet("cycles")
 
