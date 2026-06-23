@@ -217,13 +217,29 @@ deployed stack on each platform remains a manual first-run check.
 
 ---
 
-## Phase 9 — Client: Write MVP
+## Phase 9 — Client: Write MVP (DONE)
 
-- Full daily logging (multi/single-select cards, notes, pain UI), cycle
-  start/close, preference reordering. Mirrors web Phases 8–10/12.
+- ✅ Write surface on `HomeFlowApi`/`HomeFlowRepository`: the daily-log anchor +
+  every sub-log replace (multi/single/pain/notes), cycle start/close, and
+  preference reorder, over generic `apiSend`/`apiSendReceiving` helpers. `saveDay`
+  ensures the anchor (tolerating the `409`) then pushes **only the diff** vs the
+  loaded day; an emptied category clears it; a no-op edit issues no request.
+- ✅ Day editor (`DayEditorScreen`): multi-select chips, single-select cards,
+  per-location pain severity (1–10 or unrated), and notes, pre-populated from the
+  existing log and grouped into everyday/menstruation sections. Categories render
+  in the user's saved dashboard order.
+- ✅ Cycle start/close on the Cycles screen with shared-rule date validation
+  (`validateCycleStart`/`validateCycleEnd`); start auto-closes the prior cycle
+  server-side. New **Settings** tab reorders dashboard categories and persists.
 
 **Done when:** every category logs/clears and persists; pain severity + locations
 save; cycle start auto-closes prior; reordering persists.
+**Status:** done — `HomeFlowRepositoryTest` (MockEngine) covers the editor load
+(cycle resolution + pre-populated selections), `saveDay`'s anchor-then-diff writes
+(right routes/bodies, no-op, missing-cycle validation), cycle start/close routing,
+and preference persistence; `./gradlew :app:shared:check` is green (ktlint + detekt
++ JVM and Android host tests) and both app entry points compile. Live first-run
+write against the deployed stack on each platform remains a manual check.
 
 ---
 

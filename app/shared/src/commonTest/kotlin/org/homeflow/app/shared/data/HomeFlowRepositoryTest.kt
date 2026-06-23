@@ -7,6 +7,7 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
@@ -14,6 +15,7 @@ import org.homeflow.app.shared.auth.OidcTokens
 import org.homeflow.app.shared.config.AuthConfig
 import org.homeflow.core.ErrorCode
 import org.homeflow.core.domain.CyclePhase
+import org.homeflow.core.dto.CycleDto
 import org.homeflow.core.dto.CycleStatsDto
 import org.homeflow.core.dto.DailyLogDto
 import org.homeflow.core.dto.PainDto
@@ -255,4 +257,190 @@ class HomeFlowRepositoryTest {
         val real = (ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "x", 500) as ApiResult<String>).optional()
         assertTrue(real is ApiResult.Failure)
     }
+
+    // ── Write surface (Phase 9) ──────────────────────────────────────────────
+
+    private val cyclesJson =
+        """{"cycles":[{"id":"cyc-1","startDate":"2024-01-01","endDate":null,"createdAt":"x","updatedAt":"y"}]}"""
+
+    private val prefsJson = """{"categoryOrder":["emotions","blood_flow"]}"""
+
+    private val editorLogJson =
+        """
+        {"id":"log-1","logDate":"2024-01-06","cycleId":"cyc-1","notes":"x","emotions":["o-fine"],
+         "createdAt":"x","updatedAt":"y"}
+        """.trimIndent()
+
+    /** Records every request (method, path, body) so writes can be asserted. */
+    private class Recorder {
+        val calls = mutableListOf<Triple<String, String, String>>()
+
+        fun record(request: HttpRequestData) {
+            calls += Triple(request.method.value, request.url.encodedPath, (request.body as? TextContent)?.text ?: "")
+        }
+    }
+
+    @Test
+    fun loadDayEditor_resolves_cycle_and_prepopulates_selections() =
+        runTest {
+            val repo =
+                repository { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v1/ref-data/symptom-categories" -> json(categoriesJson)
+                        "/api/v1/ref-data/pain-regions" -> json(regionsJson)
+                        "/api/v1/preferences" -> json(prefsJson)
+                        "/api/v1/cycles" -> json(cyclesJson)
+                        "/api/v1/daily-logs/2024-01-06" -> json(editorLogJson)
+                        else -> notFound()
+                    }
+                }
+
+            val editor = assertIs<ApiResult.Success<DayEditor>>(repo.loadDayEditor(LocalDate(2024, 1, 6))).value
+
+            assertEquals("cyc-1", editor.cycleId)
+            assertTrue(editor.canLog)
+            assertEquals(listOf("o-fine"), editor.initial.selections["emotions"])
+            assertEquals("x", editor.initial.notes)
+        }
+
+    @Test
+    fun saveDay_creates_anchor_then_puts_only_changed_categories() =
+        runTest {
+            val recorder = Recorder()
+            val repo =
+                repository { request ->
+                    recorder.record(request)
+                    when {
+                        request.url.encodedPath == "/api/v1/ref-data/symptom-categories" -> json(categoriesJson)
+                        request.url.encodedPath == "/api/v1/ref-data/pain-regions" -> json(regionsJson)
+                        request.url.encodedPath == "/api/v1/preferences" -> json(prefsJson)
+                        request.url.encodedPath == "/api/v1/cycles" -> json(cyclesJson)
+                        request.url.encodedPath == "/api/v1/daily-logs/2024-01-06" &&
+                            request.method.value == "GET" -> json(editorLogJson)
+                        request.url.encodedPath == "/api/v1/daily-logs" ->
+                            respond(
+                                """{"error":{"code":"CONFLICT","message":"exists"}}""",
+                                HttpStatusCode.Conflict,
+                                jsonHeaders(),
+                            )
+                        else -> json("{}")
+                    }
+                }
+            val editor = assertIs<ApiResult.Success<DayEditor>>(repo.loadDayEditor(LocalDate(2024, 1, 6))).value
+            val edits =
+                editor.initial.copy(
+                    selections =
+                        editor.initial.selections +
+                            ("emotions" to listOf("o-anxious")) +
+                            ("blood_flow" to listOf("o-medium")),
+                )
+
+            recorder.calls.clear()
+            assertIs<ApiResult.Success<Unit>>(repo.saveDay(LocalDate(2024, 1, 6), editor, edits))
+
+            val writes = recorder.calls.map { it.first to it.second }
+            // The anchor is created (a tolerated 409) before any sub-log PUT.
+            assertEquals("POST" to "/api/v1/daily-logs", writes.first())
+            assertTrue(writes.contains("PUT" to "/api/v1/daily-logs/2024-01-06/emotions"))
+            assertTrue(writes.contains("PUT" to "/api/v1/daily-logs/2024-01-06/flow"))
+            // Notes (unchanged) and pain (empty, unchanged) are not sent.
+            assertTrue(writes.none { it.second.endsWith("/notes") })
+            assertTrue(writes.none { it.second.endsWith("/pain") })
+            assertTrue(
+                recorder.calls
+                    .first { it.second.endsWith("/emotions") }
+                    .third
+                    .contains("o-anxious"),
+            )
+            assertTrue(
+                recorder.calls
+                    .first { it.second.endsWith("/flow") }
+                    .third
+                    .contains("o-medium"),
+            )
+        }
+
+    @Test
+    fun saveDay_is_a_noop_when_nothing_changed() =
+        runTest {
+            val recorder = Recorder()
+            val repo =
+                repository { request ->
+                    recorder.record(request)
+                    when (request.url.encodedPath) {
+                        "/api/v1/ref-data/symptom-categories" -> json(categoriesJson)
+                        "/api/v1/ref-data/pain-regions" -> json(regionsJson)
+                        "/api/v1/preferences" -> json(prefsJson)
+                        "/api/v1/cycles" -> json(cyclesJson)
+                        "/api/v1/daily-logs/2024-01-06" -> json(editorLogJson)
+                        else -> json("{}")
+                    }
+                }
+            val editor = assertIs<ApiResult.Success<DayEditor>>(repo.loadDayEditor(LocalDate(2024, 1, 6))).value
+
+            recorder.calls.clear()
+            assertIs<ApiResult.Success<Unit>>(repo.saveDay(LocalDate(2024, 1, 6), editor, editor.initial))
+
+            assertTrue(recorder.calls.isEmpty())
+        }
+
+    @Test
+    fun saveDay_without_a_cycle_fails_validation() =
+        runTest {
+            val repo = repository { json("{}") }
+            val editor =
+                DayEditor(cycleId = null, categories = emptyList(), painRegions = emptyList(), initial = noEdits())
+
+            val failure = assertIs<ApiResult.Failure>(repo.saveDay(LocalDate(2024, 1, 6), editor, noEdits()))
+            assertEquals(ErrorCode.VALIDATION_ERROR, failure.code)
+        }
+
+    private val newCycleJson =
+        """{"id":"cyc-2","startDate":"2024-03-01","endDate":null,"createdAt":"x","updatedAt":"y"}"""
+
+    private val closedCycleJson =
+        """{"id":"cyc-1","startDate":"2024-01-01","endDate":"2024-02-01","createdAt":"x","updatedAt":"y"}"""
+
+    @Test
+    fun start_and_close_cycle_hit_the_right_routes() =
+        runTest {
+            val recorder = Recorder()
+            val repo =
+                repository { request ->
+                    recorder.record(request)
+                    when (request.url.encodedPath) {
+                        "/api/v1/cycles" -> json(newCycleJson)
+                        "/api/v1/cycles/cyc-1" -> json(closedCycleJson)
+                        else -> notFound()
+                    }
+                }
+
+            val started = assertIs<ApiResult.Success<CycleDto>>(repo.startCycle(LocalDate(2024, 3, 1)))
+            val closed = assertIs<ApiResult.Success<CycleDto>>(repo.closeCycle("cyc-1", LocalDate(2024, 2, 1)))
+
+            assertEquals("cyc-2", started.value.id)
+            assertEquals("2024-02-01", closed.value.endDate)
+            assertEquals("POST" to "/api/v1/cycles", recorder.calls.map { it.first to it.second }.first())
+            assertTrue(recorder.calls.any { it.first == "PATCH" && it.second == "/api/v1/cycles/cyc-1" })
+            assertTrue(
+                recorder.calls
+                    .first { it.second == "/api/v1/cycles" }
+                    .third
+                    .contains("2024-03-01"),
+            )
+        }
+
+    @Test
+    fun savePreferences_returns_the_stored_order() =
+        runTest {
+            val repo =
+                repository {
+                    json("""{"categoryOrder":["energy","emotions"],"updatedAt":"y"}""")
+                }
+
+            val saved = assertIs<ApiResult.Success<List<String>>>(repo.savePreferences(listOf("energy", "emotions")))
+            assertEquals(listOf("energy", "emotions"), saved.value)
+        }
+
+    private fun noEdits() = DayEdits(selections = emptyMap(), notes = null, pain = emptyList())
 }
