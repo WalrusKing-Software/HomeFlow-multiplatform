@@ -160,13 +160,27 @@ browser, biometrics, or a window flag goes behind an `expect`/`actual`.
 
 ## Security posture (v1) — checklist
 
-- [ ] No health data persisted on device (in-memory only)
-- [ ] Refresh token only in platform secure storage; access token in memory only
-- [ ] No BODY-level HTTP logging on any platform; `Authorization` never logged
-- [ ] PKCE S256 enforced client-side and required on the Keycloak client
-- [ ] `FLAG_SECURE` (Android) / best-effort screenshot block (desktop)
-- [ ] Refresh-token use gated behind a strong factor on app open
-- [ ] Logout revokes the refresh token and clears secure storage
+Verified at Phase 10 (hardening). Evidence in parentheses.
+
+- [x] No health data persisted on device (in-memory only) — `HomeFlowRepository` caches only
+  ref-data labels in memory; no DB/file persistence of health data.
+- [x] Refresh token only in platform secure storage; access token in memory only —
+  `TokenStore` (Keystore-backed prefs / OS keychain) holds the refresh token; the access
+  token lives in the in-memory `TokenHolder` only.
+- [x] No BODY-level HTTP logging on any platform; `Authorization` never logged — no Ktor
+  `Logging` plugin is installed on either engine (`HttpClientFactory`).
+- [x] PKCE S256 enforced client-side and required on the Keycloak client — `Pkce.challenge`
+  is `BASE64URL(SHA-256(verifier))`; clients send `code_challenge_method=S256`.
+- [x] `FLAG_SECURE` (Android) / best-effort screenshot block (desktop) — `MainActivity` sets
+  `FLAG_SECURE`. Desktop has no OS-portable capture exclusion; treated as best-effort/N/A.
+- [x] Refresh-token use gated behind a strong factor on app open — `AppLockGate`
+  (BiometricPrompt on Android; passphrase/credential prompt on desktop) runs before the
+  stored refresh token is used.
+- [x] Logout revokes the refresh token and clears secure storage — `AuthController.logout`
+  best-effort revokes at the end-session endpoint then clears `TokenStore`/`TokenHolder`.
+- [x] Account deletion removes server data + the Keycloak identity, then clears local
+  storage — `DELETE /users/me` via the Settings danger zone; `AuthController.deleteAccount`
+  drops to the login screen on success.
 
 ---
 

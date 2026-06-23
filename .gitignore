@@ -26,6 +26,8 @@ VERSION
 !.env.example
 *.keystore
 *.jks
+# Android release signing credentials (the .example template stays tracked).
+keystore.properties
 # TLS certificates / keys (e.g. the exported Caddy dev root CA) — never commit.
 *.crt
 *.cer
