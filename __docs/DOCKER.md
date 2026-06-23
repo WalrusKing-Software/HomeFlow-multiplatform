@@ -238,14 +238,27 @@ production `.env` table. Generate secrets: `openssl rand -base64 32`
 
 ## Common commands
 
+The Makefile exposes matching `dev-*` / `prod-*` targets so the dev overlay is
+never accidentally pointed at the prod stack:
+
 ```bash
-make prod                 # docker compose up -d   (base file only)
-make dev                  # docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-docker compose logs -f backend
-docker compose build backend && docker compose up -d backend
-docker compose down       # preserve volumes
-docker compose down -v    # destroy data (destructive)
+make dev-start             # start dev (no build)
+make dev-build             # build dev images only
+make dev-rebuild           # rebuild changed images + recreate dev containers (keeps data)
+make dev-reset             # down -v + build --no-cache + up -d (wipes dev volumes)
+make dev-stop              # docker compose down (preserve volumes)
+make dev-logs              # docker compose logs -f backend
+
+make prod-start            # start prod (no build)
+make prod-build            # build prod images only
+make prod-rebuild          # rebuild changed images + recreate prod containers (keeps data)
+make prod-reset CONFIRM=yes  # down -v + build --no-cache + up -d (DESTROYS prod data; refuses without CONFIRM=yes)
+make prod-stop              # docker compose down (preserve volumes)
+make prod-logs              # docker compose logs -f backend
 ```
+
+`make dev` / `make prod` / `make build` / `make down` / `make logs` still work
+as aliases for `dev-start` / `prod-start` / `dev-build` / `dev-stop` / `dev-logs`.
 
 Migrations: see `DEPLOYMENT.md` (one-off build-stage container or a `:server`
 Gradle Flyway task) — not run from the runtime image.
