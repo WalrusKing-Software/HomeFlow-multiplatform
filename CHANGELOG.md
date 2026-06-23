@@ -123,3 +123,18 @@ Ktor server). Pre-implementation: documentation and specification only.
   - Logging out best-effort revokes the refresh token at Keycloak and clears
     secure storage; Android additionally blocks screenshots/recents with
     `FLAG_SECURE`. No HTTP request/response bodies or tokens are ever logged.
+- **Client read MVP — desktop & Android (Phase 8).** Once signed in, the apps now
+  show your data across four screens, sharing one codebase on both platforms:
+  - A **Dashboard** with your current cycle, the cycle day and predicted phase
+    (computed with the shared `:core` `predictPhase`), at-a-glance averages, and
+    today's log.
+  - A **Day** view with a date stepper that resolves every tracked category to its
+    labels, plus pain locations (with severity) and notes.
+  - A **Cycles** list showing every cycle newest-first with its derived length and
+    open/closed status.
+  - An **Analytics** view: cycle stats, the per-cycle period-length chart,
+    ovulation predictions, and most-common sleep options by phase.
+  - Reference-data labels are fetched once and cached in memory; thin/absent data
+    (no open cycle, nothing logged, under two cycles) renders calm empty states
+    rather than errors, and every screen surfaces a retry on failure. No health
+    data is persisted on the device.

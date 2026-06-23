@@ -2,7 +2,7 @@
 # __docs/DEPLOYMENT.md. The dev overlay is applied ONLY by `make dev` — it is
 # never auto-merged, so `make prod` runs the hardened base stack alone.
 
-.PHONY: dev prod build down logs migrate smoke-phase4 smoke-phase6
+.PHONY: dev prod build down logs migrate seed-dev smoke-phase4 smoke-phase6
 
 dev:   ## Start the stack with the dev overlay (debug ports, bind mounts)
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -21,6 +21,9 @@ logs:  ## Follow backend logs
 
 migrate: ## Run Flyway migrations (DB must be reachable; see DEPLOYMENT.md for prod)
 	./gradlew :server:flywayMigrate
+
+seed-dev: ## Seed the dev stack with repeatable demo data for the read MVP (creates the login user; see script header)
+	bash scripts/seed-dev.sh
 
 smoke-phase4: ## Smoke-test Phase 4 against the running dev stack (needs SMOKE_PASSWORD; see script header)
 	bash scripts/smoke-phase4.sh

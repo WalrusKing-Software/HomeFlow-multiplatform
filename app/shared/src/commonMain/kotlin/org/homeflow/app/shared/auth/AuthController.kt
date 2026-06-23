@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.homeflow.app.shared.config.AuthConfig
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowApi
+import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
 import org.homeflow.core.dto.UserDto
@@ -59,6 +60,9 @@ class AuthController(
 
     private val http: HttpClient = httpClientFactory(config, tokenHolder, ::refreshAndPersist)
     private val api = HomeFlowApi(http)
+
+    /** The Phase 8 read surface for the signed-in shell — backed by the same authenticated client. */
+    val repository: HomeFlowRepository = HomeFlowRepository(api)
 
     /** App open: a stored refresh token sends us to the lock gate; otherwise log in. */
     fun start() {
