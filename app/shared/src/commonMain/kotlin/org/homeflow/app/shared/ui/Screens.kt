@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import org.homeflow.core.dto.UserDto
 
 /** Shared centered column for the simple Phase 7 auth screens. */
 @Composable
@@ -101,19 +100,6 @@ fun LockScreen(
             Button(onClick = onBiometric) { Text("Unlock") }
         }
         OutlinedButton(onClick = onLogout) { Text("Log out") }
-    }
-}
-
-@Composable
-fun SignedInScreen(
-    user: UserDto,
-    onLogout: () -> Unit,
-) {
-    CenteredColumn {
-        Text("Signed in", style = MaterialTheme.typography.headlineSmall)
-        Text("User ID: ${user.id}", style = MaterialTheme.typography.bodyMedium)
-        Text("Member since: ${user.createdAt}", style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = onLogout) { Text("Log out") }
     }
 }
 

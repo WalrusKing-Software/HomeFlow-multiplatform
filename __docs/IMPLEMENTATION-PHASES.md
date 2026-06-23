@@ -194,15 +194,26 @@ hits the app-lock gate then silent-refreshes; logout revokes + clears.
 
 ---
 
-## Phase 8 — Client: Read MVP
+## Phase 8 — Client: Read MVP (DONE)
 
-- Repository + ref-data label cache; `Loadable`/`ApiResult` chrome.
-- Screens: Dashboard (current cycle + today + at-a-glance), Day (date stepper, all
-  categories resolved to labels + pain + notes), Cycles list, Analytics (stats,
-  predictions, period-length chart, sleep by phase).
+- ✅ `HomeFlowRepository` over the authenticated `HomeFlowApi` (exposed from
+  `AuthController`), with an in-memory ref-data label cache and `optional()` 404→
+  absence mapping; `Loadable`/`ApiResult` chrome (`Loadable.kt`) + shared widgets
+  (`SectionCard`, `KeyValueRow`, `EmptyHint`).
+- ✅ Signed-in shell (`AppShell`, text-tab nav) over four screens: Dashboard
+  (current cycle + cycle day/phase via `:core` `predictPhase` + at-a-glance stats +
+  today's log), Day (date stepper, all categories resolved to labels + pain +
+  notes), Cycles list (derived length + open/closed), Analytics (stats,
+  period-length chart, ovulation predictions, sleep by phase). Thin/absent data
+  renders empty states; failures are retryable. No health data persisted on device.
 
 **Done when:** all four screens render real data on both platforms; null analytics
 render empty states; phase indicator correct (uses `:core` `predictPhase`).
+**Status:** implementation complete — `HomeFlowRepositoryTest` (MockEngine) covers
+dashboard phase/label composition, the ref-data cache, 404→absence, and the pure
+shaping helpers; `./gradlew :app:shared:check` is green (ktlint + detekt + JVM and
+Android host tests) and both app entry points compile. Live render against the
+deployed stack on each platform remains a manual first-run check.
 
 ---
 
