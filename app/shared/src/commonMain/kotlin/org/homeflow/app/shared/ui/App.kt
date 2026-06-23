@@ -11,11 +11,12 @@ import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthController
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.buildAuthController
+import org.homeflow.app.shared.ui.shell.AppShell
 
 /**
- * Root composable and the Phase 7 auth gate: it renders off [AuthController.state] —
- * login → app-lock gate → signed-in user — proving the full pipeline on both platforms.
- * The read shell (Dashboard/Day/Cycles/Analytics) arrives in Phase 8.
+ * Root composable and the auth gate: it renders off [AuthController.state] — login →
+ * app-lock gate → signed-in shell. Once authenticated it hands the controller's read
+ * [AuthController.repository] to the Phase 8 [AppShell] (Dashboard/Day/Cycles/Analytics).
  */
 @Composable
 fun App(controller: AuthController = remember { buildAuthController() }) {
@@ -46,7 +47,10 @@ fun App(controller: AuthController = remember { buildAuthController() }) {
                 )
 
             is AuthState.Authenticated ->
-                SignedInScreen(user = current.user, onLogout = { scope.launch { controller.logout() } })
+                AppShell(
+                    repository = controller.repository,
+                    onLogout = { scope.launch { controller.logout() } },
+                )
 
             is AuthState.Error ->
                 ErrorScreen(message = current.message, onRetry = { controller.start() })
