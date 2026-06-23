@@ -138,3 +138,18 @@ Ktor server). Pre-implementation: documentation and specification only.
     (no open cycle, nothing logged, under two cycles) renders calm empty states
     rather than errors, and every screen surfaces a retry on failure. No health
     data is persisted on the device.
+- **Client write MVP — desktop & Android (Phase 9).** The apps can now record and
+  change data, not just read it:
+  - **Log a day.** The Day view has an editor that pre-populates the day's current
+    selections and lets you toggle every symptom category — multi-select chips
+    (emotions, sleep, sex, discharge, skin, digestion, mind), single-select cards
+    (energy, blood flow, collection method), pain locations with a per-location
+    1–10 severity (or "unrated"), and free-text notes. Saving creates the day's
+    anchor automatically and pushes only what changed; emptying a category clears
+    it server-side.
+  - **Manage cycles.** Start a new cycle from the Cycles tab (which auto-closes the
+    previous open one) or close the open cycle by setting its end date — both with
+    inline date validation that blocks future/out-of-order dates.
+  - **Reorder tracking categories.** A new Settings tab lets you rearrange the order
+    your categories appear when logging, and the saved order is applied to the day
+    editor.
