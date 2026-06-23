@@ -168,6 +168,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   - **Polished desktop installers.** The desktop distribution now carries a proper
     app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
 
+### Fixed
+- **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
+  to the same screen with no feedback when biometrics/device credential weren't
+  enrolled, or when the biometric prompt errored — the gate still fails closed,
+  but the failure now surfaces as a visible error message instead of looking like
+  a dead button.
+
 ### Changed
 - The client security checklist in `ARCHITECTURE-client.md` is verified and ticked
   (no health data at rest, tokens in secure storage, no body logging, PKCE S256,
