@@ -22,8 +22,9 @@ import org.homeflow.app.shared.ui.screens.AnalyticsScreen
 import org.homeflow.app.shared.ui.screens.CyclesScreen
 import org.homeflow.app.shared.ui.screens.DashboardScreen
 import org.homeflow.app.shared.ui.screens.DayScreen
+import org.homeflow.app.shared.ui.screens.PreferencesScreen
 
-/** The four read destinations of the signed-in shell, in tab order. */
+/** The destinations of the signed-in shell, in tab order. */
 private enum class Tab(
     val label: String,
 ) {
@@ -31,12 +32,13 @@ private enum class Tab(
     DAY("Day"),
     CYCLES("Cycles"),
     ANALYTICS("Analytics"),
+    SETTINGS("Settings"),
 }
 
 /**
- * The signed-in shell: a top bar with logout, a tab row over the four Phase 8 read screens,
- * and the selected screen below. Text-only tabs work identically on desktop and Android and
- * keep the module free of an icon-pack dependency.
+ * The signed-in shell: a top bar with logout, a tab row over the read/write screens, and the
+ * selected screen below. Text-only tabs work identically on desktop and Android and keep the
+ * module free of an icon-pack dependency.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +73,7 @@ fun AppShell(
                 Tab.DAY -> DayScreen(repository)
                 Tab.CYCLES -> CyclesScreen(repository)
                 Tab.ANALYTICS -> AnalyticsScreen(repository)
+                Tab.SETTINGS -> PreferencesScreen(repository)
             }
         }
     }
