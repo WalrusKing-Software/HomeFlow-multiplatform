@@ -15,8 +15,8 @@ import org.homeflow.app.shared.ui.shell.AppShell
 
 /**
  * Root composable and the auth gate: it renders off [AuthController.state] — login →
- * app-lock gate → signed-in shell. Once authenticated it hands the controller's read
- * [AuthController.repository] to the Phase 8 [AppShell] (Dashboard/Day/Cycles/Analytics).
+ * app-lock gate → signed-in shell. Once authenticated it hands the controller's
+ * [AuthController.repository] to the [AppShell] (Dashboard/Day/Cycles/Analytics/Settings).
  */
 @Composable
 fun App(controller: AuthController = remember { buildAuthController() }) {
