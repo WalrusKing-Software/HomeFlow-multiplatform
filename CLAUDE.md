@@ -64,7 +64,8 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/KEYCLOAK.md` | Realm config, clients, audience mapper, WebAuthn flow, JWT validation, OIDC | Any auth work |
 | `__docs/threat-model.md` | Threat actors, scenarios, mitigations | Any security-sensitive decision |
 | `__docs/TESTING.md` | Test layers (kotlin.test/JUnit5, Testcontainers, Compose UI) | Writing any test |
-| `__docs/IMPLEMENTATION-PHASES.md` | Build order, per-phase task lists, done-when checklists | Starting or continuing any phase |
+| `__docs/IMPLEMENTATION-PHASES.md` | Build order, per-phase task lists, done-when checklists (phases 0–10) | Starting or continuing any phase |
+| `__docs/IMPLEMENTATION-PHASES-modular-offline.md` | Decoupled deployment + offline sync plan (phases 11–16): local-only, server-connected, and offline-sync modes | Any work on modular deployment, local persistence, or sync |
 | `__docs/DOCKER.md` | Containers, Caddy config, env vars, startup order | Any infra work |
 | `__docs/DEPLOYMENT.md` | Pi deployment runbook; Tailscale + canonical hostname (§11) | Deploying to the homelab |
 | `__docs/BACKUP.md` | Encrypted backup/restore (`pg_dump \| gpg`) | Any backup / disaster-recovery work |

@@ -1,20 +1,21 @@
 package org.homeflow.modules.cycles
 
-import kotlinx.datetime.DatePeriod
-import kotlinx.datetime.minus
 import org.homeflow.core.dto.CreateCycleRequest
 import org.homeflow.core.dto.CycleDto
 import org.homeflow.core.dto.CyclesResponse
 import org.homeflow.core.dto.UpdateCycleRequest
+import org.homeflow.core.service.autoCloseEndDate
 import org.homeflow.core.validation.validateCycleEnd
 import org.homeflow.core.validation.validateCycleStart
 import org.homeflow.lib.NotFoundException
+import org.homeflow.lib.ValidationException
 import org.homeflow.lib.orThrow
 import org.homeflow.lib.parseIsoDate
 import org.homeflow.lib.toIsoString
 import org.homeflow.lib.toUuidOrNull
 import org.homeflow.lib.today
 import org.homeflow.modules.users.UserPrincipal
+import java.util.UUID
 
 /**
  * Cycle lifecycle: listing, creation (with auto-close of the prior open cycle),
@@ -39,8 +40,11 @@ class CyclesService(
     ): CycleDto {
         val startDate = parseIsoDate(request.startDate, "startDate")
         validateCycleStart(startDate, today()).orThrow()
-        val previousEndDate = startDate.minus(DatePeriod(days = 1))
-        return toDto(cyclesRepository.insertClosingOpen(principal.id, startDate, previousEndDate))
+        val previousEndDate = autoCloseEndDate(startDate)
+        val id = request.id?.let { it.toUuidOrNull() ?: throw ValidationException("Invalid id: expected a UUID.") }
+        val cycle =
+            cyclesRepository.insertClosingOpen(principal.id, startDate, previousEndDate, id ?: UUID.randomUUID())
+        return toDto(cycle)
     }
 
     /** The user's currently open cycle; 404 if none is open. */

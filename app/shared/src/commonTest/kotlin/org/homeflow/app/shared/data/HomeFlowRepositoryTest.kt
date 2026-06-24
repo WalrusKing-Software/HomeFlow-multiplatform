@@ -74,7 +74,7 @@ class HomeFlowRepositoryTest {
                         handler(request)
                     },
             )
-        return HomeFlowRepository(HomeFlowApi(client))
+        return HomeFlowRepository(RemoteDataSource(client))
     }
 
     private val cycleJson =

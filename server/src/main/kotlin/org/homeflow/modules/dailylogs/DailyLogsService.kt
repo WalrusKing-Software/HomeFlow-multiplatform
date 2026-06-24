@@ -99,9 +99,10 @@ class DailyLogsService(
         val date = parseIsoDate(request.date)
         val cycle = requireOwnedCycle(principal, request.cycleId)
         validateDailyLogWithinCycle(date, cycle.startDate, cycle.endDate).orThrow()
+        val id = request.id?.let { it.toUuidOrNull() ?: throw ValidationException("Invalid id: expected a UUID.") }
 
         val row =
-            dailyLogsRepository.insertIfAbsent(principal.id, cycle.id, date)
+            dailyLogsRepository.insertIfAbsent(principal.id, cycle.id, date, id ?: UUID.randomUUID())
                 ?: throw ConflictException("A log already exists for this date.")
         return DailyLogAnchorDto(
             id = row.id.toString(),

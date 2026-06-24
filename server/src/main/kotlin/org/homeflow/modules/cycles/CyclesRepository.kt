@@ -78,6 +78,7 @@ class CyclesRepository(
         userId: UUID,
         startDate: LocalDate,
         previousEndDate: LocalDate,
+        id: UUID = UUID.randomUUID(),
     ): CycleRow =
         transaction(db) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
@@ -85,7 +86,6 @@ class CyclesRepository(
                 it[endDate] = previousEndDate
                 it[updatedAt] = now
             }
-            val id = UUID.randomUUID()
             Cycles.insert {
                 it[Cycles.id] = id
                 it[Cycles.userId] = userId

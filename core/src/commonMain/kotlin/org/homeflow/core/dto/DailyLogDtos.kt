@@ -49,6 +49,7 @@ data class PainLocationDto(
 data class CreateDailyLogRequest(
     val date: String,
     val cycleId: String,
+    val id: String? = null,
 )
 
 /** `POST /api/v1/daily-logs` response — the bare anchor (no sub-logs yet). */

@@ -59,6 +59,7 @@ class DailyLogsRepository(
         userId: UUID,
         cycleId: UUID,
         date: LocalDate,
+        id: UUID = UUID.randomUUID(),
     ): DailyLogRow? =
         transaction(db) {
             val existing =
@@ -70,7 +71,6 @@ class DailyLogsRepository(
             if (existing != null) return@transaction null
 
             val now = OffsetDateTime.now(ZoneOffset.UTC)
-            val id = UUID.randomUUID()
             DailyLogs.insert {
                 it[DailyLogs.id] = id
                 it[DailyLogs.userId] = userId
