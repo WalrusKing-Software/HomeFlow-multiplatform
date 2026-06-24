@@ -929,21 +929,25 @@ before the file body is read — letting large Apple Health exports stream throu
 
 | Source | Expected file | Fidelity |
 |---|---|---|
-| `clue` | Clue `measurements.json` (bare JSON array) | Flow, emotions, pain, mind, energy, digestion, collection, sex |
-| `apple_health` | Apple Health `export.xml` | Menstrual flow + cycle-start markers (streamed) |
-| `csv` | `date,flow,notes` CSV | Flow + notes |
+| `clue` | Clue `measurements.json` (bare JSON array) | **Not yet implemented** — `400 VALIDATION_ERROR` |
+| `apple_health` | Apple Health `export.xml` | **Not yet implemented** — `400 VALIDATION_ERROR` |
+| `csv` | `date,flow,notes` CSV | **Not yet implemented** — `400 VALIDATION_ERROR` |
 | `homeflow` | A HomeFlow native export (see below) | Full fidelity — lossless restore |
 
-Imports are **additive and idempotent**: existing days are never overwritten,
-overlapping cycles are reused, and re-running a file creates no duplicates. Values
-that don't map to this app's options are skipped and counted.
+Only `source=homeflow` is implemented today; the other sources are a separate later
+feature. Imports are **additive and idempotent**: existing days are never
+overwritten, overlapping cycles are reused, and re-running a file creates no
+duplicates. Slugs that don't map to this app's reference data are dropped and
+counted in `warnings`; a day outside its cycle's range is skipped and counted.
 
 **Response `200`:**
 ```json
 { "cyclesCreated": 2, "dailyLogsCreated": 31, "dailyLogsSkipped": 4, "warnings": ["3 unrecognized values were skipped"] }
 ```
 
-**Errors:** `400 VALIDATION_ERROR` (bad/missing source or wrong file type), `422 IMPORT_ERROR` (declared source but structurally invalid file).
+**Errors:** `400 VALIDATION_ERROR` — bad/missing/unsupported `source`, the upload
+exceeds 25 MB, or the file is structurally invalid (not valid JSON, or not a
+`homeflow_export` envelope). There is no `422`; every import failure is `400`.
 
 ### `GET /api/v1/export`
 
@@ -953,23 +957,27 @@ file. The response decrypts `notes` and sex data into plaintext (see
 row-scoped to `req.user.id`, sent with `Content-Disposition: attachment`, and never
 logged.
 
-**Query:** `?format=json | clue | apple_health | csv`
+**Query:** `?format=json | clue | apple_health | csv` — only `json` is implemented
+today; the other formats are a separate later feature and return `400`.
 
 | Format | Content-Type | Round-trips via import source |
 |---|---|---|
 | `json` | `application/json` | `homeflow` (full-fidelity backup/restore) |
-| `clue` | `application/json` | `clue` |
-| `apple_health` | `application/xml` | `apple_health` |
-| `csv` | `text/csv` | `csv` |
+| `clue` | — | **Not yet implemented** — `400 VALIDATION_ERROR` |
+| `apple_health` | — | **Not yet implemented** — `400 VALIDATION_ERROR` |
+| `csv` | — | **Not yet implemented** — `400 VALIDATION_ERROR` |
 
 **Native export shape (`format=json`):** a JSON object with a `homeflow_export`
-marker, a `cycles` array (`{ startDate, endDate }`), and a `days` array — one entry
-per logged day carrying `date`, `cycleStartDate`, single-selects (`flow`,
-`collectionMethod`, `energy`), multi-select slug arrays (`emotions`, `sleep`,
-`discharge`, `skin`, `digestion`, `mind`, `sex`), `pain` (`{ location, severity }`),
-and decrypted `notes`. Re-importable verbatim via `POST /api/v1/import?source=homeflow`.
+integer version marker (`1`), a `cycles` array (`{ startDate, endDate }`), and a
+`days` array — one entry per logged day carrying `date`, `cycleStartDate`,
+single-selects (`flow`, `collectionMethod`, `energy`), multi-select slug arrays
+(`emotions`, `sleep`, `discharge`, `skin`, `digestion`, `mind`, `sex`), `pain`
+(`{ location, severity }`), and decrypted `notes`. Every option/location is
+identified by its **slug**, never a UUID (reference-data UUIDs are per-database and
+don't survive a cross-store round-trip). Dashboard preferences are excluded — they
+are not health data. Re-importable verbatim via `POST /api/v1/import?source=homeflow`.
 
-**Errors:** `400 VALIDATION_ERROR` (unknown format).
+**Errors:** `400 VALIDATION_ERROR` (unsupported format).
 
 ---
 

@@ -50,6 +50,15 @@ class DailyLogsRepository(
                 .singleOrNull()
         }
 
+    /** Every anchor owned by [userId], in no particular order. Used by export (Phase 12). */
+    fun findAllByUser(userId: UUID): List<DailyLogRow> =
+        transaction(db) {
+            DailyLogs
+                .selectAll()
+                .where { DailyLogs.userId eq userId }
+                .map(::toRow)
+        }
+
     /**
      * Inserts the anchor for [userId]/[date]/[cycleId], or returns null if a log
      * already exists for that day (the caller surfaces that as `409 CONFLICT`). The

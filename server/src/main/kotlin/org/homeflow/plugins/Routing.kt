@@ -12,6 +12,8 @@ import org.homeflow.modules.cycles.cyclesRoutes
 import org.homeflow.modules.dailylogs.DailyLogSubsService
 import org.homeflow.modules.dailylogs.DailyLogsService
 import org.homeflow.modules.dailylogs.dailyLogsRoutes
+import org.homeflow.modules.importexport.ImportExportService
+import org.homeflow.modules.importexport.importExportRoutes
 import org.homeflow.modules.preferences.PreferencesService
 import org.homeflow.modules.preferences.preferencesRoutes
 import org.homeflow.modules.refdata.RefDataService
@@ -24,6 +26,7 @@ import org.homeflow.modules.users.usersRoutes
  * `/api/v1` is mounted by its domain module and JWT-protected. Module route files
  * live under `modules/<domain>/`.
  */
+@Suppress("LongParameterList") // one service per domain module, by design
 fun Application.configureRouting(
     usersService: UsersService,
     cyclesService: CyclesService,
@@ -32,6 +35,7 @@ fun Application.configureRouting(
     refDataService: RefDataService,
     analyticsService: AnalyticsService,
     preferencesService: PreferencesService,
+    importExportService: ImportExportService,
 ) {
     routing {
         get("/health") {
@@ -43,5 +47,6 @@ fun Application.configureRouting(
         refDataRoutes(refDataService)
         analyticsRoutes(analyticsService)
         preferencesRoutes(preferencesService)
+        importExportRoutes(importExportService)
     }
 }
