@@ -98,6 +98,30 @@ class CyclesRepository(
         }
 
     /**
+     * Inserts a cycle with both dates exactly as given, without touching any other
+     * cycle. Used only by import (`__docs/IMPLEMENTATION-PHASES-modular-offline.md`
+     * Phase 12 D-12.7): an imported cycle is additive, never auto-closes an open one.
+     */
+    fun insertExplicit(
+        userId: UUID,
+        startDate: LocalDate,
+        endDate: LocalDate?,
+        id: UUID = UUID.randomUUID(),
+    ): CycleRow =
+        transaction(db) {
+            val now = OffsetDateTime.now(ZoneOffset.UTC)
+            Cycles.insert {
+                it[Cycles.id] = id
+                it[Cycles.userId] = userId
+                it[Cycles.startDate] = startDate
+                it[Cycles.endDate] = endDate
+                it[createdAt] = now
+                it[updatedAt] = now
+            }
+            CycleRow(id, userId, startDate, endDate, createdAt = now, updatedAt = now)
+        }
+
+    /**
      * Sets [endDate] on the user's cycle [cycleId], returning the updated row (or null
      * if no such cycle is owned by the user). Scoped to [userId] so it can never close
      * another user's cycle.

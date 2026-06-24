@@ -22,6 +22,7 @@ import org.homeflow.modules.dailylogs.DailyLogSubsRepository
 import org.homeflow.modules.dailylogs.DailyLogSubsService
 import org.homeflow.modules.dailylogs.DailyLogsRepository
 import org.homeflow.modules.dailylogs.DailyLogsService
+import org.homeflow.modules.importexport.ImportExportService
 import org.homeflow.modules.preferences.PreferencesRepository
 import org.homeflow.modules.preferences.PreferencesService
 import org.homeflow.modules.refdata.RefDataRepository
@@ -72,6 +73,15 @@ class AppDependencies(
     private val preferencesRepository = PreferencesRepository(database)
     val preferencesService = PreferencesService(preferencesRepository, refDataRepository)
 
+    val importExportService =
+        ImportExportService(
+            cyclesRepository,
+            dailyLogsRepository,
+            dailyLogsService,
+            dailyLogSubsService,
+            refDataRepository,
+        )
+
     companion object {
         fun fromEnv(): AppDependencies {
             val config = Config.fromEnv()
@@ -110,5 +120,6 @@ fun Application.module(deps: AppDependencies) {
         deps.refDataService,
         deps.analyticsService,
         deps.preferencesService,
+        deps.importExportService,
     )
 }
