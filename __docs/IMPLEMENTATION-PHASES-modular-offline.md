@@ -393,73 +393,226 @@ fun autoCloseEndDate(newCycleStart: LocalDate): LocalDate = newCycleStart.minus(
 
 ---
 
-## Phase 12 — Native export/import + slug-keyed boundary format
+## Phase 12 — Native export/import (`homeflow` format)
 
-**Goal:** implement the `homeflow` native export/import (already specced in `API.md`
-§Import & Export; `ImportResultDto` already in `:core`) and define the **slug-keyed,
-UUID-free interchange format** (`homeflow_export`) that both the server and the future
-local store can read and write. This is the migration vehicle for Mode B and the
-serialization basis for Mode C.
+> **Executable spec.** Every decision is closed. Implement exactly this; do not add the
+> other import sources or new error codes. If the code contradicts the spec, STOP and report.
 
-### Background / why now
-The "adopt a server" step (Phase 15) is literally *local export → server import*. Build
-and harden that format now, on the server (where the data already lives), with the
-slug-mapping (**D4**) baked in, so Phase 15 is wiring rather than new format design.
+**Goal:** implement the `homeflow` native export/import on the server — `GET /api/v1/export`
+(format=json) and `POST /api/v1/import?source=homeflow` — using the **slug-and-date-keyed,
+UUID-free** interchange shape already specified in `API.md` §Import & Export. This is the
+migration vehicle for Mode B (Phase 15: *local export → server import*) and the
+serialization basis for Mode C. The DTOs land in `:core` so the future local store reuses them.
 
-### Design decisions
-- **`homeflow_export` envelope** (define DTOs in `:core/dto/ImportExportDtos.kt`,
-  expanding beyond the current summary-only file): a versioned JSON object —
-  `{ "homeflow_export": { "version": 1, "exportedAt": ISO, "cycles": [...],
-  "dailyLogs": [...], "preferences": {...} } }`. Every daily log carries its
-  selections as **slugs** (`"emotions": ["mood_swings","anxious"]`,
-  `"pain": [{"location":"abdomen/uterus","severity":6}]`), notes as **plaintext**, sex as
-  **plaintext slug list**. IDs are the client/server UUIDs (carried for round-trip
-  fidelity per D1) but **option references are slugs** (D4).
-- **Import is additive + idempotent** (per `API.md`): existing days are never
-  overwritten; re-running yields zeros in `ImportResultDto`. Implement idempotency on
-  `(user_id, log_date)` for daily logs and `(user_id, start_date)` for cycles.
-- Slug→UUID resolution happens in the **import service** (server) using ref-data lookups;
-  unknown slugs → a warning in `ImportResultDto.warnings`, not a hard failure (forward-
-  compat with options added later).
-- Export decrypts notes/sex (server side) before serializing — a plaintext export is
-  breach-sensitive, so the route stays authenticated and the file is the user's to guard
-  (`threat-model.md`).
+### Key fact (authoritative shape)
+`API.md` already defines the native export as **natural-key + slug** with **zero UUIDs**:
+cycles keyed by `startDate`, each day references its cycle by `cycleStartDate`, options are
+slug arrays, pain is `{location, severity}`. The hardened format below matches `API.md`
+exactly (it supersedes the earlier envelope sketch that carried UUIDs/preferences).
 
-### Tasks
-**`:core`**
-- [ ] Expand `ImportExportDtos.kt`: `HomeFlowExport`, `ExportCycle`, `ExportDailyLog`
-  (slug-keyed selections), `ExportPain`, `ExportPreferences`. `@Serializable`, dates as
-  ISO strings.
-- [ ] A pure `:core` mapper: domain rows ⇆ export DTOs, parameterized by a
-  `slug↔id` resolver injected by the caller (so both server and local reuse it).
+### Decisions (closed)
+- **D-12.1 — Top-level shape:** `{ "homeflow_export": 1, "cycles": [...], "days": [...] }`.
+  `homeflow_export` is an **integer version marker** (1). camelCase fields elsewhere (the
+  server JSON is `encodeDefaults=true, explicitNulls=true, ignoreUnknownKeys=true`).
+- **D-12.2 — Scope:** implement **only** `source=homeflow` and `format=json`. `clue`,
+  `apple_health`, `csv` and the non-json export formats are a **separate later feature** —
+  for any other `source`/`format` return **`400 VALIDATION_ERROR`** ("source not supported").
+- **D-12.3 — Errors:** use the existing 6-code `ErrorCode` enum only. Bad/missing source,
+  unknown format, AND a structurally invalid file all → **`400 VALIDATION_ERROR`**. Do
+  **NOT** introduce `IMPORT_ERROR`/422 (that would expand the canonical contract in
+  `CLAUDE.md`/`ApiError.kt`). Reconcile `API.md` to say 400.
+- **D-12.4 — Export excludes preferences** (the dashboard order). `API.md`'s enumerated
+  shape is health data only; preferences are not health data and are re-orderable. (Drop
+  "preference order" from Phase 15's round-trip done-when accordingly.)
+- **D-12.5 — Mapping + crypto live in the server `ImportExportService`.** Defer the pure
+  `:core` mapper until Phase 14 (local export) gives it a second consumer — do not build the
+  shared abstraction now (same "don't over-extract" lesson as Phase 11).
+- **D-12.6 — Reuse the existing services for import writes** (`DailyLogsService.createAnchor`/
+  `updateNotes`, `DailyLogSubsService.setEmotions/…/setSex/setPain`) so validation +
+  encryption are identical to normal writes. Resolve slugs→option-id strings first, then
+  call them. Do **not** write health rows or ciphertext directly.
+- **D-12.7 — Idempotency / additive:** cycles keyed by `(userId, startDate)` (exact match →
+  reuse, else insert); days keyed by `(userId, logDate)` (anchor exists → skip the whole day,
+  `dailyLogsSkipped++`). Never overwrite existing data.
+- **D-12.8 — Lenient resolution:** unknown option/location **slugs are dropped and counted**
+  (a `warnings` entry), not fatal. A day whose `cycleStartDate` matches no cycle, or whose
+  date falls outside that cycle (`createAnchor` throws `VALIDATION_ERROR`), is **skipped**
+  (`dailyLogsSkipped++` + warning). Notes failing `validateNotes` → notes dropped + warning.
+- **D-12.9 — Upload guard:** cap the import file at **25 MB**; larger → `400 VALIDATION_ERROR`.
 
-**`:server`**
-- [ ] New `importexport` module: `GET /api/v1/export` (assemble all user data, decrypt,
-  emit `homeflow_export` JSON) and `POST /api/v1/import?source=homeflow` (parse, resolve
-  slugs, additive-idempotent upsert, return `ImportResultDto`). Wire routes; reuse
-  existing repositories; encryption in the service layer only.
-- [ ] Enforce the streaming/size + `source`/file-type validation already described in
-  `API.md` (`400 VALIDATION_ERROR` / `422 IMPORT_ERROR`).
+### Export ⇄ category mapping (use exactly)
+| Export day field | Category slug | Kind |
+|---|---|---|
+| `emotions` | `emotions` | multi |
+| `sleep` | `sleep_quality` | multi |
+| `discharge` | `discharge` | multi |
+| `skin` | `skin` | multi |
+| `digestion` | `digestion` | multi |
+| `mind` | `mind` | multi |
+| `sex` | `sex` | multi (encrypted at rest) |
+| `energy` | `energy` | single |
+| `flow` | `blood_flow` | single |
+| `collectionMethod` | `collection_method` | single |
+| `pain[].location` | (pain locations, global) | per-location severity |
 
-### Done when
-- [ ] `GET /export` on a populated account returns a `homeflow_export` whose selections
-  are **slugs** (assert no raw option UUIDs appear in the daily-log selection fields),
-  notes/sex are decrypted plaintext.
-- [ ] `POST /import?source=homeflow` of that exact export into a **fresh** account
-  reproduces the data losslessly (cycles, every category, pain severities, notes, sex,
-  preference order) — verified by re-exporting and deep-comparing.
-- [ ] **Idempotency:** importing the same file twice yields
-  `cyclesCreated=0, dailyLogsCreated=0` and bumps `dailyLogsSkipped`; no duplicate days.
-- [ ] Unknown option slug → a `warnings[]` entry, import still succeeds for the rest.
-- [ ] Malformed/missing `source` → `400`; structurally invalid declared file → `422`.
-- [ ] Testcontainers integration test (`ImportExportTest`) covers all of the above;
-  `./gradlew :server:check` green.
-- [ ] `API.md` import/export section reconciled with the implemented DTOs; `CHANGELOG.md`
-  gains an Added entry ("Export/import your data in the native HomeFlow format").
+> Option slugs are **not** globally unique (`fine` is in both `emotions` and `skin`), so
+> import resolves each value within **its category** via a `(categorySlug, optionSlug)→id`
+> map. Pain **location** slugs are globally unique in the seed → a flat `locationSlug→id`
+> map is correct (see stop-conditions).
 
-### Risks
-- Sex payload is encrypted with a UNIQUE constraint per anchor — ensure import upserts the
-  single `daily_log_sex` row, not duplicates.
+### DTOs to add to `:core/dto/ImportExportDtos.kt` (copy verbatim; keep `ImportResultDto`)
+```kotlin
+import kotlinx.serialization.SerialName
+
+@Serializable
+data class HomeFlowExport(
+    @SerialName("homeflow_export") val version: Int = 1,
+    val cycles: List<ExportCycle>,
+    val days: List<ExportDay>,
+)
+
+@Serializable
+data class ExportCycle(
+    val startDate: String,
+    val endDate: String? = null,
+)
+
+@Serializable
+data class ExportDay(
+    val date: String,
+    val cycleStartDate: String,
+    val flow: String? = null,
+    val collectionMethod: String? = null,
+    val energy: String? = null,
+    val emotions: List<String> = emptyList(),
+    val sleep: List<String> = emptyList(),
+    val discharge: List<String> = emptyList(),
+    val skin: List<String> = emptyList(),
+    val digestion: List<String> = emptyList(),
+    val mind: List<String> = emptyList(),
+    val sex: List<String> = emptyList(),
+    val pain: List<ExportPain> = emptyList(),
+    val notes: String? = null,
+)
+
+@Serializable
+data class ExportPain(
+    val location: String,
+    val severity: Int? = null,
+)
+```
+
+### Server service shape (`ImportExportService`)
+Constructor deps (all already in `AppDependencies`): `CyclesRepository`, `DailyLogsRepository`,
+`DailyLogsService`, `DailyLogSubsService`, `RefDataRepository`, `Encryption`.
+
+- `fun exportAll(principal): HomeFlowExport`
+  - `cycles = cyclesRepository.findAllByUser(id)` → sort by `startDate` → `ExportCycle`.
+    Build `cycleId→startDate` from these rows.
+  - Build `optionId→slug` from `refDataRepository.symptomOptions()` and
+    `locationId→slug` from `refDataRepository.painLocations()`.
+  - For each anchor from **new** `dailyLogsRepository.findAllByUser(id)`: `assembleDay(id, date)`,
+    map each category's `List<UUID>`→slugs via the table above; decrypt `notes`
+    (`encryption.decrypt`) and `sex` (`Json.decodeFromString(ListSerializer(String.serializer()),
+    encryption.decrypt(payload))` → option-id strings → slugs); map pain locations→slugs +
+    severity; `cycleStartDate = cycleId→startDate[anchor.cycleId]`.
+- `fun importHomeflow(principal, json: String): ImportResultDto`
+  - Parse `HomeFlowExport`; on `SerializationException` → `ValidationException` (→400).
+  - Build resolvers: `(categorySlug, optionSlug)→optionId` (join categories+options) and
+    `locationSlug→locationId`.
+  - Cycles: load `cyclesRepository.findAllByUser(id)` into `startDate→CycleRow`. For each
+    `ExportCycle`: present → reuse; absent → `cyclesRepository.insertExplicit(...)`
+    (`cyclesCreated++`); update the map.
+  - Days: for each `ExportDay`: if `dailyLogsRepository.findByDate(id, date) != null` →
+    `dailyLogsSkipped++`. Else resolve its cycle by `cycleStartDate` (missing → warn + skip);
+    `try createAnchor` (out-of-range → warn + skip); then for each category resolve
+    slugs→id-strings (unknown → warn + drop) and call the matching `subsService.setX(...)`
+    /`setSex`; `updateNotes` if present (validation fail → warn + drop notes); `setPain` with
+    resolved locations; `dailyLogsCreated++`.
+  - Return `ImportResultDto(cyclesCreated, dailyLogsCreated, dailyLogsSkipped, warnings)`.
+
+> Import is **not** one big transaction (each reused service call manages its own); that is
+> fine because import is additive + idempotent — a re-run recovers from any partial failure.
+
+### File manifest (exhaustive)
+**Create (3):**
+1. `server/.../modules/importexport/ImportExportService.kt` — above.
+2. `server/.../modules/importexport/ImportExportRoutes.kt` — `fun Route.importExportRoutes(service)`,
+   `authenticate(KEYCLOAK_AUTH) { route("/api/v1") { get("/export"){…}; post("/import"){…} } }`.
+   Export sets `ContentDisposition: attachment; filename="homeflow-export.json"`. Import reads
+   one multipart file part named `file` (`call.receiveMultipart()` → `PartData.FileItem`),
+   enforces the 25 MB cap, passes text to the service. `format`/`source` validated per D-12.2/3.
+3. `server/src/test/.../integration/ImportExportTest.kt` — mirror `CyclesDailyLogsTest`'s
+   Testcontainers + in-process RS256 harness.
+
+**Modify (5):**
+4. `core/.../dto/ImportExportDtos.kt` — add the four DTOs above (keep `ImportResultDto`).
+5. `server/.../modules/cycles/CyclesRepository.kt` — add
+   `fun insertExplicit(userId: UUID, startDate: LocalDate, endDate: LocalDate?, id: UUID = UUID.randomUUID()): CycleRow`
+   — a plain insert that sets both dates and **does NOT auto-close** any open cycle.
+6. `server/.../modules/dailylogs/DailyLogsRepository.kt` — add
+   `fun findAllByUser(userId: UUID): List<DailyLogRow>` (all anchors for the user, any order).
+7. `server/.../Application.kt` — in `AppDependencies` construct
+   `val importExportService = ImportExportService(cyclesRepository, dailyLogsRepository,
+   dailyLogsService, dailyLogSubsService, refDataRepository, encryption)` and pass it into
+   `configureRouting(...)`.
+8. `server/.../plugins/Routing.kt` — add the `importExportService` parameter and call
+   `importExportRoutes(importExportService)` inside `routing {}`.
+
+**Docs (2):**
+9. `__docs/API.md` — reconcile the Import & Export section: top-level marker is
+   `"homeflow_export": 1`; invalid files → `400 VALIDATION_ERROR` (remove the `422 IMPORT_ERROR`
+   line); note `clue`/`apple_health`/`csv` and non-json formats are not yet implemented (return 400).
+10. `CHANGELOG.md` — Added: "Export all your data as a portable HomeFlow file and re-import it."
+
+### Tests to add (`ImportExportTest`)
+1. **Export is slug-keyed + decrypted:** seed an account via the API (cycle + anchor + emotions
+   incl. `mood_swings`, sex incl. a slug, notes, pain w/ severity), `GET /export?format=json`
+   → assert body has `"homeflow_export":1`; the day's `emotions` contains `"mood_swings"`;
+   assert **no UUID** appears in any selection array (regex `[0-9a-f]{8}-[0-9a-f]{4}-`); `notes`
+   and `sex` are plaintext slugs.
+2. **Lossless round-trip into a fresh account:** import the exact export under a different `SUB`
+   → `ImportResultDto.cyclesCreated`/`dailyLogsCreated` > 0; then `GET /export` on the fresh
+   account and deep-compare `cycles` + `days` sets to the original.
+3. **Idempotency:** re-import the same file → `cyclesCreated==0 && dailyLogsCreated==0 &&
+   dailyLogsSkipped == days.size`; no duplicate days in PG.
+4. **Unknown slug:** import a file with an `emotions` value `"not_a_real_slug"` → succeeds,
+   `warnings` non-empty, that value absent, the day still created with valid values.
+5. **Bad source:** `POST /import?source=clue` → `400 VALIDATION_ERROR`.
+6. **Malformed file:** `POST /import?source=homeflow` with body `"{ not json"` → `400`.
+7. **Unknown format:** `GET /export?format=csv` → `400 VALIDATION_ERROR`.
+
+### Guardrails — do NOT
+- Do NOT implement `clue`/`apple_health`/`csv` or non-json export — return `400` for them.
+- Do NOT add a new `ErrorCode` (no `IMPORT_ERROR`/422). Use `VALIDATION_ERROR`.
+- Do NOT export preferences; match `API.md`'s health-data-only shape.
+- Do NOT emit option/location **UUIDs** in the wire format — slugs only.
+- Do NOT write health rows or ciphertext directly; reuse the existing services (D-12.6) so the
+  sex/notes encryption path is identical and unchanged.
+- Do NOT log export/import request or response bodies (they are health data) — no body logging.
+- Keep `:core` DTOs server-concern-free (serialization only).
+
+### Done when (all automated; from repo root)
+- [ ] `./gradlew :core:allTests` green (new DTOs compile + serialize).
+- [ ] `./gradlew :server:check` green incl. `ImportExportTest` (all 7 cases above).
+- [ ] Export selections assert as slugs (no-UUID regex passes); notes/sex plaintext.
+- [ ] Round-trip into a fresh account is lossless (deep compare of `cycles`+`days`).
+- [ ] Re-import is idempotent (zeros + skipped count); no duplicate days in PG.
+- [ ] Unknown slug → `warnings` non-empty, remainder imported.
+- [ ] `source=clue`, malformed file, `format=csv` each → `400 VALIDATION_ERROR`.
+- [ ] `git grep -n "IMPORT_ERROR"` → no results (no new code added); `API.md` + `CHANGELOG.md` updated.
+
+### Risks / stop-conditions
+- **Ktor 3.5 multipart:** if the `PartData.FileItem` read-to-text API differs from expectation,
+  adapt the read but keep the approach (`receiveMultipart()` → file part → text). If multipart
+  needs a new dependency, STOP and report (it should be in `ktor-server-core`).
+- **Reused service transactions:** if calling a sub-log service from the import causes a
+  nested-transaction/connection error, STOP and report — do not bypass the service to write rows.
+- **Pain location uniqueness:** before relying on a flat `locationSlug→id` map, confirm location
+  slugs are globally unique in `V2__seed_ref_data.sql`. If a duplicate exists, STOP (pain needs
+  region qualification, which the `{location}` shape can't express).
+- `daily_log_sex` has a UNIQUE `(daily_log_id)` constraint — because import reuses `setSex`
+  (which deletes-then-inserts the single row), duplicates can't occur; do not insert it manually.
 
 ---
 
