@@ -37,7 +37,7 @@ import org.homeflow.core.validation.validateDailyLogWithinCycle
  * no domain rules of its own beyond shaping.
  */
 class HomeFlowRepository(
-    private val api: HomeFlowApi,
+    private val api: HomeFlowDataSource,
 ) {
     private var cachedLabels: Labels? = null
 
@@ -339,7 +339,7 @@ internal data class CycleDayPhase(
 // ── Pure shaping helpers (unit-tested directly) ──────────────────────────────
 
 /**
- * Map [HomeFlowApi]'s 404-on-absence into a success-with-null, leaving every other
+ * Map [HomeFlowDataSource]'s 404-on-absence into a success-with-null, leaving every other
  * failure intact. Used for the open cycle and a day with no log.
  */
 internal fun <T> ApiResult<T>.optional(): ApiResult<T?> =

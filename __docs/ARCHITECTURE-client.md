@@ -40,7 +40,8 @@ app/
       App.kt                   # root composable: auth gate → signed-in shell
       di/                      # dependency wiring (Koin or manual)
       data/
-        HomeFlowApi.kt         # Ktor client calls, typed via :core DTOs
+        HomeFlowDataSource.kt  # seam interface the repository renders off (RemoteDataSource today)
+        RemoteDataSource.kt    # HTTP impl: Ktor client calls, typed via :core DTOs
         HomeFlowRepository.kt  # read/write surface for screens + ref-data label cache
         ApiResult.kt           # Success/Failure wrapper over one backend call
       auth/
@@ -61,9 +62,12 @@ app/
   desktopApp/                  # the :app:desktopApp module — main() (org.homeflow.MainKt) + packaging
 ```
 
-`HomeFlowApi` uses the **Ktor client** (multiplatform) with
-`ContentNegotiation(kotlinx.serialization)` and the **`:core` DTOs** directly —
-there is no OpenAPI codegen and no hand-maintained model copy.
+`HomeFlowRepository` depends on the `HomeFlowDataSource` interface, not directly on HTTP.
+`RemoteDataSource` is the HTTP implementation of that interface: it uses the **Ktor
+client** (multiplatform) with `ContentNegotiation(kotlinx.serialization)` and the
+**`:core` DTOs** directly — there is no OpenAPI codegen and no hand-maintained model
+copy. A future `LocalDataSource` (Phase 13) implements the same interface against a
+local store.
 
 ---
 

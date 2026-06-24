@@ -26,6 +26,7 @@ data class CyclesResponse(
 @Serializable
 data class CreateCycleRequest(
     val startDate: String,
+    val id: String? = null,
 )
 
 /** `PATCH /api/v1/cycles/:id` request — currently only closes the cycle. */
