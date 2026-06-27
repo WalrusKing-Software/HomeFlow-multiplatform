@@ -15,9 +15,9 @@ import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-// SQLDelight generates a row class named after the table in PascalCase.
-// Table `daily_logs` → class `DailyLogs` in package org.homeflow.app.shared.db.
-private typealias DailyLogRow = org.homeflow.app.shared.db.DailyLogs
+// SQLDelight uses the table name verbatim as the generated class name.
+// Table `daily_logs` → class `Daily_logs` in package org.homeflow.app.shared.db.
+private typealias DailyLogRow = org.homeflow.app.shared.db.Daily_logs
 
 @OptIn(ExperimentalUuidApi::class)
 class LocalDailyLogsStore(
