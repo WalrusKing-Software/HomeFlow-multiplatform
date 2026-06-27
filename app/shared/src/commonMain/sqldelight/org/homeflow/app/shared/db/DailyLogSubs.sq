@@ -70,9 +70,8 @@ selectSexByLogId:
 SELECT payload FROM daily_log_sex WHERE log_id = :logId AND deleted_at IS NULL;
 
 upsertSex:
-INSERT INTO daily_log_sex (id, log_id, payload, created_at, updated_at, deleted_at)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(log_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at;
+INSERT OR REPLACE INTO daily_log_sex (id, log_id, payload, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?);
 
 deleteSexByLogId:
 DELETE FROM daily_log_sex WHERE log_id = :logId;
