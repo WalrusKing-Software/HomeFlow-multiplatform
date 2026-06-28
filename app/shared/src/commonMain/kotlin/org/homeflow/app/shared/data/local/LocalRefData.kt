@@ -102,4 +102,20 @@ class LocalRefData(
             .executeAsList()
             .sortedBy { it.sort_order }
             .map { it.slug }
+
+    /** Returns a map of option-id → slug for all options across all categories. Used by [LocalExporter]. */
+    fun optionSlugById(): Map<String, String> =
+        db.refDataQueries
+            .selectAllCategories()
+            .executeAsList()
+            .flatMap { cat -> db.refDataQueries.selectOptionsByCategory(cat.id).executeAsList() }
+            .associate { it.id to it.slug }
+
+    /** Returns a map of location-id → slug for all pain locations. Used by [LocalExporter]. */
+    fun locationSlugById(): Map<String, String> =
+        db.refDataQueries
+            .selectAllRegions()
+            .executeAsList()
+            .flatMap { region -> db.refDataQueries.selectLocationsByRegion(region.id).executeAsList() }
+            .associate { it.id to it.slug }
 }

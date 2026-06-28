@@ -30,9 +30,14 @@ sealed interface AuthState {
         val needsEnrollment: Boolean,
     ) : AuthState
 
-    /** Signed in; [user] is the `GET /users/me` record. */
+    /**
+     * Signed in; [user] is the `GET /users/me` record (or local synthetic user in Mode A).
+     * [repository] is the ready-to-use read/write surface — available here so the UI never
+     * needs a separate "repository only valid after unlock" reference.
+     */
     data class Authenticated(
         val user: UserDto,
+        val repository: HomeFlowRepository,
     ) : AuthState
 
     data class Error(
@@ -44,6 +49,8 @@ sealed interface AuthState {
  * Owns the sequence from `ARCHITECTURE-client.md` "Auth flow": login → secure store →
  * app-lock gate → silent refresh → `GET /users/me`. Platform specifics
  * ([OidcClient]/[TokenStore]/[AppLockGate]) are injected; everything here is shared.
+ * Implements [SessionController] so [AppRoot] can use it interchangeably with
+ * [LocalSessionController].
  */
 class AuthController(
     private val config: AuthConfig,
@@ -53,21 +60,21 @@ class AuthController(
     private val tokenHolder: TokenHolder = TokenHolder(),
     httpClientFactory: (AuthConfig, TokenHolder, suspend (String) -> OidcTokens?) -> HttpClient =
         { c, h, onRefresh -> buildHttpClient(c, h, onRefresh) },
-) {
+) : SessionController {
     private val _state = MutableStateFlow<AuthState>(AuthState.LoggedOut)
-    val state: StateFlow<AuthState> = _state.asStateFlow()
+    override val state: StateFlow<AuthState> = _state.asStateFlow()
 
     /** Whether the lock screen should collect a passphrase (desktop) or trigger biometrics (Android). */
-    val usesPassphraseGate: Boolean = gate.usesPassphrase
+    override val usesPassphraseGate: Boolean = gate.usesPassphrase
 
     private val http: HttpClient = httpClientFactory(config, tokenHolder, ::refreshAndPersist)
     private val api: HomeFlowDataSource = RemoteDataSource(http)
 
-    /** The Phase 8 read surface for the signed-in shell — backed by the same authenticated client. */
-    val repository: HomeFlowRepository = HomeFlowRepository(api)
+    // Kept private — the repository is now surfaced through AuthState.Authenticated.
+    private val repository: HomeFlowRepository = HomeFlowRepository(api)
 
     /** App open: a stored refresh token sends us to the lock gate; otherwise log in. */
-    fun start() {
+    override fun start() {
         val hasRefresh = tokenStore.loadRefreshToken() != null
         authDebugLog("start: host=${config.host} apiBaseUrl=${config.apiBaseUrl} hasRefresh=$hasRefresh")
         _state.value =
@@ -79,7 +86,7 @@ class AuthController(
     }
 
     /** Fresh interactive login (one-time browser flow). */
-    suspend fun login() {
+    override suspend fun login() {
         _state.value = AuthState.Authenticating
         authDebugLog("login: starting OIDC flow")
         runCatching {
@@ -95,7 +102,7 @@ class AuthController(
     }
 
     /** Desktop first-run: establish the passphrase, then drop back to the unlock prompt. */
-    suspend fun enroll(secret: String) {
+    override suspend fun enroll(secret: String) {
         runCatching {
             gate.enroll(secret)
             _state.value = AuthState.Locked(needsEnrollment = false)
@@ -103,7 +110,7 @@ class AuthController(
     }
 
     /** Satisfy the gate, then silently refresh the stored token and load the user. */
-    suspend fun unlock(secret: String? = null) {
+    override suspend fun unlock(secret: String?) {
         _state.value = AuthState.Authenticating
         runCatching {
             if (!gate.authenticate(secret)) {
@@ -123,7 +130,7 @@ class AuthController(
     }
 
     /** Best-effort revocation, then clear secure storage and memory regardless. */
-    suspend fun logout() {
+    override suspend fun logout() {
         tokenStore.loadRefreshToken()?.let { rt -> runCatching { oidc.logout(rt) } }
         tokenStore.clear()
         tokenHolder.clear()
@@ -136,7 +143,7 @@ class AuthController(
      * screen (no revocation — the identity is gone). On failure the session is left intact and the
      * caller renders the error; the stored token stays valid.
      */
-    suspend fun deleteAccount(): ApiResult<Unit> =
+    override suspend fun deleteAccount(): ApiResult<Unit> =
         repository.deleteAccount().also { result ->
             if (result is ApiResult.Success) {
                 tokenStore.clear()
@@ -150,7 +157,7 @@ class AuthController(
             when (val result = api.getMe()) {
                 is ApiResult.Success -> {
                     authDebugLog("getMe OK")
-                    AuthState.Authenticated(result.value)
+                    AuthState.Authenticated(result.value, repository)
                 }
                 is ApiResult.Failure -> {
                     authDebugLog("getMe FAILED: code=${result.code} status=${result.httpStatus} msg=${result.message}")

@@ -45,13 +45,14 @@ import org.homeflow.app.shared.ui.components.toLoadable
 private const val DELETE_CONFIRMATION = "DELETE"
 
 /**
- * Settings: reorder the dashboard tracking categories and persist them, plus a danger zone for
- * permanent account deletion. The danger zone renders regardless of whether preferences load.
+ * Settings: reorder the dashboard tracking categories and persist them, a danger zone for
+ * permanent account deletion, and — in Mode A only — an "Export my data" action.
  */
 @Composable
 fun PreferencesScreen(
     repository: HomeFlowRepository,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
+    onExport: (suspend () -> Unit)? = null,
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     val state by produceState<Loadable<PreferencesEditor>>(Loadable.Loading, repository, reloadKey) {
@@ -83,6 +84,7 @@ fun PreferencesScreen(
 
             is Loadable.Loaded -> ReorderForm(repository, current.value)
         }
+        if (onExport != null) ExportSection(onExport)
         DangerZone(onDeleteAccount)
     }
 }
@@ -161,11 +163,44 @@ private fun ReorderRow(
     }
 }
 
+@Composable
+private fun ExportSection(onExport: suspend () -> Unit) {
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    SectionCard("Export data") {
+        Text(
+            "Save all your cycles and daily logs as a portable HomeFlow file.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        Button(
+            onClick = {
+                scope.launch {
+                    busy = true
+                    status = null
+                    runCatching { onExport() }
+                        .onSuccess { status = "Export saved." }
+                        .onFailure { status = it.message ?: "Export failed." }
+                    busy = false
+                }
+            },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (busy) CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
+            Text("Export my data")
+        }
+    }
+}
+
 /**
  * Permanent account deletion. Guarded by a type-to-confirm dialog; on success the
- * [AuthController][org.homeflow.app.shared.auth.AuthController] clears local storage and drops the
- * app back to the login screen, so this composable simply leaves the tree. A failure is shown
- * inline and the session is left intact.
+ * session controller clears local storage and drops the app back to the chooser/login
+ * screen, so this composable simply leaves the tree. A failure is shown inline and the
+ * session is left intact.
  */
 @Composable
 private fun DangerZone(onDeleteAccount: suspend () -> ApiResult<Unit>) {
