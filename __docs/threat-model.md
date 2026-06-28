@@ -231,8 +231,38 @@ The following threats are acknowledged but considered out of scope for the curre
 
 ---
 
+---
+
+### TS-10 — Local-only at-rest data breach (Mode A)
+
+**Actor:** TA-2 (physical access to the client device)
+**Attack path:** An attacker with physical or OS-level access to the desktop or
+Android device reads the local SQLDelight database file (`~/.homeflow/homeflow_local.db`
+on desktop; app-private storage on Android). In Mode A all health data is stored
+locally (by design — no server is involved).
+**Impact:** High — all cycle and daily-log data would be exposed.
+**Mitigations:**
+- Whole-database SQLCipher encryption (AES-256-CBC, D-13.2). The database cannot
+  be read without the 32-byte DEK.
+- DEK stored exclusively in OS-level secure storage:
+  - Android: Keystore-backed `EncryptedSharedPreferences` (hardware-backed key
+    where available).
+  - Desktop: OS keychain (java-keyring: DPAPI on Windows, Secret Service on Linux,
+    macOS Keychain on macOS).
+- App-lock gate (passphrase on desktop, biometric/device-credential on Android)
+  required before the DEK is loaded each session.
+- On account deletion (`deleteAccount()`), `LocalKeyStore.clearDek()` erases the
+  DEK from the secure store; the database file is unreadable without it.
+
+**Residual risk:** If the OS secure store is compromised (e.g. full OS compromise),
+the DEK is exposed and the database is readable. This is the same risk class as any
+OS-level keychain store and is considered out of scope (§7: user device compromise).
+
+---
+
 ## 9. Revision History
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-06-09 | Initial threat model — LAN deployment only |
+| 1.1 | 2026-06-28 | Added TS-10: Mode A local at-rest threat + SQLCipher + DEK mitigations |

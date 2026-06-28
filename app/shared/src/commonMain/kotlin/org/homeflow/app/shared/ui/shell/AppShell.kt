@@ -38,8 +38,8 @@ private enum class Tab(
 
 /**
  * The signed-in shell: a top bar with logout, a tab row over the read/write screens, and the
- * selected screen below. Text-only tabs work identically on desktop and Android and keep the
- * module free of an icon-pack dependency.
+ * selected screen below. [onExport] is non-null in Mode A and threads through to the Settings
+ * tab where the "Export my data" action lives.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +47,7 @@ fun AppShell(
     repository: HomeFlowRepository,
     onLogout: () -> Unit,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
+    onExport: (suspend () -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
 
@@ -75,7 +76,7 @@ fun AppShell(
                 Tab.DAY -> DayScreen(repository)
                 Tab.CYCLES -> CyclesScreen(repository)
                 Tab.ANALYTICS -> AnalyticsScreen(repository)
-                Tab.SETTINGS -> PreferencesScreen(repository, onDeleteAccount)
+                Tab.SETTINGS -> PreferencesScreen(repository, onDeleteAccount, onExport)
             }
         }
     }

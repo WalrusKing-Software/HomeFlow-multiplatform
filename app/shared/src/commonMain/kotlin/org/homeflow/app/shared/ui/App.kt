@@ -5,21 +5,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
-import org.homeflow.app.shared.auth.AuthController
 import org.homeflow.app.shared.auth.AuthState
-import org.homeflow.app.shared.auth.buildAuthController
+import org.homeflow.app.shared.auth.SessionController
 import org.homeflow.app.shared.ui.shell.AppShell
 
 /**
- * Root composable and the auth gate: it renders off [AuthController.state] — login →
- * app-lock gate → signed-in shell. Once authenticated it hands the controller's
- * [AuthController.repository] to the [AppShell] (Dashboard/Day/Cycles/Analytics/Settings).
+ * Auth gate composable: renders off [SessionController.state] — login → app-lock →
+ * signed-in shell. Once authenticated it reads the repository from
+ * [AuthState.Authenticated.repository] and passes it to [AppShell].
+ *
+ * The [onExport] action is non-null in Mode A (local-only) and null in Mode B so the
+ * export button in settings is visible only when data is stored locally.
  */
 @Composable
-fun App(controller: AuthController = remember { buildAuthController() }) {
+fun App(
+    controller: SessionController,
+    onExport: (suspend () -> Unit)? = null,
+) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
         val state by controller.state.collectAsState()
@@ -48,9 +52,10 @@ fun App(controller: AuthController = remember { buildAuthController() }) {
 
             is AuthState.Authenticated ->
                 AppShell(
-                    repository = controller.repository,
+                    repository = current.repository,
                     onLogout = { scope.launch { controller.logout() } },
                     onDeleteAccount = { controller.deleteAccount() },
+                    onExport = onExport,
                 )
 
             is AuthState.Error ->

@@ -229,7 +229,12 @@ class LocalDataSourceContractTest {
 
             // A bad id (here: an id from a different category) must be rejected AND
             // must not clear the previously-set value.
-            val emotionId = cats.categories.find { it.slug == "emotions" }!!.options.first().id
+            val emotionId =
+                cats.categories
+                    .find { it.slug == "emotions" }!!
+                    .options
+                    .first()
+                    .id
             val result = ds.putOptionId("2024-01-15", "energy", emotionId)
             assertIs<ApiResult.Failure>(result)
             assertEquals(ErrorCode.VALIDATION_ERROR, (result as ApiResult.Failure).code)
