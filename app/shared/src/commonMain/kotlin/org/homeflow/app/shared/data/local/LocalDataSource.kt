@@ -28,8 +28,9 @@ import kotlin.time.Clock
  *
  * [LocalBootstrap.seed] must have been called before constructing this.
  */
-class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
-
+class LocalDataSource(
+    private val db: HomeFlowDb,
+) : HomeFlowDataSource {
     private val userId = LocalBootstrap.LOCAL_USER_ID
     private val refData = LocalRefData(db)
     private val cyclesStore = LocalCyclesStore(db, userId)
@@ -49,26 +50,27 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
      * Hard-wipe: delete all user data rows in FK-safe order.
      * DEK clearing (Phase 14) is handled by the factory/session layer.
      */
-    override suspend fun deleteAccount(): ApiResult<Unit> = runCatching {
-        // Order: deepest FK dependencies first.
-        db.painLogsQueries.deleteAllLocations()
-        db.painLogsQueries.deleteAllPainLogs()
-        db.dailyLogSubsQueries.deleteAllMulti()
-        db.dailyLogSubsQueries.deleteAllSingle()
-        db.dailyLogSubsQueries.deleteAllSex()
-        db.dailyLogsQueries.deleteAll()
-        db.cyclesQueries.deleteAll()
-        db.preferencesQueries.deleteAll()
-        db.syncOutboxQueries.deleteAll()
-        db.usersQueries.deleteAll()
-        ApiResult.Success(Unit)
-    }.getOrElse {
-        ApiResult.Failure(
-            ErrorCode.INTERNAL_ERROR,
-            it.message ?: "Failed to delete account data.",
-            500,
-        )
-    }
+    override suspend fun deleteAccount(): ApiResult<Unit> =
+        runCatching {
+            // Order: deepest FK dependencies first.
+            db.painLogsQueries.deleteAllLocations()
+            db.painLogsQueries.deleteAllPainLogs()
+            db.dailyLogSubsQueries.deleteAllMulti()
+            db.dailyLogSubsQueries.deleteAllSingle()
+            db.dailyLogSubsQueries.deleteAllSex()
+            db.dailyLogsQueries.deleteAll()
+            db.cyclesQueries.deleteAll()
+            db.preferencesQueries.deleteAll()
+            db.syncOutboxQueries.deleteAll()
+            db.usersQueries.deleteAll()
+            ApiResult.Success(Unit)
+        }.getOrElse {
+            ApiResult.Failure(
+                ErrorCode.INTERNAL_ERROR,
+                it.message ?: "Failed to delete account data.",
+                500,
+            )
+        }
 
     // ── Cycles ────────────────────────────────────────────────────────────────
 
@@ -76,31 +78,34 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
 
     override suspend fun getCurrentCycle(): ApiResult<CycleDto> = cyclesStore.getCurrentCycle()
 
-    override suspend fun createCycle(startDate: String): ApiResult<CycleDto> =
-        cyclesStore.createCycle(startDate)
+    override suspend fun createCycle(startDate: String): ApiResult<CycleDto> = cyclesStore.createCycle(startDate)
 
-    override suspend fun closeCycle(cycleId: String, endDate: String): ApiResult<CycleDto> =
-        cyclesStore.closeCycle(cycleId, endDate)
+    override suspend fun closeCycle(
+        cycleId: String,
+        endDate: String,
+    ): ApiResult<CycleDto> = cyclesStore.closeCycle(cycleId, endDate)
 
     // ── Daily logs ────────────────────────────────────────────────────────────
 
-    override suspend fun getDailyLog(date: String): ApiResult<DailyLogDto> =
-        logsStore.getDailyLog(date)
+    override suspend fun getDailyLog(date: String): ApiResult<DailyLogDto> = logsStore.getDailyLog(date)
 
-    override suspend fun createDailyLog(date: String, cycleId: String): ApiResult<Unit> =
-        logsStore.createDailyLog(date, cycleId)
+    override suspend fun createDailyLog(
+        date: String,
+        cycleId: String,
+    ): ApiResult<Unit> = logsStore.createDailyLog(date, cycleId)
 
     override suspend fun putOptionIds(
         date: String,
         endpoint: String,
         optionIds: List<String>,
     ): ApiResult<Unit> {
-        val log = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(
-                ErrorCode.RESOURCE_NOT_FOUND,
-                "Daily log not found for the given date.",
-                404,
-            )
+        val log =
+            db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Daily log not found for the given date.",
+                    404,
+                )
         val result = subsStore.putOptionIds(log.id, endpoint, optionIds)
         if (result is ApiResult.Success) {
             val now = Clock.System.now().toString()
@@ -114,12 +119,13 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
         endpoint: String,
         optionId: String?,
     ): ApiResult<Unit> {
-        val log = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(
-                ErrorCode.RESOURCE_NOT_FOUND,
-                "Daily log not found for the given date.",
-                404,
-            )
+        val log =
+            db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Daily log not found for the given date.",
+                    404,
+                )
         val result = subsStore.putOptionId(log.id, endpoint, optionId)
         if (result is ApiResult.Success) {
             val now = Clock.System.now().toString()
@@ -128,11 +134,15 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
         return result
     }
 
-    override suspend fun patchNotes(date: String, notes: String?): ApiResult<Unit> =
-        logsStore.patchNotes(date, notes)
+    override suspend fun patchNotes(
+        date: String,
+        notes: String?,
+    ): ApiResult<Unit> = logsStore.patchNotes(date, notes)
 
-    override suspend fun putPain(date: String, locations: List<PainLocationDto>): ApiResult<Unit> =
-        logsStore.putPain(date, locations)
+    override suspend fun putPain(
+        date: String,
+        locations: List<PainLocationDto>,
+    ): ApiResult<Unit> = logsStore.putPain(date, locations)
 
     // ── Analytics ─────────────────────────────────────────────────────────────
 
@@ -140,7 +150,8 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
 
     override suspend fun getPeriodLengthChart(): ApiResult<PeriodLengthChartDto> = analytics.getPeriodLengthChart()
 
-    override suspend fun getOvulationPrediction(): ApiResult<OvulationPredictionDto> = analytics.getOvulationPrediction()
+    override suspend fun getOvulationPrediction(): ApiResult<OvulationPredictionDto> =
+        analytics.getOvulationPrediction()
 
     override suspend fun getSleepPredictions(): ApiResult<SleepPredictionsDto> = analytics.getSleepPredictions()
 
@@ -156,6 +167,5 @@ class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource {
     override suspend fun getSymptomCategories(): ApiResult<SymptomCategoriesResponse> =
         ApiResult.Success(refData.getSymptomCategories())
 
-    override suspend fun getPainRegions(): ApiResult<PainRegionsResponse> =
-        ApiResult.Success(refData.getPainRegions())
+    override suspend fun getPainRegions(): ApiResult<PainRegionsResponse> = ApiResult.Success(refData.getPainRegions())
 }

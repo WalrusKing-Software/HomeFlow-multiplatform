@@ -1,10 +1,10 @@
 package org.homeflow.app.shared.data.local
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.JsonPrimitive
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.db.HomeFlowDb
 import org.homeflow.core.ErrorCode
@@ -16,22 +16,30 @@ import kotlin.uuid.Uuid
  * Endpoint slug → category slug mapping (D-13 spec).
  * "sex" is handled specially (plaintext JSON payload in daily_log_sex).
  */
-private val ENDPOINT_TO_CATEGORY = mapOf(
-    "emotions" to "emotions",
-    "sleep" to "sleep_quality",
-    "sex" to "sex",
-    "discharge" to "discharge",
-    "skin" to "skin",
-    "digestion" to "digestion",
-    "mind" to "mind",
-    "energy" to "energy",
-    "flow" to "blood_flow",
-    "collection" to "collection_method",
-)
+private val ENDPOINT_TO_CATEGORY =
+    mapOf(
+        "emotions" to "emotions",
+        "sleep" to "sleep_quality",
+        "sex" to "sex",
+        "discharge" to "discharge",
+        "skin" to "skin",
+        "digestion" to "digestion",
+        "mind" to "mind",
+        "energy" to "energy",
+        "flow" to "blood_flow",
+        "collection" to "collection_method",
+    )
 
-private val MULTI_SELECT_ENDPOINTS = setOf(
-    "emotions", "sleep", "sex", "discharge", "skin", "digestion", "mind",
-)
+private val MULTI_SELECT_ENDPOINTS =
+    setOf(
+        "emotions",
+        "sleep",
+        "sex",
+        "discharge",
+        "skin",
+        "digestion",
+        "mind",
+    )
 
 private val SINGLE_SELECT_ENDPOINTS = setOf("energy", "flow", "collection")
 
@@ -51,7 +59,9 @@ class LocalSubsStore(
         val result = mutableMapOf<String, List<String>>()
 
         // Multi-select categories.
-        for ((_, catSlug) in ENDPOINT_TO_CATEGORY.entries.filter { it.key != "sex" && it.key in MULTI_SELECT_ENDPOINTS }) {
+        for ((_, catSlug) in ENDPOINT_TO_CATEGORY.entries.filter {
+            it.key != "sex" && it.key in MULTI_SELECT_ENDPOINTS
+        }) {
             val catId = refData.categoryIdBySlug(catSlug) ?: continue
             val ids = subsQ.selectMultiByLogAndCategory(logId, catId).executeAsList()
             if (ids.isNotEmpty()) result[catSlug] = ids
@@ -67,9 +77,10 @@ class LocalSubsStore(
         // Sex payload.
         val sexPayload = subsQ.selectSexByLogId(logId).executeAsOneOrNull()
         if (sexPayload != null) {
-            val ids = runCatching {
-                Json.parseToJsonElement(sexPayload).jsonArray.map { it.jsonPrimitive.content }
-            }.getOrElse { emptyList() }
+            val ids =
+                runCatching {
+                    Json.parseToJsonElement(sexPayload).jsonArray.map { it.jsonPrimitive.content }
+                }.getOrElse { emptyList() }
             if (ids.isNotEmpty()) result["sex"] = ids
         }
 
@@ -81,8 +92,9 @@ class LocalSubsStore(
         endpoint: String,
         optionIds: List<String>,
     ): ApiResult<Unit> {
-        val catSlug = ENDPOINT_TO_CATEGORY[endpoint]
-            ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Unknown endpoint: $endpoint", 400)
+        val catSlug =
+            ENDPOINT_TO_CATEGORY[endpoint]
+                ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Unknown endpoint: $endpoint", 400)
 
         // Sex is handled via payload.
         if (endpoint == "sex") {
@@ -93,8 +105,9 @@ class LocalSubsStore(
             return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Use putOptionId for single-select: $endpoint", 400)
         }
 
-        val catId = refData.categoryIdBySlug(catSlug)
-            ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Category not seeded: $catSlug", 500)
+        val catId =
+            refData.categoryIdBySlug(catSlug)
+                ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Category not seeded: $catSlug", 500)
 
         // Validate all option ids belong to this category.
         val validIds = refData.optionIdsForCategory(catId)
@@ -122,15 +135,17 @@ class LocalSubsStore(
         endpoint: String,
         optionId: String?,
     ): ApiResult<Unit> {
-        val catSlug = ENDPOINT_TO_CATEGORY[endpoint]
-            ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Unknown endpoint: $endpoint", 400)
+        val catSlug =
+            ENDPOINT_TO_CATEGORY[endpoint]
+                ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Unknown endpoint: $endpoint", 400)
 
         if (endpoint !in SINGLE_SELECT_ENDPOINTS) {
             return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Use putOptionIds for multi-select: $endpoint", 400)
         }
 
-        val catId = refData.categoryIdBySlug(catSlug)
-            ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Category not seeded: $catSlug", 500)
+        val catId =
+            refData.categoryIdBySlug(catSlug)
+                ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Category not seeded: $catSlug", 500)
 
         val now = Clock.System.now().toString()
         subsQ.deleteSingleByLogAndCategory(logId, catId)
@@ -150,10 +165,14 @@ class LocalSubsStore(
         return ApiResult.Success(Unit)
     }
 
-    private fun putSexPayload(logId: String, optionIds: List<String>): ApiResult<Unit> {
+    private fun putSexPayload(
+        logId: String,
+        optionIds: List<String>,
+    ): ApiResult<Unit> {
         // Validate option ids belong to the sex category.
-        val catId = refData.categoryIdBySlug("sex")
-            ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Sex category not seeded.", 500)
+        val catId =
+            refData.categoryIdBySlug("sex")
+                ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Sex category not seeded.", 500)
         val validIds = refData.optionIdsForCategory(catId)
         for (id in optionIds) {
             if (id !in validIds) {
@@ -171,9 +190,10 @@ class LocalSubsStore(
             return ApiResult.Success(Unit)
         }
 
-        val payload = buildJsonArray {
-            for (id in optionIds) add(JsonPrimitive(id))
-        }.toString()
+        val payload =
+            buildJsonArray {
+                for (id in optionIds) add(JsonPrimitive(id))
+            }.toString()
 
         val rowId = Uuid.random().toString()
         subsQ.upsertSex(rowId, logId, payload, now, now, null)

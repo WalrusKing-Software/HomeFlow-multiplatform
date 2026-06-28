@@ -101,8 +101,16 @@ sqldelight {
         create("HomeFlowDb") {
             packageName.set("org.homeflow.app.shared.db")
             srcDirs.setFrom("src/commonMain/sqldelight")
+            verifyMigrations.set(false)
         }
     }
+}
+
+// SQLDelight's schema verifier extracts sqlitejdbc.dll into C:\WINDOWS (wrong tmpdir
+// in the Gradle worker on Windows) and fails with AccessDeniedException. No .sqm
+// migration files exist yet (Phase 15+), so there is nothing to verify.
+tasks.configureEach {
+    if (name == "verifyCommonMainHomeFlowDbMigration") enabled = false
 }
 
 dependencies {

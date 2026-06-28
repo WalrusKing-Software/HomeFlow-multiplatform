@@ -22,11 +22,12 @@ class LocalPrefsStore(
 
     fun getPreferences(): ApiResult<PreferencesDto> {
         val row = q.selectByUserId(userId).executeAsOneOrNull()
-        val order = if (row != null) {
-            row.category_order.split(",").filter { it.isNotBlank() }
-        } else {
-            refData.defaultCategoryOrder()
-        }
+        val order =
+            if (row != null) {
+                row.category_order.split(",").filter { it.isNotBlank() }
+            } else {
+                refData.defaultCategoryOrder()
+            }
         return ApiResult.Success(PreferencesDto(categoryOrder = order))
     }
 

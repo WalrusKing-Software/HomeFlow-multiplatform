@@ -17,7 +17,6 @@ import java.io.File
  * rejected, this will throw — STOP and report (do not fall back to unencrypted).
  */
 actual class LocalDatabaseFactory actual constructor() {
-
     actual fun create(dek: ByteArray): HomeFlowDb {
         val dbDir = File(System.getProperty("user.home"), ".homeflow")
         dbDir.mkdirs()
@@ -29,22 +28,24 @@ actual class LocalDatabaseFactory actual constructor() {
         val driver = JdbcSqliteDriver(url = "jdbc:sqlite:${dbFile.absolutePath}")
 
         // PRAGMA key must come before any schema operations — D-13.2 spec.
-        driver.execute(null, """PRAGMA key = "x'${hexKey}'" """, 0, null)
+        driver.execute(null, """PRAGMA key = "x'$hexKey'" """, 0, null)
 
         if (isNew) {
             HomeFlowDb.Schema.create(driver)
         } else {
-            val currentVersion = runCatching {
-                driver.executeQuery(
-                    identifier = null,
-                    sql = "PRAGMA user_version",
-                    mapper = { cursor ->
-                        QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
-                    },
-                    parameters = 0,
-                    binders = null,
-                ).value
-            }.getOrElse { 0L }
+            val currentVersion =
+                runCatching {
+                    driver
+                        .executeQuery(
+                            identifier = null,
+                            sql = "PRAGMA user_version",
+                            mapper = { cursor ->
+                                QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
+                            },
+                            parameters = 0,
+                            binders = null,
+                        ).value
+                }.getOrElse { 0L }
 
             val schemaVersion = HomeFlowDb.Schema.version
             if (currentVersion < schemaVersion) {

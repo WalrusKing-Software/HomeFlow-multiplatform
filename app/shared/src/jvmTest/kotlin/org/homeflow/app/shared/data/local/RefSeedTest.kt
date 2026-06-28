@@ -1,13 +1,11 @@
 package org.homeflow.app.shared.data.local
 
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RefSeedTest {
-
     @Test
     fun `seed produces correct number of categories`() {
         assertEquals(10, RefSeed.CATEGORIES.size)
@@ -52,7 +50,7 @@ class RefSeedTest {
     fun `seed is idempotent - double seed does not duplicate rows`() {
         val db = TestDbHelper.inMemory()
         LocalBootstrap.seed(db)
-        LocalBootstrap.seed(db)  // second call should no-op
+        LocalBootstrap.seed(db) // second call should no-op
 
         val cats = db.refDataQueries.selectAllCategories().executeAsList()
         assertEquals(10, cats.size)

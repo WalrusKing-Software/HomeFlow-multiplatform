@@ -11,12 +11,15 @@ import org.homeflow.app.shared.platform.AndroidAppContext
  * Keystore-backed [EncryptedSharedPreferences]. The underlying AES-256-GCM master key
  * is hardware-backed where the device supports it.
  */
-class AndroidLocalKeyStore(context: Context) : LocalKeyStore {
-
+class AndroidLocalKeyStore(
+    context: Context,
+) : LocalKeyStore {
     private val prefs by lazy {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+        val masterKey =
+            MasterKey
+                .Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
         EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,

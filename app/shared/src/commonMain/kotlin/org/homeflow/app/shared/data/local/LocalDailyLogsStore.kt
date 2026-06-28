@@ -31,20 +31,30 @@ class LocalDailyLogsStore(
     private val painQ get() = db.painLogsQueries
 
     fun getDailyLog(date: String): ApiResult<DailyLogDto> {
-        val row = q.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Daily log not found for the given date.", 404)
+        val row =
+            q.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Daily log not found for the given date.",
+                    404,
+                )
         return ApiResult.Success(assembleDto(row))
     }
 
-    fun createDailyLog(date: String, cycleId: String): ApiResult<Unit> {
+    fun createDailyLog(
+        date: String,
+        cycleId: String,
+    ): ApiResult<Unit> {
         // Cycle must exist.
-        val range = cyclesStore.getCycleRange(cycleId)
-            ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Cycle not found.", 400)
+        val range =
+            cyclesStore.getCycleRange(cycleId)
+                ?: return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Cycle not found.", 400)
 
         // Date must be within cycle range.
-        val logDate = runCatching { LocalDate.parse(date) }.getOrElse {
-            return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Invalid date format.", 400)
-        }
+        val logDate =
+            runCatching { LocalDate.parse(date) }.getOrElse {
+                return ApiResult.Failure(ErrorCode.VALIDATION_ERROR, "Invalid date format.", 400)
+            }
         val cycleStart = LocalDate.parse(range.first)
         val cycleEnd = range.second?.let { LocalDate.parse(it) }
         val rangeCheck = validateDailyLogWithinCycle(logDate, cycleStart, cycleEnd)
@@ -68,9 +78,17 @@ class LocalDailyLogsStore(
         return ApiResult.Success(Unit)
     }
 
-    fun patchNotes(date: String, notes: String?): ApiResult<Unit> {
-        val row = q.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Daily log not found for the given date.", 404)
+    fun patchNotes(
+        date: String,
+        notes: String?,
+    ): ApiResult<Unit> {
+        val row =
+            q.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Daily log not found for the given date.",
+                    404,
+                )
 
         val result = validateNotes(notes)
         if (!result.isValid) {
@@ -85,9 +103,17 @@ class LocalDailyLogsStore(
         return ApiResult.Success(Unit)
     }
 
-    fun putPain(date: String, locations: List<PainLocationDto>): ApiResult<Unit> {
-        val row = q.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Daily log not found for the given date.", 404)
+    fun putPain(
+        date: String,
+        locations: List<PainLocationDto>,
+    ): ApiResult<Unit> {
+        val row =
+            q.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "Daily log not found for the given date.",
+                    404,
+                )
 
         val validation = validatePainLocations(locations)
         if (!validation.isValid) {
@@ -169,10 +195,8 @@ class LocalDailyLogsStore(
     }
 
     /** Returns all daily log rows for a cycle (for analytics). */
-    fun getLogsByCycleId(cycleId: String): List<DailyLogRow> =
-        q.selectByCycleId(cycleId).executeAsList()
+    fun getLogsByCycleId(cycleId: String): List<DailyLogRow> = q.selectByCycleId(cycleId).executeAsList()
 
     /** Returns log dates that have a blood_flow selection (for bleeding-day count). */
-    fun getFlowDatesByCycleId(cycleId: String): List<String> =
-        q.selectDatesWithFlow(cycleId).executeAsList()
+    fun getFlowDatesByCycleId(cycleId: String): List<String> = q.selectDatesWithFlow(cycleId).executeAsList()
 }
