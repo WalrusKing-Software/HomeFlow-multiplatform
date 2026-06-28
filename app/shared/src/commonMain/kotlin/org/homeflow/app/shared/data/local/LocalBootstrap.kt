@@ -13,14 +13,13 @@ import kotlin.uuid.Uuid
  */
 @OptIn(ExperimentalUuidApi::class)
 object LocalBootstrap {
-
     /** Fixed local user id — there is exactly one local user (D-13.6). */
     const val LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001"
 
     fun seed(db: HomeFlowDb) {
         val q = db.refDataQueries
         val already = q.countCategories().executeAsOne()
-        if (already > 0L) return   // already seeded
+        if (already > 0L) return // already seeded
 
         val now = Clock.System.now().toString()
 

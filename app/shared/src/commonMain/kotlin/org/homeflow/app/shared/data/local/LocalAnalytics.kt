@@ -30,8 +30,11 @@ class LocalAnalytics(
     // ── Private helpers ────────────────────────────────────────────────────────
 
     private fun buildClosedCycleInputs(): List<ClosedCycleInput> {
-        val closedCycles = cyclesQ.selectAll(userId).executeAsList()
-            .filter { it.end_date != null }
+        val closedCycles =
+            cyclesQ
+                .selectAll(userId)
+                .executeAsList()
+                .filter { it.end_date != null }
         return closedCycles.map { cycle ->
             val start = LocalDate.parse(cycle.start_date)
             val end = LocalDate.parse(cycle.end_date!!)
@@ -82,13 +85,21 @@ class LocalAnalytics(
         val stats = cycleStats(inputs)
         val avgCycleLength = stats.averageCycleLength
 
-        val predictions = if (avgCycleLength != null) {
-            val mostRecentStart = cyclesQ.selectAll(userId).executeAsList()
-                .maxOfOrNull { LocalDate.parse(it.start_date) }
-            if (mostRecentStart != null) {
-                ovulationPredictions(mostRecentStart, avgCycleLength)
-            } else null
-        } else null
+        val predictions =
+            if (avgCycleLength != null) {
+                val mostRecentStart =
+                    cyclesQ
+                        .selectAll(userId)
+                        .executeAsList()
+                        .maxOfOrNull { LocalDate.parse(it.start_date) }
+                if (mostRecentStart != null) {
+                    ovulationPredictions(mostRecentStart, avgCycleLength)
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
 
         return ApiResult.Success(
             OvulationPredictionDto(

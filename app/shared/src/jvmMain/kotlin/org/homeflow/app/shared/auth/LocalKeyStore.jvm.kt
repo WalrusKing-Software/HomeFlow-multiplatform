@@ -10,10 +10,10 @@ import java.util.Base64
 class DesktopLocalKeyStore(
     private val keyring: Keyring = Keyring.create(),
 ) : LocalKeyStore {
-
     override fun loadDek(): ByteArray? {
-        val encoded = runCatching { keyring.getPassword(SERVICE, ACCOUNT_DEK) }.getOrNull()
-            ?: return null
+        val encoded =
+            runCatching { keyring.getPassword(SERVICE, ACCOUNT_DEK) }.getOrNull()
+                ?: return null
         return Base64.getDecoder().decode(encoded)
     }
 
