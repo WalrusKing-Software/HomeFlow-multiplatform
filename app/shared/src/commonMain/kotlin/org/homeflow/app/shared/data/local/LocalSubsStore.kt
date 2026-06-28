@@ -147,10 +147,9 @@ class LocalSubsStore(
             refData.categoryIdBySlug(catSlug)
                 ?: return ApiResult.Failure(ErrorCode.INTERNAL_ERROR, "Category not seeded: $catSlug", 500)
 
-        val now = Clock.System.now().toString()
-        subsQ.deleteSingleByLogAndCategory(logId, catId)
+        // Validate BEFORE mutating: an invalid id must reject without clearing the
+        // existing selection (mirrors the server's validate-then-replace order).
         if (optionId != null) {
-            // Validate option id.
             val validIds = refData.optionIdsForCategory(catId)
             if (optionId !in validIds) {
                 return ApiResult.Failure(
@@ -159,6 +158,11 @@ class LocalSubsStore(
                     400,
                 )
             }
+        }
+
+        val now = Clock.System.now().toString()
+        subsQ.deleteSingleByLogAndCategory(logId, catId)
+        if (optionId != null) {
             val rowId = Uuid.random().toString()
             subsQ.insertSingle(rowId, logId, catId, optionId, now, now, null)
         }

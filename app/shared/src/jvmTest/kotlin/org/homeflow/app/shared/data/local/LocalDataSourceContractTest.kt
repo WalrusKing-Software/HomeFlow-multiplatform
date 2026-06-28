@@ -214,6 +214,30 @@ class LocalDataSourceContractTest {
             assertNull(log.energy)
         }
 
+    @Test
+    fun `putOptionId with invalid id rejects without clearing the existing value`() =
+        runTest {
+            val ds = ds()
+            val cycle = (ds.createCycle("2024-01-15") as ApiResult.Success).value
+            ds.createDailyLog("2024-01-15", cycle.id)
+
+            val cats = (ds.getSymptomCategories() as ApiResult.Success).value
+            val energyCat = cats.categories.find { it.slug == "energy" }!!
+            val tiredId = energyCat.options.find { it.slug == "tired" }!!.id
+
+            ds.putOptionId("2024-01-15", "energy", tiredId)
+
+            // A bad id (here: an id from a different category) must be rejected AND
+            // must not clear the previously-set value.
+            val emotionId = cats.categories.find { it.slug == "emotions" }!!.options.first().id
+            val result = ds.putOptionId("2024-01-15", "energy", emotionId)
+            assertIs<ApiResult.Failure>(result)
+            assertEquals(ErrorCode.VALIDATION_ERROR, (result as ApiResult.Failure).code)
+
+            val log = (ds.getDailyLog("2024-01-15") as ApiResult.Success).value
+            assertEquals(tiredId, log.energy)
+        }
+
     // ── Notes ──────────────────────────────────────────────────────────────────
 
     @Test

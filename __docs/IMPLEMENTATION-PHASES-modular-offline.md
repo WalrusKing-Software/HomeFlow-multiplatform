@@ -975,71 +975,244 @@ returns an `ApiResult`, mapping outcomes to the same `ErrorCode`s the HTTP path 
 
 ## Phase 14 — Local-only app mode (Mode A)
 
-**Goal:** ship the first new user-visible capability — the desktop and Android apps run
-with **no server**, data in the local store, behind an app-lock (no Keycloak). This is
-Mode A.
+> **Executable spec.** Decisions are **closed**. Compose screen *layout* has latitude
+> (match the existing screens' style), but every seam, type, state transition, and file
+> below is fixed. Do not add Mode B's runtime-host config or any sync — those are Phases
+> 15/16. If the code contradicts the spec, **STOP and report**.
 
-### Background / why
-With the seam (11), the format (12), and the local engine (13) done, Mode A is mostly
-**composition + a no-server auth path + packaging**.
+**Goal:** ship the first new **user-visible** capability — the desktop and Android apps run
+with **no server and no Keycloak**, all data in the Phase 13 encrypted local store, behind
+the existing app-lock. A first-run chooser picks "Use this device only" (Mode A) or "Connect
+to a server" (today's online behavior, unchanged). This is **Mode A**.
 
-### Design decisions
-- **Mode selection & bootstrap.** Add a persisted `AppMode { LOCAL_ONLY, SERVER }`
-  setting (small `expect`/`actual` prefs or a row in the local DB). A first-run chooser
-  ("Use this device only" vs "Connect to a server") sets it. Composition root reads it and
-  injects `LocalDataSource` (Mode A) or the remote stack (Mode B, Phase 15).
-- **Auth in Mode A = app-lock only.** No Keycloak, no OIDC, no tokens. Reuse
-  `AppLockGate` (biometric on Android; passphrase/credential on desktop) as the *only*
-  gate, and gate it to the DEK unlock (D5). `AuthController` gains a local variant — or,
-  cleaner, factor a small `SessionController` interface with `KeycloakSessionController`
-  (today) and `LocalSessionController` (app-lock + DEK only). The UI's auth-gate states
-  (`LoggedOut`/`Locked`/`Authenticated`) map onto local equivalents (first-run enroll →
-  locked → unlocked).
-- **No network, ever, in Mode A.** No Ktor client is constructed; `FLAG_SECURE` and "no
-  body logging" still apply (no bodies exist, but keep the posture).
-- **Settings parity.** Local mode still offers preference reorder, account/data deletion
-  (wipes the local DB + DEK), and **export** (writes a `homeflow_export` file via Phase
-  12's `:core` mapper, locally) — export is the user's backup *and* their future
-  migration file.
+### Why now / what's actually left
+The seam (11), the interchange format (12), and the local engine (13, reviewed + green) are
+done. Mode A is therefore **composition + a no-server session path + local export +
+packaging** — almost no new domain logic. The local store already satisfies the entire
+`HomeFlowDataSource` contract; this phase wires it to the UI through a session abstraction
+and a mode chooser.
 
-### Tasks
-**`:app:shared`**
-- [ ] `AppMode` persisted setting + `expect`/`actual` store; first-run mode chooser screen.
-- [ ] `SessionController` abstraction; `LocalSessionController` (enroll → unlock DEK →
-  open `LocalDataSource`). Wire the existing shell/screens to render off it.
-- [ ] Local **export to file** (reuse Phase 12 `:core` mapper) and **local data wipe**.
-- [ ] Composition root: choose data source + session controller by `AppMode`.
+### Key facts (verified against the current client — do not violate)
+- The root `App.kt` already renders off `AuthController.state: StateFlow<AuthState>` with
+  states `LoggedOut / Authenticating / Locked(needsEnrollment) / Authenticated(user) /
+  Error`, and reads `controller.usesPassphraseGate` + `controller.repository`. `AppShell`
+  takes a `HomeFlowRepository` + `onLogout` + `onDeleteAccount`. **Mode A reuses all of
+  this** — same states, same shell, same screens — with a different controller behind it.
+- `AppLockGate` already implements `needsEnrollment()/enroll(secret)/authenticate(secret?)`
+  (desktop = PBKDF2 passphrase in the OS keychain; Android = `BiometricPrompt`). Mode A
+  reuses it **unchanged** as the only gate.
+- Phase 13 shipped `LocalKeyStore` (`loadDek/saveDek/clearDek`), `LocalDatabaseFactory`
+  (`create(dek): HomeFlowDb`), `LocalBootstrap.seed(db)`, and `LocalDataSource(db)`. Mode A
+  composes these; it does **not** modify them.
+- **There is no `:core` export mapper.** Phase 12's `D-12.5` deferred it; export lives only
+  in the server's `ImportExportService`. So Mode A builds its **own** local exporter that
+  emits the Phase 12 `:core` DTO `HomeFlowExport` (serialized identically) — it does **not**
+  call server code and does **not** extract a shared mapper (over-extraction; the server
+  builds its `ExportDay`s directly and keeps doing so).
 
-**platform**
-- [ ] Desktop file-save dialog for export; Android Storage Access Framework for export.
-- [ ] Packaging: a **local-only** desktop installer and Android build that excludes the
-  OIDC/server config requirement (the app must run with nothing else installed).
+### Decisions (closed)
 
-**docs**
-- [ ] `ARCHITECTURE-client.md`: document Mode A, the `SessionController` seam, and that
-  "no health data at rest" now has a Mode-A exception (encrypted local store).
-- [ ] `threat-model.md`: add the Mode-A at-rest threat + mitigation (D5).
+- **D-14.1 — `AppMode` lives in a NEW non-sensitive store, never the encrypted DB.** Add
+  `enum class AppMode { LOCAL_ONLY, SERVER }` and an `AppModeStore` (`expect`/`actual`,
+  `package org.homeflow.app.shared.config`) with `fun load(): AppMode?`, `fun save(mode:
+  AppMode)`, `fun clear()`. It must be readable **before** any unlock, so it cannot live in
+  the SQLCipher DB (which needs the DEK, which needs the chosen mode — chicken/egg). The
+  value is a non-sensitive enum: **Android** = plain `SharedPreferences`; **desktop** = a
+  small properties file at `~/.homeflow/mode.properties`. `null` (unset) ⇒ first run ⇒ show
+  the chooser.
+- **D-14.2 — `SessionController` interface; `AuthController` implements it; `repository`
+  moves into `AuthState.Authenticated`.** Define `interface SessionController` (package
+  `org.homeflow.app.shared.auth`) exposing exactly what `App.kt` consumes:
+  `val state: StateFlow<AuthState>`, `val usesPassphraseGate: Boolean`, `fun start()`,
+  `suspend fun login()`, `suspend fun enroll(secret: String)`,
+  `suspend fun unlock(secret: String?)`, `suspend fun logout()`,
+  `suspend fun deleteAccount(): ApiResult<Unit>`. To remove the "repository only valid after
+  unlock" sharp edge for the local controller, **move the repository into the state**:
+  `AuthState.Authenticated(val user: UserDto, val repository: HomeFlowRepository)`. Update
+  `App.kt`'s `Authenticated` branch to pass `current.repository` to `AppShell` (AppShell's
+  signature is unchanged). `AuthController` already has every method + `state` +
+  `usesPassphraseGate`; make it `: SessionController`, delete its top-level `repository` val,
+  and have `loadUser()` put the repository into `Authenticated`. Its behavior is otherwise
+  **byte-for-byte unchanged** (Mode B = today).
+- **D-14.3 — Mode A auth = app-lock + DEK only; zero network.** New
+  `LocalSessionController(gate: AppLockGate, keyStore: LocalKeyStore, modeStore:
+  AppModeStore, dbFactory: LocalDatabaseFactory) : SessionController`:
+  - `start()` → `Locked(needsEnrollment = gate.needsEnrollment())` (Mode A never enters
+    `LoggedOut`; there is no remote login).
+  - `login()` → no-op (unused in Mode A; the chooser, not a login screen, drives mode).
+  - `enroll(secret)` → `gate.enroll(secret)` then immediately `unlock(secret)`.
+  - `unlock(secret?)` → `Authenticating`; if `!gate.authenticate(secret)` → back to
+    `Locked`; else **load-or-create the DEK** (`keyStore.loadOrCreateDek()`), open the DB
+    (`dbFactory.create(dek)`), `LocalBootstrap.seed(db)`, build `LocalDataSource(db)` +
+    `HomeFlowRepository(...)`, then `Authenticated(localUser, repository)`. The synthetic
+    user is `LocalDataSource.getMe()`.
+  - `logout()` → drop the in-memory DB/repository handle and return to
+    `Locked(needsEnrollment = false)` (re-lock; the DEK stays in the key store).
+  - `deleteAccount()` → `localDataSource.deleteAccount()` (wipes user rows) **and**
+    `keyStore.clearDek()` **and** reset the gate enrollment (desktop: clear the keychain
+    passphrase record; Android: nothing to clear) **and** `modeStore.clear()`, then surface
+    a terminal state so `AppRoot` re-shows the chooser. Construct **no `HttpClient`** and
+    import no Ktor client anywhere in this class (the no-network invariant; asserted by a
+    test).
+- **D-14.4 — DEK generation.** Add `expect fun secureRandomBytes(size: Int): ByteArray`
+  (`package org.homeflow.app.shared.crypto`; both actuals use `java.security.SecureRandom`
+  — both targets are JVM). Add a `commonMain` extension
+  `fun LocalKeyStore.loadOrCreateDek(): ByteArray = loadDek() ?: secureRandomBytes(32).also
+  { saveDek(it) }`. The DEK is OS-secure-store-rooted (same posture as the refresh token);
+  the app-lock is the **use-gate**, not a passphrase-derived KEK (consistent with how the
+  refresh token is gated today — see `ARCHITECTURE-client.md`).
+- **D-14.5 — Composition root = new `AppRoot`; entry points call it.** Add
+  `@Composable fun AppRoot(serverConfig: AuthConfig = defaultAuthConfig())`: read
+  `AppModeStore.load()`; `null` → `ModeChooserScreen(onLocal = { save(LOCAL_ONLY); … },
+  onServer = { save(SERVER); … })`; `LOCAL_ONLY` → `App(localSessionController())`;
+  `SERVER` → `App(keycloakSessionController(serverConfig))`. `App(controller:
+  SessionController)` replaces today's `App(controller: AuthController)`. Desktop
+  `main.kt` → `AppRoot()`; Android `MainActivity` → `AppRoot(config)` (keeps its debuggable
+  host override for Mode B). After `deleteAccount` clears the mode, `AppRoot` falls back to
+  the chooser on recomposition.
+- **D-14.6 — Mode B in Phase 14 is today's behavior, UNCHANGED.** "Connect to a server"
+  selects the existing `AuthController` over the **compile-time** `AuthConfig` host. Runtime
+  server-host entry is **Phase 15** — do not add it here. One binary serves both modes; mode
+  is a runtime choice. There is **no** separate "local-only build flavor."
+- **D-14.7 — Local export built in `:app:shared`, emitting the Phase 12 `HomeFlowExport`
+  DTO.** Add `LocalExporter(db: HomeFlowDb, refData: LocalRefData, logsStore:
+  LocalDailyLogsStore)` with `fun export(): HomeFlowExport`: iterate cycles (sorted by
+  `start_date`) → `ExportCycle(start, end)`; for each cycle's logs
+  (`logsStore.getLogsByCycleId`) build `ExportDay` from `logsStore.assembleDto(row)`, mapping
+  each option/location **UUID → slug** (add `optionSlugById()` + `locationSlugById()` reverse
+  maps to `LocalRefData`), `cycleStartDate = ` the cycle's start. Notes/sex are already
+  plaintext in the local DB → copied straight through (sex as slug array). The result
+  serializes (kotlinx-serialization) to the **exact** `homeflow_export` JSON the server's
+  `POST /import?source=homeflow` accepts. **Export only** — no local *import* in Phase 14.
+- **D-14.8 — Export-to-file is a platform seam.** Add
+  `expect suspend fun writeExportFile(suggestedName: String, json: String): Boolean`
+  (`package org.homeflow.app.shared.platform`): **desktop** = AWT `FileDialog`/Swing
+  `JFileChooser` save dialog, write UTF-8, return false if cancelled; **Android** = Storage
+  Access Framework `ACTION_CREATE_DOCUMENT` via the `AndroidAppContext` launcher pattern
+  already used for AppAuth. Wire an "Export my data" action into `PreferencesScreen`
+  (Settings tab), available in Mode A (a `onExport: (suspend () -> Unit)?` passed through
+  `AppShell`; null/hidden in Mode B for this phase).
+
+### File manifest (exhaustive — create / modify exactly these)
+
+**Create — commonMain:**
+1. `config/AppMode.kt` — the enum.
+2. `config/AppModeStore.kt` — interface + `expect fun createAppModeStore(): AppModeStore`.
+3. `auth/SessionController.kt` — the interface (D-14.2).
+4. `auth/LocalSessionController.kt` — Mode A controller (D-14.3).
+5. `auth/SessionControllerFactory.kt` — `localSessionController()` /
+   `keycloakSessionController(config)` builders (the latter wraps today's `buildAuthController`).
+6. `crypto/SecureRandom.kt` — `expect fun secureRandomBytes(size: Int): ByteArray` + the
+   `LocalKeyStore.loadOrCreateDek()` extension.
+7. `data/local/LocalExporter.kt` — D-14.7.
+8. `ui/AppRoot.kt` — composition root + mode dispatch (D-14.5).
+9. `ui/ModeChooserScreen.kt` — first-run chooser (two large buttons; style like `LoginScreen`).
+10. `platform/ExportFile.kt` — `expect suspend fun writeExportFile(...)` (D-14.8).
+
+**Modify — commonMain:**
+11. `auth/AuthController.kt` — `: SessionController`; remove the top-level `repository` val;
+    `loadUser()` constructs the repository into `AuthState.Authenticated`.
+12. `auth/AuthController.kt` (same file) — `AuthState.Authenticated` gains
+    `val repository: HomeFlowRepository`.
+13. `ui/App.kt` — `App(controller: SessionController)`; `Authenticated` branch passes
+    `current.repository` to `AppShell`.
+14. `ui/shell/AppShell.kt` — add `onExport: (suspend () -> Unit)? = null`, thread it to
+    `PreferencesScreen`.
+15. `ui/screens/PreferencesScreen.kt` — add an "Export my data" button when `onExport != null`.
+16. `data/local/LocalRefData.kt` — add `optionSlugById()` + `locationSlugById()` reverse maps.
+
+**Create — platform actuals (6):**
+17. `androidMain/config/AppModeStore.android.kt` (SharedPreferences) +
+    `jvmMain/config/AppModeStore.jvm.kt` (`~/.homeflow/mode.properties`).
+18. `androidMain/crypto/SecureRandom.android.kt` + `jvmMain/crypto/SecureRandom.jvm.kt`
+    (`java.security.SecureRandom`).
+19. `androidMain/platform/ExportFile.android.kt` (SAF `ACTION_CREATE_DOCUMENT`) +
+    `jvmMain/platform/ExportFile.jvm.kt` (Swing/AWT save dialog).
+
+**Modify — entry points (2):**
+20. `app/desktopApp/src/main/kotlin/org/homeflow/main.kt` — `App()` → `AppRoot()`.
+21. `app/androidApp/src/main/kotlin/org/homeflow/MainActivity.kt` — `App(controller)` →
+    `AppRoot(config)`; register the SAF create-document launcher into `AndroidAppContext`
+    (mirror the existing `authLauncher` wiring).
+
+**Docs (3):**
+22. `__docs/ARCHITECTURE-client.md` — Mode A, the `SessionController` seam, the `AppRoot`
+    mode dispatch, and the "no health data at rest" **Mode-A exception** (encrypted local store).
+23. `__docs/threat-model.md` — add the Mode-A at-rest threat + mitigation (D5: whole-DB
+    SQLCipher, DEK in OS secure store, app-lock use-gate).
+24. `CHANGELOG.md` — Added: "Use HomeFlow entirely on one device — no server required."
+
+### Tests to add (jvmTest unless noted)
+- **`LocalSessionControllerTest`** — `start()` → `Locked` with `needsEnrollment` from a fake
+  gate; `enroll`→`unlock` reaches `Authenticated` and its `repository` reads/writes the local
+  store (start a cycle, read it back); `logout()` returns to `Locked`; `deleteAccount()`
+  wipes data, calls `clearDek()`, and clears the mode (use fakes for `AppLockGate`/
+  `LocalKeyStore`/`AppModeStore`, an in-memory `HomeFlowDb` via `TestDbHelper`).
+- **No-network assertion** — a test (reflection or a structural check) that
+  `LocalSessionController` holds **no** `HttpClient` field and the Mode-A path constructs
+  none. (Acceptable: assert `LocalSessionController` has no member of type `HttpClient`.)
+- **`LocalExporterTest`** — seed a full day (every category, pain w/ severities, notes, sex)
+  through `HomeFlowRepository(LocalDataSource)`, then `LocalExporter.export()`: assert
+  `homeflow_export == 1`, selections are **slugs** (no UUID via the `[0-9a-f]{8}-` regex),
+  `notes`/`sex` are plaintext slugs, and `cycleStartDate` links each day to its cycle — i.e.
+  byte-shape parity with the server's export test.
+- **`AppModeStoreTest`** (jvm) — `save`→`load` round-trips; `clear()` → `load()==null`.
+- **Manual / dev-server** (document, not automated here): the exported file imported via
+  `POST /import?source=homeflow` into a dev server is lossless (deep-compare) — this closes
+  the migration loop that Phase 15 depends on.
+
+### Guardrails — do NOT
+- Do NOT add runtime server-host config, a "Connect to a server" host field, or any sync —
+  Phases 15/16. "Connect to a server" in Phase 14 = today's compile-time Keycloak path.
+- Do NOT construct an `HttpClient`, import a Ktor client, or reference `AuthConfig`/OIDC in
+  the Mode-A path (`LocalSessionController`, `AppRoot`'s local branch, the chooser).
+- Do NOT extract a `:core` export mapper — build `LocalExporter` in `:app:shared` against the
+  existing `HomeFlowExport` DTO (D-14.7). Do NOT call server code from the client.
+- Do NOT store `AppMode` (or anything pre-unlock) in the encrypted local DB (D-14.1).
+- Do NOT change `LocalDataSource`/`LocalDatabaseFactory`/`LocalKeyStore`/`AppLockGate`
+  behavior — Mode A composes them as-is.
+- Do NOT add a local *import* path (export only). Do NOT log health data, the export JSON,
+  the DEK, or the passphrase. Keep `FLAG_SECURE` on Android.
+- Do NOT regress Mode B: `AuthController`'s flow must stay identical (only the `: SessionController`
+  conformance + moving `repository` into `Authenticated`).
 
 ### Done when
-- [ ] On a machine with **only the desktop app installed** (no server, no Keycloak,
-  offline), a fresh user: picks "Use this device only" → sets an app passphrase → logs a
-  full day (every category, pain w/ severities, notes, sex) → starts/closes cycles →
-  reorders preferences → reopens the app, unlocks, and sees all data. Same on Android with
-  biometrics.
-- [ ] Killing all network (airplane mode / no server reachable) has **no effect** on any
-  Mode-A operation.
-- [ ] Analytics/phase indicator render correctly from local data (same `:core` math).
-- [ ] **Local export** produces a `homeflow_export` file that Phase 12's server import
-  accepts losslessly (proven by importing it into a dev server and deep-comparing).
-- [ ] **Local data wipe** removes the DB + DEK; relaunch shows the first-run chooser.
-- [ ] Security: raw local DB file shows no plaintext health data; access token / server
-  concepts are entirely absent in Mode A (no Ktor client constructed — assert in a test).
-- [ ] Signed local-only desktop installer + Android build produced and launch clean.
-- [ ] `CHANGELOG.md`: "Use HomeFlow entirely on one device, no server required."
+- [ ] `./gradlew :app:shared:check` green (new tests pass; ktlint + detekt clean; Android
+  host-test target compiles). `:app:androidApp:assembleDebug` + `:app:desktopApp` build.
+- [ ] **Manual, desktop-only, offline** (no server/Keycloak): fresh launch → chooser → "Use
+  this device only" → set a passphrase → log a full day (every category, pain w/ severities,
+  notes, sex) → start/close cycles → reorder preferences → **relaunch, unlock, all data
+  present**. Same on Android with biometrics.
+- [ ] Airplane mode / no server reachable has **no effect** on any Mode-A operation
+  (no network is even attempted).
+- [ ] Analytics + phase indicator render from local data (same `:core` math) — visible in the
+  Analytics/Dashboard tabs.
+- [ ] **Export:** the "Export my data" action writes a `homeflow_export` file;
+  `LocalExporterTest` proves it is slug-keyed/UUID-free with plaintext notes/sex; the
+  documented dev-server import of that file is lossless.
+- [ ] **Delete:** account deletion wipes the local data, clears the DEK, and clears the mode;
+  relaunch shows the first-run chooser (`LocalSessionControllerTest` + manual).
+- [ ] **No-network proof:** `LocalSessionController` constructs no `HttpClient` (asserted in a
+  test); the Mode-A path references no `AuthConfig`/OIDC.
+- [ ] Signed desktop installer + Android build produced and launch clean into the chooser.
+- [ ] `ARCHITECTURE-client.md` + `threat-model.md` updated; `CHANGELOG.md`: "Use HomeFlow
+  entirely on one device — no server required."
 
-### Risks
-- Leaking a server assumption into shared screens (e.g., a hard `AuthConfig` access).
-  The mode chooser + `SessionController` must fully decouple this.
+### Risks / stop-conditions
+- **Export-to-file platform dialog** is the fiddliest bit. If the Android SAF
+  `ACTION_CREATE_DOCUMENT` round-trip (launcher → content URI → write stream) fights the
+  existing `AndroidAppContext` launcher wiring, STOP and report — do not write the export to
+  app-private storage or a hardcoded path as a silent fallback.
+- **Moving `repository` into `AuthState.Authenticated`** touches `App.kt` + `AppShell`
+  call-sites; the compiler verifies all of them. If any other code reads
+  `AuthController.repository` directly (grep first), update it — do not re-add the val.
+- **First-run gate on Android.** `gate.needsEnrollment()` is desktop-meaningful (passphrase);
+  Android biometric "enrollment" is owned by the OS. In Mode A on Android, `enroll` is a
+  no-op and `unlock(null)` shows the biometric prompt — confirm the `Locked` →
+  `needsEnrollment=false` path drives biometrics, matching today's `AuthController` behavior.
+- **`deleteAccount` terminal state.** Ensure clearing the mode actually re-renders the chooser
+  (the state read in `AppRoot` must recompose). If `AppRoot` caches the mode in a
+  non-observable `remember`, deletion won't return to the chooser — use observable state.
 
 ---
 
