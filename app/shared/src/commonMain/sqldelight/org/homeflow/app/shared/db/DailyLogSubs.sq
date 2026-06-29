@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS daily_log_sex (
 
 -- Multi-select queries --
 
+-- Used by the sync assembler to get all multi-select entries for a log in one pass.
+selectAllMultiByLog:
+SELECT category_id, option_id
+FROM daily_log_multi_select
+WHERE log_id = :logId AND deleted_at IS NULL;
+
+-- Used by the sync assembler to get all single-select entries for a log in one pass.
+selectAllSingleByLog:
+SELECT category_id, option_id
+FROM daily_log_single_select
+WHERE log_id = :logId AND deleted_at IS NULL;
+
 selectMultiByLogAndCategory:
 SELECT dms.option_id
 FROM daily_log_multi_select dms

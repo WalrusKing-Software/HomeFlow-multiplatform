@@ -18,6 +18,8 @@ import org.homeflow.modules.preferences.PreferencesService
 import org.homeflow.modules.preferences.preferencesRoutes
 import org.homeflow.modules.refdata.RefDataService
 import org.homeflow.modules.refdata.refDataRoutes
+import org.homeflow.modules.sync.SyncService
+import org.homeflow.modules.sync.syncRoutes
 import org.homeflow.modules.users.UsersService
 import org.homeflow.modules.users.usersRoutes
 
@@ -36,6 +38,7 @@ fun Application.configureRouting(
     analyticsService: AnalyticsService,
     preferencesService: PreferencesService,
     importExportService: ImportExportService,
+    syncService: SyncService,
 ) {
     routing {
         get("/health") {
@@ -48,5 +51,6 @@ fun Application.configureRouting(
         analyticsRoutes(analyticsService)
         preferencesRoutes(preferencesService)
         importExportRoutes(importExportService)
+        syncRoutes(syncService)
     }
 }

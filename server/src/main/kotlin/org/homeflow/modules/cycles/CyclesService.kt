@@ -79,6 +79,19 @@ class CyclesService(
         return toDto(updated)
     }
 
+    /**
+     * Soft-deletes the cycle by id and cascades to its daily logs. 404 on unknown/foreign id.
+     * Both the cycle tombstone and its day tombstones are recorded atomically (D-16a.4).
+     */
+    fun deleteCycle(
+        principal: UserPrincipal,
+        cycleId: String,
+    ) {
+        val id = cycleId.toUuidOrNull() ?: throw NotFoundException("Cycle not found.")
+        val deleted = cyclesRepository.softDeleteCascade(principal.id, id)
+        if (!deleted) throw NotFoundException("Cycle not found.")
+    }
+
     /** Looks up an owned cycle, treating a malformed id as "not found" rather than throwing. */
     private fun findOwnedCycle(
         principal: UserPrincipal,

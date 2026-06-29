@@ -27,6 +27,8 @@ import org.homeflow.modules.preferences.PreferencesRepository
 import org.homeflow.modules.preferences.PreferencesService
 import org.homeflow.modules.refdata.RefDataRepository
 import org.homeflow.modules.refdata.RefDataService
+import org.homeflow.modules.sync.ChangeLogRepository
+import org.homeflow.modules.sync.SyncService
 import org.homeflow.modules.users.UsersRepository
 import org.homeflow.modules.users.UsersService
 import org.homeflow.plugins.buildJwkProvider
@@ -55,14 +57,16 @@ class AppDependencies(
     private val usersRepository = UsersRepository(database)
     val usersService = UsersService(usersRepository, keycloakAdminClient)
 
-    private val cyclesRepository = CyclesRepository(database)
+    private val changeLogRepository = ChangeLogRepository(database)
+
+    private val cyclesRepository = CyclesRepository(database, changeLogRepository)
     val cyclesService = CyclesService(cyclesRepository)
 
     private val refDataRepository = RefDataRepository(database)
     val refDataService = RefDataService(refDataRepository)
 
-    private val dailyLogsRepository = DailyLogsRepository(database)
-    private val dailyLogSubsRepository = DailyLogSubsRepository(database)
+    private val dailyLogsRepository = DailyLogsRepository(database, changeLogRepository)
+    private val dailyLogSubsRepository = DailyLogSubsRepository(database, changeLogRepository)
     val dailyLogSubsService = DailyLogSubsService(dailyLogSubsRepository, refDataRepository, encryption)
     val dailyLogsService =
         DailyLogsService(dailyLogsRepository, cyclesRepository, dailyLogSubsRepository, encryption)
@@ -70,7 +74,7 @@ class AppDependencies(
     private val analyticsRepository = AnalyticsRepository(database)
     val analyticsService = AnalyticsService(analyticsRepository)
 
-    private val preferencesRepository = PreferencesRepository(database)
+    private val preferencesRepository = PreferencesRepository(database, changeLogRepository)
     val preferencesService = PreferencesService(preferencesRepository, refDataRepository)
 
     val importExportService =
@@ -80,6 +84,17 @@ class AppDependencies(
             dailyLogsService,
             dailyLogSubsService,
             refDataRepository,
+        )
+
+    val syncService =
+        SyncService(
+            cyclesRepository,
+            dailyLogsRepository,
+            dailyLogSubsRepository,
+            preferencesRepository,
+            changeLogRepository,
+            refDataRepository,
+            encryption,
         )
 
     companion object {
@@ -121,5 +136,6 @@ fun Application.module(deps: AppDependencies) {
         deps.analyticsService,
         deps.preferencesService,
         deps.importExportService,
+        deps.syncService,
     )
 }
