@@ -170,12 +170,15 @@ encryption) stay per-side and call the shared rules. **Reference, do not duplica
 | **13** | Local persistence engine (SQLDelight + at-rest crypto) | — (internal capability, tested) | No |
 | **14** | Local-only app mode | **A** | **Yes** |
 | **15** | Server-connected mode + "adopt a server" migration | **B** | **Yes** |
-| **16** | Offline sync engine | **C** | **Yes** |
+| **16a** | Offline sync — server foundation (change-log, soft-delete, `/sync` + delete routes) | — (server-only, additive) | No |
+| **16b** | Offline sync — `:core` merge + client reconciler (outbox, `SyncEngine`) | — (internal, tested) | No |
+| **16c** | Offline sync — triggers, status UI, delete UI, Mode-C activation | **C** | **Yes** |
 
-> The original framing was "3 phases (11/12/13) ≈ 3 modes." Implementation is split into
-> six so each lands on a stable, testable base — Modes A/B/C are delivered by phases 14,
-> 15, 16 respectively; 11–13 are the shared foundation they all stand on. Do not start a
-> phase until the prior one passes its **Done when** checklist.
+> The original framing was "3 phases (11/12/13) ≈ 3 modes." Implementation is split so each
+> lands on a stable, testable base — Modes A/B/C are delivered by phases 14, 15, and 16c
+> respectively; 11–13 are the shared foundation, and the sync engine (16) is itself split into
+> three stacked sub-phases (16a server → 16b client reconciler → 16c activation) because it
+> spans every layer. Do not start a phase until the prior one passes its **Done when** checklist.
 
 ---
 
@@ -1508,112 +1511,464 @@ phase makes the host runtime and adds the adoption path.
 
 ## Phase 16 — Offline sync engine (Mode C)
 
-**Goal:** make every app **offline-first with a server**: the local store (Phase 13) is
-the primary, edits work offline, and a sync engine reconciles bidirectionally with the
-server so all devices converge. This is the hard 20% and the final mode.
+> Mode C is delivered by **three stacked sub-phases (16a → 16b → 16c)**, each its own branch
+> that lands green independently (the "split for stability" rule used for 11–14). **16a** is
+> server-only and additive (old clients keep working); **16b** adds the `:core` merge + the
+> client reconciler; **16c** wires triggers, status UI, the delete UI, and the end-to-end
+> convergence guarantees. Do not start a sub-phase until the prior one's **Done when** is fully
+> green. Each sub-phase below is an **executable spec** — decisions are closed; if the code
+> contradicts one, **STOP and report**.
 
-### Background / why last
-Sync needs everything before it: the local store (13), the slug-keyed interchange format
-(12/D4), client UUIDs + `updated_at` + tombstones (D1–D3, seeded into the schema in 13),
-and the shared rules (11). Only the reconciler + server delta endpoints are genuinely new.
+### Shared model (binds all three sub-phases)
+- **Authority:** in Mode C the data source is `LocalDataSource` (Phase 13) — authoritative for
+  the device. The server is a **sync peer**, not the source of truth. A background `SyncEngine`
+  pushes/pulls; the UI never blocks on the network.
+- **Syncable aggregates (exactly three):** **cycle** (a `cycles` row), **day** (the
+  `daily_logs` anchor **plus** all its sub-logs + pain, synced as ONE unit keyed by the anchor
+  id — D2/D7), and **preferences** (whole-value). Sub-logs are **never** synced individually;
+  a sub-log edit bumps the *day* aggregate.
+- **Conflict resolution = Last-Write-Wins per aggregate.** Comparator = `updatedAt` (ISO-8601
+  UTC instant strings, so lexicographic compare == chronological). Ties break by **greater
+  `id` lexicographically** — deterministic and symmetric on every device, needing no notion of
+  "who is server." **Tombstones participate in LWW** (a delete is a versioned state: a later
+  edit resurrects; a later delete beats an earlier edit). Two domain-aware exceptions resolved
+  by a shared `:core` rule, not raw LWW: **cycle boundaries** (two open cycles → the
+  later-started stays open, the earlier is auto-closed via `autoCloseEndDate`) and
+  **preferences** (a single whole-value aggregate).
+- **Identity & references:** entity ids are the **shared client UUIDs (D1)** the server already
+  honors (Phase 11) — so the day→cycle link crosses the wire as `cycleId` (UUID), **not** by
+  date (this is the key difference from Phase 12 export/import, which mints new server ids).
+  Selections cross as **slugs (D4)**; each side maps slug↔local-UUID at the boundary.
+- **Encryption boundaries unchanged (D5):** local at rest = SQLCipher DEK; server at rest =
+  `APP_ENCRYPTION_KEY` (notes/sex ciphertext in PG); the wire is **plaintext over TLS** (server
+  decrypts to send, re-encrypts on store; client stores plaintext inside its encrypted DB).
+  **No key ever crosses the network. No request/response body is ever logged** (it is health
+  data).
+- **Cursor:** the pull cursor is a **server-assigned monotonic sequence** (`server_seq`), never
+  a timestamp — this sidesteps clock skew in the pull direction. `updatedAt` is used **only** as
+  the LWW comparator.
+- **Account deletion** stays a hard global purge (server cascade + Keycloak + local wipe) — it
+  is **not** a tombstone-sync operation.
 
-### Design decisions
-- **Model:** local store is authoritative for the device; the server is a **sync peer**.
-  In Mode C the data source is `LocalDataSource`; a background `SyncEngine` pushes/pulls.
-- **Change tracking (client):** every local mutation appends to `sync_outbox` (created in
-  13) — `(entity_type, entity_id, op{upsert|delete}, updated_at)`. The store keeps current
-  state; the outbox records intent. (We do **not** need a full per-field oplog — LWW over
-  whole syncable aggregates is sufficient for this data; see below.)
-- **Change tracking (server):** add a server-side **change log / monotonic sequence**. On
-  every accepted write the service appends `(user_id, entity_type, entity_id, server_seq,
-  updated_at, deleted)` to a `sync_changes` table (server-assigned, gap-free per user via a
-  sequence). Clients keep a `last_pulled_seq` cursor. This avoids clock-skew in the *pull*
-  direction (cursor is a server sequence, not a timestamp).
-- **Protocol (new server routes under `/api/v1/sync`):**
-  - `GET /sync/changes?since=<cursor>` → `{ changes: [...slug-keyed aggregates with
-    server_seq, updated_at, deleted...], cursor: <newCursor> }`. Returns every aggregate
-    changed since the cursor, **including tombstones**, option refs as **slugs (D4)**,
-    notes/sex as **plaintext over TLS** (server decrypts to send; re-encrypts on store).
-  - `POST /sync/changes` → body = a batch of local outbox aggregates (client UUIDs,
-    `updated_at`, tombstones, slug-keyed). Server applies **LWW per aggregate** and returns
-    each aggregate's resulting `server_seq` + the authoritative post-merge state.
-- **Conflict resolution = Last-Write-Wins per syncable aggregate**, comparator =
-  `updated_at`; ties broken deterministically (e.g., higher `entity_id` wins, or
-  server-wins). The data is naturally low-conflict (keyed by user+date / date-range), so
-  per-aggregate LWW is adequate. **Tombstones participate in LWW** (a delete is just a
-  versioned state; a later edit on another device with a newer `updated_at` resurrects, an
-  older one stays deleted). Two narrow domain-aware cases:
-  - **Cycle boundaries / auto-close:** reconcile via the shared `:core` rule, not raw LWW,
-    when two devices start overlapping cycles — define the rule explicitly (e.g., the
-    later-started cycle wins and re-derives the prior cycle's `end_date`).
-  - **Preference order:** whole-value LWW (it is a single JSON aggregate).
-- **Sync triggers:** on app foreground, after each local write (debounced), on
-  connectivity regained, and a periodic timer. All best-effort; failures retry.
-- **Encryption boundaries unchanged:** local store encrypts at rest with the device DEK
-  (D5); server encrypts notes/sex at rest with `APP_ENCRYPTION_KEY`; the wire is plaintext
-  over TLS. Neither key crosses the network.
-- **Account deletion** remains a hard global purge (server cascade + Keycloak + local wipe)
-  — it is not a tombstone-sync operation.
+---
 
-### Schema changes
-**Server (Flyway `V…__sync.sql`):** add `updated_at`/`deleted_at` to syncable aggregates
-that lack them; create `sync_changes` (per-user monotonic `server_seq`); ensure every
-write path stamps `updated_at` and appends a change row (in the service layer, single
-transaction). **Client (SQLDelight):** `sync_outbox` already exists (13); add a
-`sync_state` row for the `last_pulled_seq` cursor.
+### Phase 16a — Server sync foundation (change-log, soft-delete, stamping, `/sync` + delete routes)
 
-### Tasks
-**`:core`**
-- [ ] Sync DTOs: `SyncAggregate` (slug-keyed), `SyncPushRequest`, `SyncPullResponse`,
-  cursor type. Pure LWW-merge decision function (`mergeAggregate(local, remote)`),
-  unit-tested, shared by client reconciler and server.
-- [ ] The explicit cycle-boundary reconciliation rule in `:core` `service/`.
+**Goal:** make the server a sync peer. Add a Flyway migration that introduces soft-delete on the
+syncable anchors and a per-user-meaningful `sync_changes` change-log; stamp `updated_at` + record
+a change row inside **every** write transaction; add the `GET/POST /api/v1/sync/changes`
+protocol and the `DELETE` routes that produce tombstones. **Server-only, fully additive** — the
+existing routes/DTOs are unchanged, so a pre-16 client keeps working. No client change here.
 
-**`:server`**
-- [ ] `sync` module: `GET/POST /sync/changes`, `sync_changes` table + per-user sequence,
-  service-layer stamping on **every** existing write path (cycles, anchor, sub-logs, pain,
-  prefs, deletes). Migration. Row-scoping invariants apply unchanged.
+**Why first:** the client reconciler (16b) cannot be built or tested until the server can emit a
+delta feed and accept a push. Building and proving the server side under Testcontainers first
+means 16b integrates against a real, green protocol.
 
-**`:app:shared`**
-- [ ] `SyncEngine`: outbox push, cursor pull, apply remote changes into `LocalDataSource`
-  via the shared merge, conflict resolution, retry/backoff, triggers. A `SyncStatus`
-  (`Idle/Syncing/Offline/Error/lastSyncedAt`) surfaced in the UI.
-- [ ] Mode C composition: `LocalDataSource` primary + `SyncEngine` against the configured
-  server; the "adopt a server" upload (Phase 15) becomes the *initial* push.
+#### Key facts (verified against the current server — do not violate)
+- Syncable anchors `cycles`, `daily_logs`, `daily_log_sex`, `pain_logs`,
+  `user_dashboard_preferences` already have `updated_at timestamptz` but **no `deleted_at`** (the
+  server currently hard-deletes nothing in syncable scope — there is **no** delete-cycle/delete-day
+  route anywhere today). Sub-log tables have only `created_at` (replaced wholesale).
+- Writes flow Route → Service → Repository (Exposed `transaction {}`). `ImportExportService`
+  already assembles a whole-day, slug-keyed, decrypted aggregate (`exportAll`) and applies a
+  slug-keyed day through the existing services (`importHomeflow`) — the `GET`/`POST` sync handlers
+  reuse the **same assembly/apply approach** (decrypt-to-send, validate+encrypt-on-store), never
+  touching ciphertext directly.
+- `AppDependencies` (in `Application.kt`) constructs every repo/service; `configureRouting`
+  (`plugins/Routing.kt`) mounts each module's routes. Adding a module = one repo + one service +
+  one routes file + wiring in those two places (mirror `importexport`).
+- Errors use the fixed 6-code `ErrorCode`; row-scoping is always by `principal.id`.
 
-### Done when
-- [ ] **Two-device convergence (online):** edit on desktop → appears on Android after a
-  sync, and vice-versa; both converge to identical state (deep DB compare).
-- [ ] **Offline edits reconcile:** put device A offline, edit several days/cycles; edit
-  *different* days on device B; bring A online → both devices converge with all edits
-  present (no loss).
-- [ ] **Conflict (same day, both offline):** both devices edit the **same** day offline;
-  after sync, the **later `updated_at` wins** deterministically on both devices (no
-  duplicate rows, no partial merge); covered by an automated test of `mergeAggregate`.
-- [ ] **Tombstone propagation:** delete a cycle/day on A offline; B (which had it) reflects
-  the delete after sync and does not resurrect it on its next push.
-- [ ] **Cycle-boundary conflict** resolves via the documented `:core` rule, not raw LWW —
-  unit-tested with a constructed overlapping-cycle scenario.
-- [ ] **Idempotent/resumable:** interrupting a sync mid-batch and re-running produces the
-  same converged state (server seq cursor + idempotent upserts); no dupes.
-- [ ] **Slug boundary (D4):** a sync between a freshly-seeded local store and the server
-  (whose ref-data UUIDs differ) correctly maps every selection by slug — assert a logged
-  `mood_swings` round-trips despite differing option UUIDs on each side.
-- [ ] Security: wire payloads are plaintext over TLS only; server at-rest stays encrypted
-  (notes/sex ciphertext in PG); local at-rest stays encrypted (DEK); no key crosses the
-  network; no body logging; row-scoping holds (a sync request cannot pull another user's
-  changes) — Testcontainers + client integration tests.
-- [ ] `./gradlew check` green across modules; `ARCHITECTURE-server.md`,
-  `ARCHITECTURE-client.md`, `threat-model.md`, `API.md` updated with the sync design;
-  `CHANGELOG.md`: "Work offline; your devices sync through your server when reconnected."
+#### Decisions (closed)
+- **D-16a.1 — Migration `V3__sync.sql`.** (a) `ALTER TABLE cycles ADD COLUMN deleted_at
+  timestamptz NULL;` and the same for `daily_logs`. These two anchors are the only tombstonable
+  aggregates (a day tombstone covers its sub-logs/pain; preferences is whole-value and never
+  deleted). (b) Create `sync_changes(user_id uuid NOT NULL, entity_type text NOT NULL, entity_id
+  uuid NOT NULL, server_seq bigint NOT NULL, updated_at timestamptz NOT NULL, deleted boolean NOT
+  NULL, PRIMARY KEY(user_id, entity_type, entity_id))` with a global `BIGSERIAL`-backed sequence
+  `sync_seq` for `server_seq`, and an index `(user_id, server_seq)`. One row **per aggregate**
+  (upserted, latest state) — not an append log — so a pull returns each changed aggregate once.
+  A global sequence is correct: each client filters to its own `user_id` and `server_seq >
+  cursor`; cross-user gaps are invisible and harmless. Reads of live data must add
+  `deleted_at IS NULL` (update the existing `cycles`/`daily_logs` queries' WHERE clauses).
+- **D-16a.2 — `entity_type` ∈ {`cycle`, `day`, `preferences`}.** `entity_id` = the aggregate's
+  UUID (`cycles.id`, `daily_logs.id`, or the prefs row id). A sub-log/pain write records a **`day`**
+  change for its anchor id — never a per-sub-log change.
+- **D-16a.3 — Change recording lives in a `ChangeLogRepository.record(userId, type, entityId,
+  updatedAt, deleted)` called inside the SAME Exposed `transaction {}` as the write** (recording a
+  change row is persistence, not business logic, so it is repository-layer; but the *caller* that
+  knows the aggregate identity drives it). Every existing write must record: `CyclesRepository`
+  (insert/close/delete → `cycle`), `DailyLogsRepository` (anchor insert, notes update, delete →
+  `day`), `DailyLogSubsRepository` (every `replaceMulti/replaceSingle/replaceSex/replacePain` →
+  `day` for the owning anchor), `PreferencesRepository` (upsert → `preferences`). **If wiring the
+  record call into an existing repository transaction proves to require restructuring the
+  transaction boundary, STOP and report** rather than recording in a second transaction (a second
+  transaction breaks atomicity — the change row could be lost after a committed write).
+- **D-16a.4 — New soft-delete operations (produce tombstones).**
+  - `DELETE /api/v1/cycles/{id}` → `CyclesService.deleteCycle`: set `cycles.deleted_at = now()`,
+    record `cycle` tombstone; **cascade**: soft-delete every `daily_logs` row in that cycle
+    (`deleted_at = now()`, record a `day` tombstone each). 404 on unknown/foreign id.
+  - `DELETE /api/v1/daily-logs/{date}` → `DailyLogsService.deleteDay`: set `daily_logs.deleted_at
+    = now()` for the date, record a `day` tombstone. 404 if no live anchor for the date. (Sub-log
+    rows stay but are unreachable — reads filter by the anchor's `deleted_at`.)
+  - Both are additive routes; both stamp `updated_at` on the tombstoned anchor.
+- **D-16a.5 — `GET /api/v1/sync/changes?since=<cursor>` (cursor defaults to 0).** Returns
+  `SyncPullResponse` (D-16b.1 DTOs): every `cycle`/`day`/`preferences` aggregate for the principal
+  whose `sync_changes.server_seq > since`, **including tombstones** (`deleted=true` carries id +
+  `updatedAt` only), selections **slug-keyed**, notes/sex **decrypted to plaintext**, day→cycle by
+  `cycleId`; plus `cursor` = the max `server_seq` returned (or `since` if none). Reuse the
+  `ImportExportService` assembly for live days; for a tombstone emit the minimal aggregate.
+- **D-16a.6 — `POST /api/v1/sync/changes` (body = `SyncPushRequest`).** For each incoming
+  aggregate, apply **LWW vs. the server's current row** using the shared `:core`
+  `mergeDecision(localUpdatedAt, localId, serverUpdatedAt, serverId)` (16b): if the incoming wins,
+  upsert it through the existing services (honoring the client `id`/`cycleId` per D1, mapping
+  slugs→option UUIDs per D4; a tombstone sets `deleted_at`); if the server wins, leave it. Then
+  apply the **cycle-boundary** rule (D-16b.3) across the resulting open cycles. Return
+  `SyncPushResponse` = the authoritative post-merge state of every touched aggregate (so the client
+  adopts server-won values immediately) + the new `cursor`. **Row-scoped to `principal.id`** — an
+  aggregate's `userId` is always the principal, never from the body. The push is **idempotent**
+  (re-applying the same batch is a no-op by LWW) so an interrupted push is safe to retry.
+- **D-16a.7 — Reuse services for all writes (D-12.6 lesson).** Sync apply goes through
+  `DailyLogsService`/`DailyLogSubsService`/`CyclesService`/`PreferencesService` so validation +
+  encryption are identical to a normal write. Do **not** write rows or ciphertext directly in the
+  sync service. (If honoring a client-supplied `cycleId`/`id` on these paths needs a new
+  explicit-insert variant, mirror Phase 12's `insertExplicit`.)
 
-### Risks
-- **Clock skew** corrupting LWW — mitigate by using the server sequence for the pull
-  cursor and treating `updated_at` only as the merge comparator (and consider stamping a
-  server-side `updated_at` on accept for server-origin truth).
-- **Partial-aggregate writes** — always sync the **whole** daily-log aggregate (anchor +
-  all sub-logs) as one unit so a half-applied day cannot occur.
-- Scope creep toward CRDTs — explicitly out of scope; LWW-per-aggregate + the two domain
+#### File manifest (16a, exhaustive)
+**Create:**
+1. `server/src/main/resources/db/migration/V3__sync.sql` — D-16a.1.
+2. `server/.../modules/sync/ChangeLogRepository.kt` — `record(...)` + `findChangesSince(userId,
+   cursor)` + `maxSeq(userId)` (Exposed).
+3. `server/.../modules/sync/SyncService.kt` — `pull(principal, since): SyncPullResponse`,
+   `push(principal, req): SyncPushResponse` (D-16a.5/6/7).
+4. `server/.../modules/sync/SyncRoutes.kt` — `authenticate(KEYCLOAK_AUTH){ route("/api/v1/sync"){
+   get("/changes"){…}; post("/changes"){…} } }`.
+5. `server/src/test/.../integration/SyncTest.kt` — Testcontainers + in-process RS256 (mirror
+   `ImportExportTest`).
+
+**Modify:**
+6. `core/.../dto/SyncDtos.kt` — **created in 16b**, but 16a depends on it; if 16a lands first,
+   add the DTOs here in 16a and reference them (they are pure serialization, no client coupling).
+7. `core/.../service/SyncMerge.kt` — likewise the pure `mergeDecision`; if 16a lands first, create
+   it here (16b reuses it). (These two `:core` files are the contract both sides share — whichever
+   sub-phase lands first creates them.)
+8. `cycles/CyclesRepository.kt` + `CyclesService.kt` — `deleteCycle`; `deleted_at IS NULL` on
+   reads; record `cycle` changes on insert/close/delete.
+9. `dailylogs/DailyLogsRepository.kt` + `DailyLogsService.kt` — `deleteDay`; `deleted_at IS NULL`
+   on reads; record `day` changes on anchor insert / notes / delete.
+10. `dailylogs/DailyLogSubsRepository.kt` — record a `day` change on every replace.
+11. `preferences/PreferencesRepository.kt` — record a `preferences` change on upsert.
+12. `cycles/CyclesRoutes.kt` + `dailylogs/DailyLogsRoutes.kt` — add the two `DELETE` routes.
+13. `Application.kt` (`AppDependencies`) + `plugins/Routing.kt` — construct + mount
+    `ChangeLogRepository`/`SyncService`/`syncRoutes` (mirror `importexport`).
+14. `__docs/API.md` — document `DELETE /cycles/{id}`, `DELETE /daily-logs/{date}`, and the
+    `/sync/changes` GET/POST shapes (request/response/error codes).
+
+#### Tests to add (`SyncTest`, Testcontainers)
+- Stamping: any write (cycle create, sub-log put, notes, pain, prefs) creates/updates exactly one
+  `sync_changes` row for the right aggregate with a fresh `server_seq`.
+- `DELETE /cycles/{id}` tombstones the cycle **and** cascades `day` tombstones for its days;
+  `DELETE /daily-logs/{date}` tombstones the day; both surface in `GET /sync/changes` with
+  `deleted=true`; live reads (`GET /cycles`, `GET /daily-logs/{date}`) no longer return them.
+- `GET /sync/changes?since=0` returns all aggregates slug-keyed + decrypted, day→cycle by
+  `cycleId`, with a `cursor`; `since=<cursor>` returns only newer changes.
+- `POST /sync/changes` LWW: incoming newer `updatedAt` wins (server row updated); incoming older
+  loses (server row unchanged); a tie resolves by greater id deterministically; a tombstone with a
+  newer `updatedAt` deletes; response carries the authoritative post-merge state + new cursor.
+- Cycle-boundary: pushing a second open cycle auto-closes the earlier one (shared rule).
+- **Security:** `GET`/`POST /sync/changes` are row-scoped — a second user's principal sees none of
+  the first user's changes and cannot push into them (cross-user → its own scope only). No body is
+  logged. Notes/sex are ciphertext in PG after a push (assert the column is not plaintext).
+- Idempotency: re-`POST` the same batch → no duplicate rows, identical post-merge state.
+
+#### Guardrails — do NOT
+- Do NOT change any existing route's request/response/JSON/status; 16a is purely additive.
+- Do NOT record a change in a separate transaction from the write (atomicity) — STOP if forced.
+- Do NOT write health rows or ciphertext directly in `SyncService`; reuse the services (D-16a.7).
+- Do NOT hard-delete in syncable scope; deletes are tombstones (D3). Account deletion stays the
+  one hard purge.
+- Do NOT emit option/location **UUIDs** on the wire (slugs only, D4); do NOT log sync bodies.
+- Do NOT take `userId` from the request body — always `principal.id`.
+
+#### Done when (16a)
+- [ ] `./gradlew :server:check` green incl. `SyncTest` (all cases above) and **all** existing
+  suites unchanged.
+- [ ] `V3__sync.sql` applies cleanly; `cycles`/`daily_logs` have `deleted_at`; `sync_changes`
+  exists with a working `server_seq`.
+- [ ] Every write path records exactly one aggregate change; deletes tombstone (+ cascade for
+  cycles); `GET/POST /sync/changes` behave per D-16a.5/6 with row-scoping + encryption intact.
+- [ ] `git grep -n "deleted_at IS NULL"` shows the live-read filter on `cycles`/`daily_logs`.
+- [ ] `API.md` updated. (No `CHANGELOG.md` entry yet — 16a ships no user-visible behavior on its
+  own; 16c flips on Mode C.)
+
+#### Risks / stop-conditions (16a)
+- **Transaction boundary for change recording** (top risk) — see D-16a.3; STOP if it can't be done
+  in-transaction.
+- **Honoring client `id`/`cycleId` on apply** — if the existing services can't accept an explicit
+  id on the sync-write path, add an `insertExplicit`-style variant (Phase 12 precedent); STOP if
+  that would duplicate business logic.
+- **Cascade delete volume** — soft-deleting a long cycle's days is many change rows; that is fine
+  (one per day) but keep it in one transaction.
+
+---
+
+### Phase 16b — `:core` merge + client reconciler (outbox, SyncEngine, Mode C composition)
+
+**Goal:** build the device half of sync against 16a's protocol: the pure `:core` merge contract,
+outbox-append on **every** local write, a `sync_state` cursor, the `SyncEngine` (push outbox →
+pull changes → merge into `LocalDataSource`), the delete-cycle/delete-day operations on the seam,
+and the Mode-C composition that runs `LocalDataSource` primary with the engine attached. Triggers
++ status UI + delete UI are **16c** — here the engine exposes a `suspend fun syncNow()` driven by
+tests.
+
+**Why now:** 16a gives a real delta feed; the local store (13) + adopt-a-server upload (15) give
+the initial state. 16b is the reconciler that makes two devices converge; proving it with a
+deterministic `syncNow()` (no timers/UI) keeps it testable.
+
+#### Key facts (verified against the current client — do not violate)
+- `sync_outbox` exists (`SyncOutbox.sq`: `id, entity_type, entity_id, op, updated_at, synced`)
+  with `insert/selectPending/markSynced/deleteAll`, but **nothing writes to it yet** (only
+  `deleteAll` on account deletion). Local anchors already carry `updated_at`/`deleted_at`.
+- The seam `HomeFlowDataSource` has **no delete method**; `RemoteDataSource` (HTTP) and
+  `LocalDataSource` (SQLDelight) both implement it. Adding deletes grows the seam by two methods,
+  implemented by both (Mode A/B get delete too — a welcome side effect).
+- `LocalDataSource` composes `LocalCyclesStore/LocalDailyLogsStore/LocalSubsStore/LocalPrefsStore`;
+  each write is the natural place to append an outbox row. `LocalExporter` already maps a day's
+  UUIDs→slugs (reuse its mapping for building `SyncDay`s).
+- The authenticated HTTP client lives in `AuthController` (Phase 15 exposed `uploadLocalData` the
+  same way); the `SyncEngine` needs the same authenticated client — pass it the push/pull lambdas
+  bound to a `RemoteDataSource`-style call, exactly as `ServerMigration` takes an upload lambda.
+
+#### Decisions (closed)
+- **D-16b.1 — Sync DTOs in `:core/dto/SyncDtos.kt`** (created here if not already by 16a):
+  ```kotlin
+  @Serializable data class SyncCycle(
+      val id: String, val startDate: String, val endDate: String? = null,
+      val updatedAt: String, val deleted: Boolean = false,
+  )
+  @Serializable data class SyncDay(
+      val id: String, val date: String, val cycleId: String,
+      val flow: String? = null, val collectionMethod: String? = null, val energy: String? = null,
+      val emotions: List<String> = emptyList(), val sleep: List<String> = emptyList(),
+      val discharge: List<String> = emptyList(), val skin: List<String> = emptyList(),
+      val digestion: List<String> = emptyList(), val mind: List<String> = emptyList(),
+      val sex: List<String> = emptyList(), val pain: List<ExportPain> = emptyList(),
+      val notes: String? = null, val updatedAt: String, val deleted: Boolean = false,
+  )
+  @Serializable data class SyncPreferences(val categoryOrder: List<String>, val updatedAt: String)
+  @Serializable data class SyncPushRequest(
+      val cycles: List<SyncCycle> = emptyList(), val days: List<SyncDay> = emptyList(),
+      val preferences: SyncPreferences? = null,
+  )
+  @Serializable data class SyncPullResponse(
+      val cycles: List<SyncCycle> = emptyList(), val days: List<SyncDay> = emptyList(),
+      val preferences: SyncPreferences? = null, val cursor: Long,
+  )
+  @Serializable data class SyncPushResponse(
+      val cycles: List<SyncCycle> = emptyList(), val days: List<SyncDay> = emptyList(),
+      val preferences: SyncPreferences? = null, val cursor: Long,
+  )
+  ```
+  Reuse `ExportPain` (Phase 12). `SyncDay` differs from `ExportDay` by carrying `id`, `cycleId`
+  (UUID, not `cycleStartDate`), `updatedAt`, `deleted` (D1).
+- **D-16b.2 — Pure merge in `:core/service/SyncMerge.kt`** (created here if not by 16a):
+  ```kotlin
+  enum class MergeWinner { LOCAL, REMOTE }
+  /** LWW: later updatedAt wins; tie → greater id (lexicographic). Symmetric on both sides. */
+  fun mergeDecision(localUpdatedAt: String, localId: String,
+                    remoteUpdatedAt: String, remoteId: String): MergeWinner
+  ```
+  Unit-tested; used by both the client reconciler and the server push (16a). No I/O, no clock.
+- **D-16b.3 — Cycle-boundary rule in `:core/service/CycleRules.kt`** (extend the Phase-11 file):
+  `fun reconcileOpenCycles(cycles: List<CycleBoundary>): List<CycleBoundary>` where a
+  `CycleBoundary(id, startDate, endDate?)` list with >1 open (null end) collapses to: the
+  latest-`startDate` cycle stays open; each earlier open cycle gets `endDate =
+  autoCloseEndDate(nextStartDate)`. Pure; unit-tested; reused by server push and client apply.
+- **D-16b.4 — Outbox-append on every local write (aggregate granularity).** Add a tiny
+  `LocalOutbox.record(entityType, entityId, op, updatedAt)` helper (writes `sync_outbox`) and call
+  it from each `LocalDataSource` write **in the same SQLDelight transaction** as the data write:
+  cycle create/close/delete → `cycle`; anchor create, notes, sub-log/pain replace, day delete →
+  `day` (the anchor id); prefs upsert → `preferences`. `op ∈ {upsert, delete}`. The store keeps
+  current state; the outbox records intent. (D-13.7 reserved this; 16b activates it.)
+- **D-16b.5 — `sync_state` cursor (SQLDelight).** New `SyncState.sq`: a single-row table
+  `sync_state(id INTEGER PRIMARY KEY CHECK(id=0), last_pulled_seq INTEGER NOT NULL DEFAULT 0)`
+  with `get`/`set`. Holds the pull cursor (`server_seq`). Reset to 0 on account deletion
+  (`deleteAll`).
+- **D-16b.6 — Seam grows by two delete methods.** Add to `HomeFlowDataSource`:
+  `suspend fun deleteCycle(cycleId: String): ApiResult<Unit>` and
+  `suspend fun deleteDay(date: String): ApiResult<Unit>`. `RemoteDataSource` → HTTP `DELETE
+  cycles/{id}` / `daily-logs/{date}` (via `apiSendEmpty`). `LocalDataSource` → set `deleted_at`,
+  record an outbox `delete`, and (cycle) cascade-tombstone its days. Update the interface KDoc
+  contract. `HomeFlowRepository` gets matching pass-throughs.
+- **D-16b.7 — `SyncEngine` (commonMain), driven by `syncNow()` here.**
+  ```kotlin
+  class SyncEngine(
+      private val db: HomeFlowDb,
+      private val localDataSource: LocalDataSource,
+      private val refData: LocalRefData,
+      private val push: suspend (SyncPushRequest) -> ApiResult<SyncPushResponse>,
+      private val pull: suspend (since: Long) -> ApiResult<SyncPullResponse>,
+  ) {
+      val status: StateFlow<SyncStatus>
+      suspend fun syncNow(): SyncResult   // push pending outbox → pull since cursor → merge → advance cursor
+  }
+  ```
+  `syncNow()`: (1) build a `SyncPushRequest` from `selectPending` outbox rows (map each entity to
+  its current aggregate, UUIDs→slugs via `refData`); `push`; on success `markSynced` those rows and
+  adopt the authoritative post-merge state + advance the cursor. (2) `pull(lastPulledSeq)`; for each
+  remote aggregate, load the local counterpart, decide with `mergeDecision`, and if remote wins
+  apply it into `LocalDataSource` (slugs→local UUIDs; tombstone → local `deleted_at`); then
+  `reconcileOpenCycles`; set `last_pulled_seq = response.cursor`. All best-effort; on network
+  failure → `SyncStatus.Offline`/`Error`, leave the outbox intact (retry later). Applying a remote
+  change must **not** re-enqueue it to the outbox (guard: apply via a path that skips
+  `LocalOutbox.record`, e.g. an internal `applyRemote*` that writes rows + bumps `updated_at`
+  without recording intent).
+- **D-16b.8 — `SyncStatus`** = `sealed interface { Idle(lastSyncedAt: String?); Syncing; Offline;
+  Error(message) }`. Exposed as `StateFlow`; surfaced in UI in 16c.
+- **D-16b.9 — Mode-C composition (no triggers/UI yet).** Add a `SyncSessionController` **or** reuse
+  Phase 15's controller with the engine attached: in Mode C the data source is `LocalDataSource`
+  (Phase 13/14 path) **and** a `SyncEngine` is constructed against the authenticated server client
+  (push/pull lambdas bound to a `RemoteDataSource` over the Phase-15 host). The adopt-a-server
+  upload (Phase 15) becomes the **initial push** (first `syncNow()` ships the whole outbox). Mode C
+  is a new `AppMode` value **or** a flag on SERVER mode — **decide in 16c when the UI lands**; in
+  16b wire it behind tests only (do not add a chooser entry yet). **STOP and report** if attaching
+  the engine forces a change to the `LocalSessionController`/`AuthController` public contracts.
+
+#### File manifest (16b, exhaustive)
+**Create — `:core`:** `dto/SyncDtos.kt` (D-16b.1, if not in 16a), `service/SyncMerge.kt` (D-16b.2,
+if not in 16a); tests `service/SyncMergeTest.kt`, `service/CycleReconcileTest.kt`.
+**Modify — `:core`:** `service/CycleRules.kt` (+`reconcileOpenCycles`, D-16b.3).
+**Create — `:app:shared` commonMain:** `data/local/LocalOutbox.kt` (D-16b.4),
+`sqldelight/.../SyncState.sq` (D-16b.5), `data/sync/SyncEngine.kt` + `data/sync/SyncStatus.kt`
+(D-16b.7/8).
+**Modify — `:app:shared` commonMain:** `data/HomeFlowDataSource.kt` (+2 delete methods, D-16b.6),
+`data/RemoteDataSource.kt` (delete impls), `data/local/LocalDataSource.kt` (delete impls + outbox
+on every write + `applyRemote*` paths), the `Local*Store` files (outbox-append in-transaction),
+`data/HomeFlowRepository.kt` (delete pass-throughs).
+**Create — tests (jvmTest):** `data/sync/SyncEngineTest.kt` (drive two in-memory
+`LocalDataSource`s through a fake/in-process server or a `MockEngine`-backed push/pull and assert
+convergence), `data/local/LocalDeleteTest.kt`.
+
+#### Tests to add
+- **`SyncMergeTest`** — later `updatedAt` wins; equal `updatedAt` → greater id wins; symmetric
+  (swapping args flips the winner consistently); tombstone vs. edit by `updatedAt`.
+- **`CycleReconcileTest`** — two open cycles collapse to one open (later start) + the earlier closed
+  at `autoCloseEndDate(laterStart)`; a single open cycle is unchanged.
+- **`SyncEngineTest`** — (a) push: an outbox edit is sent and marked synced; (b) pull: a remote
+  aggregate not present locally is applied; (c) conflict: same-day edit on both sides → later
+  `updatedAt` wins on both; (d) tombstone: a remote delete tombstones locally and is not
+  re-enqueued; (e) slug boundary (D4): a `mood_swings` selection round-trips even when the two
+  stores assign different option UUIDs; (f) resumable: interrupting between push and pull then
+  re-running converges with no dupes.
+- **`LocalDeleteTest`** — `deleteCycle` tombstones the cycle + cascades day tombstones + records
+  outbox `delete`s; `deleteDay` tombstones the day; live reads exclude them.
+
+#### Guardrails — do NOT
+- Do NOT sync sub-logs individually or add per-sub-log change tracking — aggregate granularity only.
+- Do NOT let applying a remote change re-enqueue it to the outbox (echo loop) — use `applyRemote*`.
+- Do NOT compare timestamps for the pull cursor — the cursor is the server `server_seq` (D-16b.5).
+- Do NOT add triggers, timers, connectivity listeners, a `SyncStatus` UI, or a Mode-C chooser entry
+  (all 16c). 16b exposes `syncNow()` for tests only.
+- Do NOT change `LocalDataSource`/`RemoteDataSource` existing method behavior beyond adding deletes
+  + outbox recording; do NOT log sync bodies or health data.
+- Keep `:core` pure — `SyncDtos`/`SyncMerge`/`CycleRules` import only kotlinx-serialization/datetime.
+
+#### Done when (16b)
+- [ ] `./gradlew :core:allTests` green incl. `SyncMergeTest`, `CycleReconcileTest`.
+- [ ] `./gradlew :app:shared:check` green incl. `SyncEngineTest`, `LocalDeleteTest`; Android
+  host-test compiles; `:app:androidApp:assembleDebug` + `:app:desktopApp` build.
+- [ ] Outbox records exactly one aggregate row per local write; `applyRemote*` does not.
+- [ ] Two in-memory stores driven by `syncNow()` converge for: new edits both ways, same-day
+  conflict (LWW), tombstones (no resurrection), slug-keyed selections across differing UUIDs,
+  and an interrupted-then-rerun sync (idempotent).
+- [ ] `deleteCycle`/`deleteDay` exist on the seam and both data sources; local deletes tombstone +
+  enqueue. (No `CHANGELOG.md` entry yet — 16c ships Mode C.)
+
+#### Risks / stop-conditions (16b)
+- **Echo loop** (applying a pulled change re-enqueues it, causing endless sync) — the `applyRemote*`
+  path is the guard; if the store design can't cleanly bypass outbox recording, STOP and report.
+- **Authenticated client reuse** — the engine needs the same bearer-attached client `AuthController`
+  builds; bind push/pull to it as Phase 15 did for upload. STOP if it forces a public-contract
+  change (D-16b.9).
+- **Aggregate assembly cost** — building a `SyncDay` per pending outbox row re-reads the day; fine
+  for this data volume; do not prematurely batch.
+
+---
+
+### Phase 16c — Triggers, status UI, delete UI, Mode-C activation + end-to-end convergence
+
+**Goal:** turn the 16b reconciler into the shipped **Mode C** feature: automatic sync triggers,
+a visible `SyncStatus`, the delete-cycle/delete-day UI, the Mode-C selection/activation, and the
+end-to-end two-device convergence guarantees + docs + changelog.
+
+#### Decisions (closed)
+- **D-16c.1 — Triggers (all best-effort, all funnel to `SyncEngine.syncNow()`):** on app
+  foreground (lifecycle), after each local write **debounced** (~2 s; coalesce a burst into one
+  sync), on **connectivity regained** (platform `expect`/`actual` connectivity signal — Android
+  `ConnectivityManager`, desktop a reachability poll), and a periodic timer (~15 min) while
+  foregrounded. Failures retry on the next trigger; no trigger blocks the UI.
+- **D-16c.2 — `SyncStatus` in the shell.** Surface `SyncEngine.status` in `AppShell` (a small top-bar
+  indicator: Idle+lastSyncedAt / Syncing / Offline / Error) — visible only in Mode C.
+- **D-16c.3 — Delete UI.** A "Delete cycle" affordance in the Cycles screen and "Delete day" in the
+  Day screen, each behind a type-/tap-to-confirm dialog (mirror `PreferencesScreen`'s delete
+  dialog), calling `repository.deleteCycle/deleteDay`. Available in all modes (the seam supports it
+  everywhere); a delete in Mode C enqueues a tombstone that syncs.
+- **D-16c.4 — Mode-C activation.** Decide the surfacing: either a third chooser path / a Settings
+  toggle "Work offline (sync with my server)" on a Mode-B install, **or** make Mode C the default
+  behavior of SERVER mode once a server is adopted (online-first becomes offline-first). Pick the
+  least-surprising option for the single-user product and pin it here; reuse Phase 15's host +
+  adopt-a-server upload as the initial push.
+- **D-16c.5 — Encryption/security re-verification** (no new boundaries): wire stays plaintext over
+  TLS; server at-rest ciphertext; local at-rest DEK; no key on the wire; no body logging;
+  row-scoping holds.
+
+#### File manifest (16c)
+**Create:** `platform/Connectivity.kt` (+ android/jvm actuals), UI for delete dialogs + the
+`SyncStatus` indicator, a `SyncController`/trigger wiring (foreground/debounce/timer).
+**Modify:** `ui/shell/AppShell.kt` (status indicator + delete entry points), `ui/screens/CyclesScreen.kt`
++ `DayScreen.kt` (delete actions), `ui/AppRoot.kt` (Mode-C composition + engine lifecycle), the
+entry points if a lifecycle hook is needed.
+**Docs:** `ARCHITECTURE-server.md` + `ARCHITECTURE-client.md` (sync design), `threat-model.md`
+(sync wire/at-rest threats), `API.md` (final `/sync` + delete docs), `CHANGELOG.md`: "Work
+offline; your devices sync through your server when reconnected."
+
+#### Tests to add
+- Trigger unit tests (debounce coalesces; connectivity-regained fires `syncNow`) with a fake engine.
+- Delete-UI Compose tests (confirm dialog → `deleteCycle/deleteDay` called).
+- **Manual / E2E two-device** (document; needs a running server): edit on desktop → appears on
+  Android after sync and vice-versa (deep compare); offline edits on different days reconcile with
+  no loss; same-day offline conflict → later `updatedAt` wins on both; delete on A propagates to B
+  with no resurrection; interrupting a sync and re-running converges.
+
+#### Guardrails — do NOT
+- Do NOT let any trigger block the UI thread or the composition; sync is background + best-effort.
+- Do NOT change the 16a wire protocol or the 16b merge contract — 16c is wiring + UI only.
+- Do NOT log sync bodies/health data; keep `FLAG_SECURE`; do NOT weaken row-scoping or encryption.
+
+#### Done when (16c) — the Mode-C guarantees
+- [ ] `./gradlew check` green across modules; new trigger/UI tests pass.
+- [ ] **Two-device convergence (online):** edits both directions converge (deep DB compare).
+- [ ] **Offline reconcile:** different-day offline edits on A and B converge with no loss.
+- [ ] **Conflict:** same-day offline edits → later `updatedAt` wins deterministically on both; no
+  dup rows, no partial merge.
+- [ ] **Tombstone propagation:** delete on A → B reflects it after sync and does not resurrect it.
+- [ ] **Cycle-boundary conflict** resolves via the shared `:core` rule, not raw LWW.
+- [ ] **Idempotent/resumable:** interrupting a sync mid-flight and re-running converges; no dupes.
+- [ ] **Slug boundary (D4):** a `mood_swings` selection round-trips despite differing option UUIDs.
+- [ ] Security re-verified (D-16c.5); `SyncStatus` visible; delete UI works in every mode.
+- [ ] Docs updated; `CHANGELOG.md`: "Work offline; your devices sync through your server when
+  reconnected."
+
+#### Risks / stop-conditions (16c)
+- **Connectivity signal portability** — if a clean cross-platform connectivity `expect`/`actual` is
+  awkward, fall back to "try `syncNow`, treat failure as Offline, retry on timer/foreground"
+  rather than blocking on a perfect signal.
+- **Clock skew** — only the LWW comparator uses `updatedAt`; the cursor is the server seq. If skew
+  is observed corrupting same-second ties, the deterministic id tie-break already converges both
+  sides identically.
+- **Partial-aggregate writes** — always ship the **whole** day aggregate as one unit (16b builds it
+  whole) so a half-applied day cannot occur.
+- Scope creep toward CRDTs — explicitly out of scope; per-aggregate LWW + the two `:core` domain
   rules is the contract.
 
 ---
@@ -1635,12 +1990,14 @@ transaction). **Client (SQLDelight):** `sync_outbox` already exists (13); add a
 
 ## 5. Sequencing & branch guidance
 
-- One feature branch per phase, stacked, matching the existing `feature/phase-N-…`
-  convention (`BRANCHING.md`). Do not start a phase until the prior phase's **Done when**
-  is fully green.
-- Phases 11–13 are safe to land with **no user-visible change** (refactor + dormant
-  capability) — ship them first to de-risk. Phases 14/15/16 each flip on a mode.
-- Keep the server backward-compatible: 11/12/16's server additions are **additive**
-  (new optional `id`, new routes, new columns) so an older client keeps working during
-  rollout.
+- One feature branch per phase (and per **sub-phase** for 16), stacked, matching the existing
+  `feature/phase-N-…` convention (`BRANCHING.md`) — e.g. `feature/phase-16a-server-sync`,
+  `feature/phase-16b-client-reconciler`, `feature/phase-16c-mode-c`. Do not start a phase until
+  the prior phase's **Done when** is fully green.
+- Phases 11–13 and **16a/16b** are safe to land with **no user-visible change** (refactor +
+  dormant/internal capability) — ship them first to de-risk. Phases 14/15 and **16c** each flip
+  on a mode.
+- Keep the server backward-compatible: 11/12 and **16a**'s server additions are **additive**
+  (new optional `id`, new routes, new `deleted_at`/`sync_changes`, the `/sync` endpoints) so an
+  older client keeps working during rollout.
 ```

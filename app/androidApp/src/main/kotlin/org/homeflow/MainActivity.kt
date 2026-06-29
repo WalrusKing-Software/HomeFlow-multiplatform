@@ -10,10 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CompletableDeferred
-import org.homeflow.app.shared.config.AuthConfig
-import org.homeflow.app.shared.config.authConfigForHost
-import org.homeflow.app.shared.config.createServerConfigStore
-import org.homeflow.app.shared.config.defaultAuthConfig
 import org.homeflow.app.shared.platform.AndroidAppContext
 import org.homeflow.app.shared.ui.AppRoot
 
@@ -63,24 +59,18 @@ class MainActivity : FragmentActivity() {
             deferred.await()
         }
 
-        // Stored host wins (D-15.2). Fall back to the debug `localhost:8443` override on
-        // debuggable builds (so dev testing works before a host is entered) or the platform
-        // default on release. The SERVER branch in AppRoot reads the store again internally;
-        // this ensures the config passed in is already the right host when AppRoot launches.
+        // Debug builds seed the SERVER host with localhost:8443 so dev testing skips the
+        // host-entry gate; a stored host always wins inside AppRoot, and release passes null
+        // so the gate is shown (D-15.2).
         //
         // Debug setup via adb reverse:
         //   adb reverse tcp:8443 tcp:443     # app https://localhost:8443 -> host Caddy
         //   adb reverse tcp:8180 tcp:8180    # Keycloak frontend URL (login page) -> host
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val storedHost = createServerConfigStore().loadHost()
-        val config: AuthConfig = when {
-            storedHost != null -> authConfigForHost(storedHost)
-            debuggable -> AuthConfig(host = "localhost:8443")
-            else -> defaultAuthConfig()
-        }
+        val serverHostOverride = if (debuggable) "localhost:8443" else null
 
         setContent {
-            AppRoot(config)
+            AppRoot(serverHostOverride = serverHostOverride)
         }
     }
 
