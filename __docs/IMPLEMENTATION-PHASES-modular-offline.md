@@ -1218,72 +1218,291 @@ and a mode chooser.
 
 ## Phase 15 — Server-connected mode + "adopt a server" migration (Mode B)
 
-**Goal:** let a user point the app at their self-hosted server (today's online model, now
-*configurable at runtime*), and provide the **one-time migration** that lifts existing
-Mode-A local data up to the server so a second device can see it. This is Mode B and the
-canonical "I got a server + a phone" story — **without** offline sync yet (that is 16).
+> **Executable spec.** Decisions are **closed**. Compose screen *layout* has latitude
+> (match the existing screens' style), but every seam, type, persisted key, state
+> transition, and file below is fixed. Do not add any sync, offline cache, or two-way
+> merge — those are Phase 16. If the code contradicts the spec, **STOP and report**.
 
-### Background / why
-Your usage story is *sequential*: local first, then adopt a server. Because adoption makes
-the server the single source of truth at that moment, there is no two-way merge here —
-this phase deliberately avoids the hard sync problem (deferred to 16).
+**Goal:** ship **Mode B** — let the user point the app at their self-hosted server at
+**runtime** (today's compile-time host becomes user-entered + persisted), run the existing
+Keycloak OIDC + PKCE login against it, and perform the **one-time "adopt a server"
+migration** that lifts a Mode-A device's local data up to the server (local export →
+`POST /import?source=homeflow`, Phase 12). After adoption the app is an online client
+exactly as today; a second device "Connect to a server" + login and sees the same data.
+This is the canonical "I have a desktop → I stand up a server + get a phone" story —
+**without** offline sync (that is Phase 16).
 
-### Design decisions
-- **Runtime server config.** Replace the compile-time `AuthConfig` host with a
-  user-entered server host (the Tailscale `*.ts.net` canonical name) persisted in
-  settings. `AuthConfig`/`platformOidc` become seeded-but-overridable. A "Connect to a
-  server" flow collects the host, runs the existing Keycloak OIDC + PKCE login, and
-  switches `AppMode = SERVER`.
-- **Mode B data source = `RemoteDataSource`** (today's online behavior, unchanged) behind
-  the seam. After adoption the app is an online client; the local DB is **retired to a
-  cache or left dormant** (we do *not* keep editing it independently — that would create
-  drift requiring 16). Pin this: in Mode B, writes go to the server; reads come from the
-  server; the local store is not the source of truth.
-- **Adopt-a-server migration = local export → server import (Phase 12).** On first
-  connect from a device that has Mode-A data: prompt "Upload this device's data to the
-  server?" → generate `homeflow_export` locally → `POST /import?source=homeflow`. Additive
-  + idempotent means re-running is safe and a second device with no local data simply skips
-  it. After a successful upload, mark local data as migrated.
-- **Second device** (Android) installs, picks "Connect to a server," logs in, and reads the
-  same server data — no migration needed there.
+### Why now / what's actually left
+The seam (11), the interchange format + server import (12), the local store (13), and the
+mode chooser + `SessionController` + `LocalExporter` (14) are done. Mode B is therefore
+**runtime host config + a host-entry screen + one new remote upload call + a migration
+orchestrator + Settings plumbing** — almost no new domain logic. `AuthController`,
+`RemoteDataSource`, the OIDC actuals, and `AppRoot`'s SERVER branch already exist; this
+phase makes the host runtime and adds the adoption path.
 
-### Tasks
-**`:app:shared`**
-- [ ] Runtime server-host config (persisted) + "Connect to a server" screen; thread it into
-  `AuthConfig`/OIDC.
-- [ ] Mode switch LOCAL_ONLY → SERVER; composition root selects `RemoteDataSource` +
-  `KeycloakSessionController`.
-- [ ] Adoption flow: detect local data, offer upload, call local-export → `POST /import`,
-  show `ImportResultDto` summary, mark migrated.
-- [ ] Settings: show current mode + server; allow connecting a server from a Mode-A install.
+### Key facts (verified against the current client — do not violate)
+- `AuthConfig(host, realm, scopes, scheme)` (`config/AuthConfig.kt`) derives `issuer`,
+  `authorizationEndpoint`, `tokenEndpoint`, `endSessionEndpoint`, and `apiBaseUrl` from a
+  **single `host`** string. `defaultAuthConfig() = AuthConfig(host = platformOidc.defaultHost)`.
+  `platformOidc` (per-platform `clientId`/`redirectUri`/`defaultHost`) is **unchanged** by
+  this phase — only the **host** becomes runtime. `buildAuthController(config)` builds the
+  OIDC client + token store + gate from the config; `keycloakSessionController(config)`
+  wraps it (`auth/SessionControllerFactory.kt`).
+- `AppRoot(serverConfig: AuthConfig = defaultAuthConfig())` already dispatches `null` →
+  chooser, `LOCAL_ONLY` → `localSessionController`, `SERVER` →
+  `keycloakSessionController(serverConfig)`. Phase 15 makes the SERVER branch read the
+  **persisted host** and adds a host-entry sub-gate when none is stored yet.
+- **`RemoteDataSource` has no import method** and the `HomeFlowDataSource` seam has exactly
+  20 methods, none of them import. The adoption upload is therefore a **remote-only** call
+  added to `RemoteDataSource` **outside** the seam (LocalDataSource must NOT implement it).
+- The server import is `POST /api/v1/import?source=homeflow`, **multipart/form-data** with a
+  single file part (the route reads the first `PartData.FileItem` regardless of part name;
+  use name `file`), 25 MB cap, returns `ImportResultDto(cyclesCreated, dailyLogsCreated,
+  dailyLogsSkipped, warnings)`. It is **additive + idempotent** (Phase 12, D-12.7) — re-running
+  is safe.
+- `LocalExporter(db, refData, logsStore).export(): HomeFlowExport` (Phase 14, D-14.7) already
+  produces the exact slug-keyed JSON the import accepts. `LocalKeyStore.loadDek()` returns the
+  DEK **or null if none was ever created**; `LocalDatabaseFactory().create(dek)` opens the
+  encrypted DB; `LocalBootstrap.seed(db)` + `LocalBootstrap.LOCAL_USER_ID` exist. Reuse all of
+  these — do **not** modify them.
+- Ktor client `MultiPartFormDataContent` + `formData {}` live in `ktor-client-core`
+  (`io.ktor.client.request.forms.*`) — already on the `:app:shared` classpath. **No new
+  dependency.** The auth/bearer plugin already attaches the access token to outgoing requests.
 
-**docs**
-- [ ] `ARCHITECTURE-client.md` / `DEPLOYMENT.md`: runtime host config replaces the
-  hardcoded constant; the adoption runbook.
+### Decisions (closed)
 
-### Done when
-- [ ] A Mode-A desktop with logged data can: enter a server host → complete Keycloak login
-  (password + passkey) → upload its data → and thereafter read/write that data **on the
-  server** (verified by querying the server DB / a second client).
-- [ ] A **fresh Android** app picks "Connect to a server," logs into the same server, and
-  sees the desktop-originated data — desktop and Android now show identical data via the
-  server.
-- [ ] Re-running the upload is a no-op (`cyclesCreated=0, dailyLogsCreated=0`) — idempotent
-  (relies on Phase 12).
-- [ ] Writes from either device while online appear on the other after refresh (single
-  source of truth; no merge logic involved).
-- [ ] Switching a device to Mode B does not lose its pre-existing local data (it was
-  uploaded first); the local DB is no longer treated as authoritative in Mode B.
-- [ ] Token storage/security posture unchanged from Phase 7/10 (refresh token in secure
-  store, access token in memory, no body logging) — re-verify the client security
-  checklist.
-- [ ] `CHANGELOG.md`: "Connect the app to your self-hosted server and migrate your local
-  data to it; use the same data across devices."
+- **D-15.1 — Runtime server config lives in a NEW non-sensitive `ServerConfigStore`
+  (`expect`/`actual`, sibling of `AppModeStore`).** It must be readable **before** unlock and
+  is **not** secret (the host is a public hostname), so it does **not** live in the encrypted
+  DB. Interface (package `org.homeflow.app.shared.config`):
+  ```kotlin
+  interface ServerConfigStore {
+      fun loadHost(): String?        // null until the user enters one
+      fun saveHost(host: String)
+      fun isMigrated(): Boolean      // true once this device's local data was uploaded
+      fun setMigrated()
+      fun clear()                    // host + migrated flag (account deletion / mode reset)
+  }
+  expect fun createServerConfigStore(): ServerConfigStore
+  ```
+  Actuals mirror `AppModeStore`: **Android** = plain `SharedPreferences` (a new prefs file
+  `homeflow_server`); **desktop** = a properties file `~/.homeflow/server.properties` (keys
+  `server_host`, `migrated`). Do **not** widen `AppModeStore`; keep the two stores separate
+  (`AppMode` is the dispatch enum, `ServerConfigStore` is the host + migration flag).
+- **D-15.2 — Host is the only runtime piece; `platformOidc` is untouched.** The persisted host
+  feeds `AuthConfig(host = storedHost)`; `clientId`, `redirectUri`, `realm`, `scheme`, and the
+  derived endpoints come from the existing constants. Add a tiny helper to `AuthConfig.kt`:
+  `fun authConfigForHost(host: String): AuthConfig = AuthConfig(host = host)` (keeps call sites
+  uniform; no other change to `AuthConfig`). The Android debug `localhost:8443` override in
+  `MainActivity` becomes the fallback **only when no host is stored** (stored host wins).
+- **D-15.3 — `AppRoot` SERVER branch = host-entry gate → login.** Replace the SERVER branch:
+  read `serverConfigStore.loadHost()`. `null` → render `ServerConnectScreen` (collect host);
+  on submit `saveHost(host)` and recompose. Non-null → build
+  `keycloakSessionController(authConfigForHost(host))` and render `App(controller, …)` as
+  today. The chooser's `onServer` no longer needs to pre-seed a host — it just sets
+  `AppMode.SERVER`; the SERVER branch's own gate collects the host. `AppRoot` keeps reading
+  `AppModeStore`; add a `remember { createServerConfigStore() }`.
+- **D-15.4 — `ServerConnectScreen` (new).** A single host text field (placeholder
+  `myhost.ts.net`) + "Connect" button, styled like `LoginScreen`/`ModeChooserScreen`.
+  Normalize the entry before saving: trim, strip a leading `https://`/`http://` scheme and any
+  trailing `/`, reject blank (inline error). Persist the bare host (e.g. `myhost.ts.net`).
+  Reachable from (a) the SERVER-branch gate and (b) Settings "Connect to a server" in a Mode-A
+  install (D-15.8). Do **not** validate reachability here — a bad host surfaces as the existing
+  OIDC/`getMe` failure path.
+- **D-15.5 — Mode-B data source = `RemoteDataSource`, unchanged; the local DB is left
+  DORMANT, never wiped, never edited in Mode B.** After adoption the app is an online client
+  exactly as today (`AuthController` over the runtime host). The Mode-A SQLCipher DB and its
+  DEK are **not** deleted (they are the pre-migration backup and become Phase 16's live cache)
+  but Mode B **never reads or writes them**. Pin: in Mode B, reads and writes go to the server;
+  the local store is not the source of truth. Do **not** add any local-cache write path in
+  Mode B (that would create the very drift Phase 16 exists to solve).
+- **D-15.6 — Adoption upload = one new remote-only method + a multipart helper.** Add to
+  `data/ApiResult.kt` (next to `apiSend`) a helper:
+  ```kotlin
+  suspend fun HttpClient.apiUploadImport(path: String, json: String): ApiResult<ImportResultDto>
+  ```
+  that POSTs `MultiPartFormDataContent(formData { append("file", json, Headers { … filename …
+  ContentType.Application.Json }) })` and maps the response via `toApiResult`/`toFailure`
+  (same error mapping as the other helpers). Add to **`RemoteDataSource` only** (NOT the
+  `HomeFlowDataSource` interface):
+  ```kotlin
+  suspend fun uploadHomeflowImport(json: String): ApiResult<ImportResultDto> =
+      client.apiUploadImport("import?source=homeflow", json)
+  ```
+  (`import?source=homeflow` resolves under the `apiBaseUrl` trailing-slash, like every other path.)
+- **D-15.7 — `ServerMigration` orchestrator (new, commonMain).** A pure orchestrator that
+  builds the local export and uploads it, decoupled from `AuthController` via an uploader
+  lambda so it is unit-testable:
+  ```kotlin
+  class ServerMigration(
+      private val keyStore: LocalKeyStore,
+      private val dbFactory: LocalDatabaseFactory,
+      private val serverConfigStore: ServerConfigStore,
+  ) {
+      /** True only when a local DB with at least one cycle exists and it was not yet migrated. */
+      fun hasUnmigratedLocalData(): Boolean
+      /**
+       * Builds the local HomeFlowExport, uploads it via [upload], and on success calls
+       * serverConfigStore.setMigrated(). Returns the server summary, or null if there was
+       * nothing to migrate. Never throws on an empty/absent local store.
+       */
+      suspend fun migrate(upload: suspend (String) -> ApiResult<ImportResultDto>): ImportResultDto?
+  }
+  ```
+  `hasUnmigratedLocalData()` short-circuits to `false` when `keyStore.loadDek() == null`
+  (a pure Mode-B install never created a DEK — do **not** call `loadOrCreateDek` here, that
+  would fabricate an empty encrypted DB). When a DEK exists, open the DB
+  (`dbFactory.create(dek)` + `LocalBootstrap.seed`), check for ≥1 cycle row, and return
+  `false`/skip when empty. `migrate` reuses `LocalExporter` to serialize the same JSON the
+  server import accepts. After a successful upload, `setMigrated()` so it is not offered again.
+- **D-15.8 — Migration is surfaced two ways, both calling `ServerMigration.migrate`:**
+  1. **Auto-prompt once**, right after the first successful server login on a device with
+     unmigrated local data: `AppRoot`'s SERVER branch, on the `Authenticated` state, if
+     `serverMigration.hasUnmigratedLocalData()` and not already prompted this session, shows an
+     `AlertDialog` "Upload this device's data to the server?" → Confirm runs `migrate`, shows the
+     `ImportResultDto` summary; Skip dismisses (does **not** set migrated, so Settings can still
+     offer it). Use an **observable** flag so the dialog state recomposes (mirror Phase 14's
+     `deleteAccount` recompose caveat).
+  2. **Settings action** (Mode B, while unmigrated local data exists): an "Upload local data to
+     server" button in `PreferencesScreen` that runs the same `migrate` and shows the summary.
+  The upload lambda passed to `migrate` is `controller::uploadLocalData` (D-15.9).
+- **D-15.9 — `AuthController` exposes a migration upload hook; `AppRoot`'s SERVER branch holds
+  the concrete `AuthController`.** Add to `AuthController` a public
+  `suspend fun uploadLocalData(json: String): ApiResult<ImportResultDto> =
+  remote.uploadHomeflowImport(json)` (keep a `private val remote: RemoteDataSource` typed
+  reference alongside the existing `api: HomeFlowDataSource` — they are the same instance; type
+  the field as `RemoteDataSource` and assign `api = remote`). It is valid only while
+  `Authenticated` (the bearer token is attached then). This is **not** on `SessionController`
+  (it is a remote-only migration affordance). `AppRoot`'s SERVER branch calls
+  `buildAuthController(config)` to obtain the concrete `AuthController`, uses it as a
+  `SessionController` for `App(...)`, and passes `it::uploadLocalData` to `ServerMigration`.
+- **D-15.10 — Settings shows mode + host; Mode-A installs get "Connect to a server".** Thread
+  the current `AppMode`, the connected host (Mode B), an `onConnectServer: (() -> Unit)?`
+  (Mode A only), and an `onUploadToServer: (suspend () -> ImportResultDto?)?` (Mode B + unmigrated)
+  through `AppShell` to `PreferencesScreen` (mirror the Phase-14 `onExport` threading). In Mode A,
+  "Connect to a server" flips `AppMode = SERVER` (via an `AppRoot` callback that does
+  `appModeStore.save(SERVER)` + sets the observable mode state) **without** wiping the local DB,
+  so `AppRoot` recomposes into the SERVER host-entry gate. The user's local data stays put and is
+  offered for upload after login.
 
-### Risks
-- Users editing offline in Mode B before 16 exists → silent drift. **Guard:** in Mode B
-  pre-16, surface a clear "offline — changes not saved" state rather than writing to a
-  local cache that never syncs. (16 removes this limitation.)
+### File manifest (exhaustive — create / modify exactly these)
+
+**Create — commonMain:**
+1. `config/ServerConfigStore.kt` — interface + `expect fun createServerConfigStore()` (D-15.1).
+2. `auth/ServerMigration.kt` — the orchestrator (D-15.7).
+3. `ui/ServerConnectScreen.kt` — host-entry screen (D-15.4).
+
+**Create — platform actuals (2):**
+4. `androidMain/.../config/ServerConfigStore.android.kt` (SharedPreferences `homeflow_server`).
+5. `jvmMain/.../config/ServerConfigStore.jvm.kt` (`~/.homeflow/server.properties`).
+
+**Modify — commonMain:**
+6. `config/AuthConfig.kt` — add `fun authConfigForHost(host: String): AuthConfig` (D-15.2).
+7. `data/ApiResult.kt` — add `apiUploadImport(path, json)` multipart helper (D-15.6).
+8. `data/RemoteDataSource.kt` — add `uploadHomeflowImport(json)` (D-15.6); **not** on the seam.
+9. `auth/AuthController.kt` — type the data-source field as `RemoteDataSource remote` (assign
+   `api = remote`); add public `uploadLocalData(json)` (D-15.9). No other behavior change.
+10. `ui/AppRoot.kt` — SERVER branch host-entry gate + concrete `AuthController` + auto-migration
+    prompt; Mode-A→SERVER mode flip callback; `remember { createServerConfigStore() }` +
+    `ServerMigration` (D-15.3/D-15.8/D-15.10).
+11. `ui/App.kt` — thread the new optional Settings callbacks (`onConnectServer`,
+    `onUploadToServer`, current mode/host) to `AppShell` (additive params, default null/Mode-A
+    unaffected).
+12. `ui/shell/AppShell.kt` — add the optional params and pass to `PreferencesScreen` (mirror
+    `onExport`).
+13. `ui/screens/PreferencesScreen.kt` — add a "Server" section: Mode A → "Connect to a server";
+    Mode B → show host + (if unmigrated) "Upload local data to server" with an `ImportResultDto`
+    summary.
+
+**Modify — entry points (1):**
+14. `app/androidApp/.../MainActivity.kt` — pass the stored host (fallback to the debug
+    `localhost:8443` / `defaultAuthConfig()` only when none stored) into `AppRoot`. Desktop
+    `main.kt` needs no change (it already calls `AppRoot()` and the SERVER branch reads the store).
+
+**Docs (3):**
+15. `__docs/ARCHITECTURE-client.md` — runtime host config replaces the compile-time constant;
+    the `ServerConfigStore` seam; the Mode-B "local DB dormant, server is source of truth" rule;
+    the adoption (local-export → import) path.
+16. `__docs/DEPLOYMENT.md` — the "adopt a server" runbook (enter the canonical Tailscale
+    `*.ts.net` host; the WebAuthn RP-ID / `iss` must match that host — cross-ref `KEYCLOAK.md`).
+17. `CHANGELOG.md` — Added: "Connect the app to your self-hosted server and upload your local
+    data to it; use the same data across devices."
+
+### Tests to add (jvmTest unless noted)
+- **`ServerConfigStoreTest`** (jvm, against `DesktopServerConfigStore` with a temp dir):
+  `saveHost`→`loadHost` round-trips; `isMigrated` defaults false and flips after `setMigrated`;
+  `clear()` → host null + migrated false.
+- **`ServerMigrationTest`** (jvm, fakes for `LocalKeyStore`/`ServerConfigStore`, in-memory DB via
+  `TestDbHelper`, a recording upload lambda): (a) no DEK → `hasUnmigratedLocalData()==false`,
+  `migrate{}` returns null, upload never called; (b) DEK + seeded cycles/day → `migrate` builds a
+  slug-keyed `HomeFlowExport`, calls upload **once** with that JSON, returns the stubbed
+  `ImportResultDto`, and `isMigrated()` becomes true; (c) already migrated → skip (upload not
+  called); (d) the JSON passed to upload is UUID-free (reuse the `[0-9a-f]{8}-` regex from
+  `LocalExporterTest`).
+- **`RemoteImportUploadTest`** (commonTest, Ktor `MockEngine`): `uploadHomeflowImport(json)` issues
+  a `POST` to `…/import?source=homeflow` with a `multipart/form-data` body containing the JSON and
+  decodes a `200` `ImportResultDto`; a `400 VALIDATION_ERROR` body maps to
+  `ApiResult.Failure(VALIDATION_ERROR)`.
+- **Manual / dev-server** (document, not automated): a Mode-A desktop with logged data → Settings
+  "Connect to a server" → enter host → Keycloak login (password + passkey) → confirm the upload
+  prompt → server shows the data; re-running the upload is a no-op (`cyclesCreated=0,
+  dailyLogsCreated=0`). A fresh Android "Connect to a server" + login sees the same data.
+
+### Guardrails — do NOT
+- Do NOT add any sync engine, outbox push/pull, server delta routes, or a Mode-B local-write
+  cache — Phase 16. Mode B reads/writes the server only.
+- Do NOT wipe the local DB or DEK on adoption (they are the backup + Phase-16 cache). Do NOT edit
+  the local store in Mode B.
+- Do NOT add `uploadHomeflowImport`/`uploadLocalData` to the `HomeFlowDataSource` interface —
+  it is remote-only; `LocalDataSource` must not implement it.
+- Do NOT change `platformOidc`, `clientId`, `redirectUri`, the OIDC actuals, token storage, or
+  the body-logging posture (refresh token in secure store, access token in memory, **no body
+  logging** — the export JSON is health data; never log it).
+- Do NOT introduce a new server route, a new `ErrorCode`, or a new export/import format — reuse
+  Phase 12's `POST /import?source=homeflow` exactly.
+- Do NOT regress Mode A or the chooser: `LocalSessionController`, `LocalExporter`,
+  `LocalDatabaseFactory`, `LocalKeyStore`, `AppLockGate`, and Phase-14 tests stay unchanged.
+- Do NOT store the host in the encrypted DB (chicken/egg with the DEK) — `ServerConfigStore` is
+  pre-unlock, non-encrypted (D-15.1).
+
+### Done when (automated unless noted)
+- [x] `./gradlew :app:shared:check` green (ktlint + detekt + the three new test files; Android
+  host-test target compiles). `:app:androidApp:assembleDebug` + `:app:desktopApp` build.
+- [x] `ServerConfigStoreTest`, `ServerMigrationTest`, `RemoteImportUploadTest` pass.
+- [ ] **Manual, two devices:** a Mode-A desktop with logged data enters a server host →
+  completes Keycloak login (password + passkey) → confirms the upload → and thereafter
+  reads/writes that data **on the server** (verified via the server DB or a second client).
+- [ ] **Manual, second device:** a fresh Android app picks "Connect to a server," logs into the
+  same server, and sees the desktop-originated data — desktop + Android show identical data.
+- [ ] **Idempotent upload:** re-running the upload is a no-op (`cyclesCreated=0,
+  dailyLogsCreated=0`; relies on Phase 12).
+- [ ] Switching a device to Mode B does **not** lose its local data (uploaded first; local DB
+  retained but no longer authoritative).
+- [ ] Token/security posture unchanged (refresh token in secure store, access token in memory,
+  no body logging) — re-verify the client security checklist; the export JSON is never logged.
+- [x] `ARCHITECTURE-client.md` + `DEPLOYMENT.md` + `CHANGELOG.md` updated.
+
+### Risks / stop-conditions
+- **Ktor client multipart.** If `MultiPartFormDataContent`/`formData` is not resolvable on the
+  `:app:shared` client classpath, or the server rejects the part (it expects the first
+  `PartData.FileItem`), **STOP and report** — do not switch the server route to a raw body or
+  add a new dependency without an explicit decision. (Per D-15.6 multipart should already be on
+  the classpath via `ktor-client-core`.)
+- **Cross-mode DB access during migration.** `ServerMigration` opens the encrypted local DB
+  while the app is running in Mode B. If opening it requires app-lock state that is unavailable
+  post-server-login (the gate is a Mode-A concern), **STOP and report** — the DEK is rooted in
+  the OS secure store and should be readable via `LocalKeyStore.loadDek()` without the gate, but
+  confirm before assuming.
+- **Runtime host ↔ Keycloak.** The entered host must match what Keycloak stamps in `iss` and the
+  WebAuthn RP-ID, or login 401s / the passkey fails (the canonical-hostname gotchas in
+  `CLAUDE.md`/`KEYCLOAK.md`). This is a deployment/config concern, not a client bug — surface the
+  OIDC/`getMe` failure clearly; do not try to "fix" it client-side.
+- **Auto-prompt recompose.** If the migration `AlertDialog` is gated on a non-observable
+  `remember`, it won't appear/recompose after `Authenticated` — use observable state (same caveat
+  as Phase 14's `deleteAccount` → chooser).
+- **`AuthController` field retype.** Typing the data-source field as `RemoteDataSource` must not
+  change any existing behavior; the field is still used via the `HomeFlowDataSource` surface
+  everywhere except the new `uploadLocalData`. The compiler verifies the call sites.
 
 ---
 

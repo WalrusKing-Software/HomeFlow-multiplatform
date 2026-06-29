@@ -167,6 +167,21 @@ Ktor server). Pre-implementation: documentation and specification only.
     (`keystore.properties.example` shows the format).
   - **Polished desktop installers.** The desktop distribution now carries a proper
     app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
+- **Connect the app to your self-hosted server and upload your local data to it (Phase 15 — Mode B).**
+  You can now point the app at your self-hosted server at runtime, log in once, and your
+  data becomes available across all your devices:
+  - **Runtime server configuration.** Tap "Connect to a server" (in the first-run chooser
+    or Settings) and enter your server hostname (e.g. `myhost.ts.net`). The host is
+    remembered; subsequent launches go straight to the Keycloak login.
+  - **"Adopt a server" migration.** If you have existing local data (Mode A), the app
+    detects it after login and prompts you to upload it. One tap sends your entire history
+    to the server via `POST /api/v1/import?source=homeflow` (same endpoint as the server
+    import feature). Re-running the upload is safe — existing data is never duplicated.
+  - **Second device.** A fresh Android or desktop install that connects to the same server
+    immediately sees all the uploaded data.
+  - The migration can also be triggered at any time from Settings ("Upload local data to
+    server") while it has not been confirmed. The local database is never deleted, serving
+    as a backup and as the future Mode C offline cache.
 - **Use HomeFlow entirely on one device — no server required (Phase 14 — Mode A).**
   Both the desktop and Android apps now support a **Local-only mode**: all data
   stays on your device, encrypted at rest, with no server or Keycloak needed:
