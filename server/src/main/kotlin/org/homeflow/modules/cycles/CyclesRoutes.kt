@@ -7,6 +7,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -45,6 +46,11 @@ fun Route.cyclesRoutes(cyclesService: CyclesService) {
                 val principal = requirePrincipal()
                 val request = call.receive<UpdateCycleRequest>()
                 call.respond(cyclesService.updateCycle(principal, cycleId(), request))
+            }
+            delete("/{cycleId}") {
+                val principal = requirePrincipal()
+                cyclesService.deleteCycle(principal, cycleId())
+                call.respond(HttpStatusCode.NoContent)
             }
         }
     }

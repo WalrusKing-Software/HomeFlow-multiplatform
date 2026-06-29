@@ -10,6 +10,9 @@ import org.homeflow.core.dto.CyclesResponse
 import org.homeflow.core.dto.DailyLogDto
 import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.NotesUpdateRequest
+import org.homeflow.core.dto.SyncPullResponse
+import org.homeflow.core.dto.SyncPushRequest
+import org.homeflow.core.dto.SyncPushResponse
 import org.homeflow.core.dto.OptionIdRequest
 import org.homeflow.core.dto.OptionIdsRequest
 import org.homeflow.core.dto.OvulationPredictionDto
@@ -64,6 +67,10 @@ class RemoteDataSource(
         endDate: String,
     ): ApiResult<CycleDto> = client.apiSendReceiving(HttpMethod.Patch, "cycles/$cycleId", UpdateCycleRequest(endDate))
 
+    /** Soft-delete [cycleId] and cascade to its daily logs. 204 on success. */
+    override suspend fun deleteCycle(cycleId: String): ApiResult<Unit> =
+        client.apiSendEmpty(HttpMethod.Delete, "cycles/$cycleId")
+
     // ── Daily logs ───────────────────────────────────────────────────────────
 
     /** [date] is an ISO `yyyy-MM-dd` string. `404` when no log exists for that day. */
@@ -74,6 +81,10 @@ class RemoteDataSource(
         date: String,
         cycleId: String,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Post, "daily-logs", CreateDailyLogRequest(date, cycleId))
+
+    /** Soft-delete the daily log anchor for [date] and its sub-logs. 204 on success. */
+    override suspend fun deleteDay(date: String): ApiResult<Unit> =
+        client.apiSendEmpty(HttpMethod.Delete, "daily-logs/$date")
 
     /** Replace a multi-select sub-log ([endpoint] = `emotions`, `sleep`, …); empty list clears it. */
     override suspend fun putOptionIds(
@@ -125,6 +136,16 @@ class RemoteDataSource(
         client.apiGet("ref-data/symptom-categories")
 
     override suspend fun getPainRegions(): ApiResult<PainRegionsResponse> = client.apiGet("ref-data/pain-regions")
+
+    // ── Sync (Phase 16b — not on the HomeFlowDataSource seam) ───────────────────
+
+    /** Push pending local changes to the server; returns the server's view of each entity + cursor. */
+    suspend fun pushSync(request: SyncPushRequest): ApiResult<SyncPushResponse> =
+        client.apiSendReceiving(HttpMethod.Post, "sync/changes", request)
+
+    /** Pull server changes since [cursor]; returns changed entities + new cursor. */
+    suspend fun pullSync(cursor: Long): ApiResult<SyncPullResponse> =
+        client.apiGet("sync/changes?cursor=$cursor")
 
     // ── Migration (not on the seam — LocalDataSource must not implement this) ──
 

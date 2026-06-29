@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +57,7 @@ fun CyclesScreen(repository: HomeFlowRepository) {
             if (cycles.isEmpty()) {
                 EmptyHint("No cycles yet.")
             } else {
-                cycles.forEach { CycleCard(repository, it, onClosed = { reloadKey++ }) }
+                cycles.forEach { CycleCard(repository, it, onClosed = { reloadKey++ }, onDeleted = { reloadKey++ }) }
             }
         }
     }
@@ -113,16 +115,66 @@ private fun CycleCard(
     repository: HomeFlowRepository,
     cycle: CycleDto,
     onClosed: () -> Unit,
+    onDeleted: () -> Unit,
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val title = if (cycle.endDate == null) "${cycle.startDate} → open" else "${cycle.startDate} → ${cycle.endDate}"
+
+    if (showDeleteDialog) {
+        DeleteCycleDialog(
+            cycleTitle = title,
+            onConfirm = {
+                showDeleteDialog = false
+                scope.launch {
+                    when (val result = repository.deleteCycle(cycle.id)) {
+                        is ApiResult.Success -> onDeleted()
+                        is ApiResult.Failure -> deleteError = result.message
+                    }
+                }
+            },
+            onDismiss = { showDeleteDialog = false },
+        )
+    }
+
     SectionCard(title) {
         val length = cycle.endDate?.let { cycleLength(LocalDate.parse(cycle.startDate), LocalDate.parse(it)) }
         KeyValueRow("Status", if (cycle.endDate == null) "Open" else "Closed")
         KeyValueRow("Length", length?.let { "$it days" } ?: "In progress")
+        deleteError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (cycle.endDate == null) {
             CloseCycleControls(repository, cycle, onClosed)
         }
+        OutlinedButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Delete cycle") }
     }
+}
+
+@Composable
+private fun DeleteCycleDialog(
+    cycleTitle: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete cycle?") },
+        text = {
+            Text(
+                "This will permanently delete \"$cycleTitle\" and all its daily logs. " +
+                    "This cannot be undone.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
