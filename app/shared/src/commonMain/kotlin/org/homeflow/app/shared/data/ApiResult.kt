@@ -2,16 +2,21 @@ package org.homeflow.app.shared.data
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import org.homeflow.core.ApiError
 import org.homeflow.core.ErrorCode
+import org.homeflow.core.dto.ImportResultDto
 
 /**
  * The result of one backend call: either the decoded body or a typed failure carrying
@@ -88,6 +93,37 @@ suspend fun HttpClient.apiSendEmpty(
         request(path) { this.method = method }
     }.fold(
         onSuccess = { response -> if (response.status.isSuccess()) ApiResult.Success(Unit) else response.toFailure() },
+        onFailure = { ApiResult.Failure(ErrorCode.INTERNAL_ERROR, it.message ?: "Network error", 0) },
+    )
+
+/**
+ * POST [json] as a `multipart/form-data` file part named `file` to [path], decoding a
+ * successful `ImportResultDto` body. Used exclusively for `POST /import?source=homeflow`.
+ * The JSON is health data — never log it.
+ */
+suspend fun HttpClient.apiUploadImport(
+    path: String,
+    json: String,
+): ApiResult<ImportResultDto> =
+    runCatching {
+        request(path) {
+            method = HttpMethod.Post
+            setBody(
+                MultiPartFormDataContent(
+                    formData {
+                        append(
+                            "file",
+                            json.toByteArray(Charsets.UTF_8),
+                            Headers.build {
+                                append(HttpHeaders.ContentDisposition, "filename=\"import.json\"")
+                            },
+                        )
+                    },
+                ),
+            )
+        }
+    }.fold(
+        onSuccess = { response -> response.toApiResult<ImportResultDto>() },
         onFailure = { ApiResult.Failure(ErrorCode.INTERNAL_ERROR, it.message ?: "Network error", 0) },
     )
 

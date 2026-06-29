@@ -40,19 +40,25 @@ import org.homeflow.app.shared.data.userMessage
 import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
 import org.homeflow.app.shared.ui.components.toLoadable
+import org.homeflow.core.dto.ImportResultDto
 
 /** The text the user must type to confirm the irreversible account deletion. */
 private const val DELETE_CONFIRMATION = "DELETE"
 
 /**
  * Settings: reorder the dashboard tracking categories and persist them, a danger zone for
- * permanent account deletion, and — in Mode A only — an "Export my data" action.
+ * permanent account deletion, and mode-specific actions:
+ * - Mode A: "Export my data" and "Connect to a server".
+ * - Mode B: connected host, and (while not yet migrated) "Upload local data to server".
  */
 @Composable
 fun PreferencesScreen(
     repository: HomeFlowRepository,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
     onExport: (suspend () -> Unit)? = null,
+    onConnectServer: (() -> Unit)? = null,
+    onUploadToServer: (suspend () -> ImportResultDto?)? = null,
+    connectedHost: String? = null,
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     val state by produceState<Loadable<PreferencesEditor>>(Loadable.Loading, repository, reloadKey) {
@@ -85,6 +91,11 @@ fun PreferencesScreen(
             is Loadable.Loaded -> ReorderForm(repository, current.value)
         }
         if (onExport != null) ExportSection(onExport)
+        ServerSection(
+            connectedHost = connectedHost,
+            onConnectServer = onConnectServer,
+            onUploadToServer = onUploadToServer,
+        )
         DangerZone(onDeleteAccount)
     }
 }
@@ -193,6 +204,91 @@ private fun ExportSection(onExport: suspend () -> Unit) {
             if (busy) CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
             Text("Export my data")
         }
+    }
+}
+
+/**
+ * Server section: visible in both modes but with different content.
+ * - Mode A ([onConnectServer] != null): "Connect to a server" button.
+ * - Mode B ([connectedHost] != null): shows the host; if [onUploadToServer] != null,
+ *   also shows "Upload local data to server" with a result summary.
+ * - Neither set: nothing rendered.
+ */
+@Composable
+private fun ServerSection(
+    connectedHost: String?,
+    onConnectServer: (() -> Unit)?,
+    onUploadToServer: (suspend () -> ImportResultDto?)?,
+) {
+    if (connectedHost == null && onConnectServer == null) return
+
+    SectionCard("Server") {
+        if (connectedHost != null) {
+            Text(
+                "Connected to $connectedHost",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
+        if (onConnectServer != null) {
+            Text(
+                "Link this device to your self-hosted server to back up your data and access it across devices.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onConnectServer,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Connect to a server") }
+        }
+
+        if (onUploadToServer != null) {
+            UploadToServerButton(onUploadToServer)
+        }
+    }
+}
+
+@Composable
+private fun UploadToServerButton(onUploadToServer: suspend () -> ImportResultDto?) {
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ImportResultDto?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    Text(
+        "Upload your locally stored data to the server.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    result?.let { r ->
+        Text(
+            "Uploaded: ${r.cyclesCreated} cycle(s), ${r.dailyLogsCreated} day(s) " +
+                "(${r.dailyLogsSkipped} skipped).",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    error?.let {
+        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+    }
+
+    Button(
+        onClick = {
+            scope.launch {
+                busy = true
+                result = null
+                error = null
+                val r = runCatching { onUploadToServer() }.getOrNull()
+                if (r != null) result = r else error = "Upload failed. Try again."
+                busy = false
+            }
+        },
+        enabled = !busy && result == null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (busy) CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
+        Text(if (result != null) "Uploaded" else "Upload local data to server")
     }
 }
 

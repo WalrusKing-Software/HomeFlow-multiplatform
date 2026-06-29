@@ -12,6 +12,7 @@ import org.homeflow.app.shared.data.RemoteDataSource
 import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
 import org.homeflow.app.shared.data.userMessage
+import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.UserDto
 
 /** The auth-gate state the root composable renders off. */
@@ -68,7 +69,11 @@ class AuthController(
     override val usesPassphraseGate: Boolean = gate.usesPassphrase
 
     private val http: HttpClient = httpClientFactory(config, tokenHolder, ::refreshAndPersist)
-    private val api: HomeFlowDataSource = RemoteDataSource(http)
+
+    // Typed as RemoteDataSource so uploadLocalData can call uploadHomeflowImport (D-15.9).
+    // Both fields point at the same instance; api uses the seam type for all other call sites.
+    private val remote: RemoteDataSource = RemoteDataSource(http)
+    private val api: HomeFlowDataSource = remote
 
     // Kept private — the repository is now surfaced through AuthState.Authenticated.
     private val repository: HomeFlowRepository = HomeFlowRepository(api)
@@ -151,6 +156,14 @@ class AuthController(
                 _state.value = AuthState.LoggedOut
             }
         }
+
+    /**
+     * Upload [json] (a `HomeFlowExport` payload) to the server's import endpoint.
+     * Valid only while [AuthState.Authenticated] (the bearer token is attached by the HTTP
+     * client). Not on [SessionController] — this is a remote-only migration affordance
+     * that [LocalDataSource] must not implement (D-15.6/D-15.9).
+     */
+    suspend fun uploadLocalData(json: String): ApiResult<ImportResultDto> = remote.uploadHomeflowImport(json)
 
     private suspend fun loadUser() {
         _state.value =

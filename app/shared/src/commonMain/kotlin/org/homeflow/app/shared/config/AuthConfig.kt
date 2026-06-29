@@ -42,3 +42,6 @@ expect val platformOidc: PlatformOidc
 
 /** Convenience: the default config for the running platform. */
 fun defaultAuthConfig(): AuthConfig = AuthConfig(host = platformOidc.defaultHost)
+
+/** Build a config for a user-entered [host] (all other fields use defaults). */
+fun authConfigForHost(host: String): AuthConfig = AuthConfig(host = host)

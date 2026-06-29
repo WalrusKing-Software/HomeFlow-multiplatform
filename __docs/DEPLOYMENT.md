@@ -277,9 +277,12 @@ replace `tls internal` with `tls /tlscerts/{$APP_HOSTNAME}.crt /tlscerts/{$APP_H
 set the WebAuthn RP-ID to that name; **re-register the passkey**; recreate
 `keycloak caddy backend`.
 
-**11d — point the apps at the host:** set `AuthConfig.HOST =
-"homeflow.<tailnet>.ts.net"` in `app/shared`. The Android custom-scheme redirect is
-hostname-independent; the desktop loopback redirect is too — only `HOST` changes.
+**11d — point the apps at the host:** launch the app, choose "Connect to a server" from
+the mode chooser (or from Settings if already in Mode A), and enter the bare hostname
+`homeflow.<tailnet>.ts.net`. The app persists the host in `ServerConfigStore`
+(`~/.homeflow/server.properties` / Android SharedPreferences) — you won't need to enter
+it again. The Android custom-scheme redirect and the desktop loopback redirect are both
+hostname-independent; only the hostname matters for the OIDC issuer and API base URL.
 
 **11e — verify** from a device on cellular: the OIDC discovery `iss` is the
 `*.ts.net` URL with a trusted cert (no `-k`), and both apps complete login + `GET
@@ -292,6 +295,31 @@ auto-renew a cert it didn't issue. Re-run monthly and reload Caddy (cron). With
 > Tailscale access is **not** public-internet exposure — no inbound ports; only
 > enrolled devices reach the Pi. Record this when updating `threat-model.md` for
 > the client actors.
+
+---
+
+## Step 12 — "Adopt a server" migration (Mode A → Mode B)
+
+If you have been using HomeFlow in **local-only (Mode A)** on your desktop and now want
+to move that data to your newly-standing server:
+
+1. **Ensure the server is running and reachable** at `homeflow.<tailnet>.ts.net` (Step 11).
+2. **Open Settings on the desktop app** → "Server" section → tap **"Connect to a server"**.
+3. **Enter the hostname** (`homeflow.<tailnet>.ts.net`) and tap Connect.
+4. **Log in** via Keycloak (password + passkey).
+5. **Confirm the upload prompt**: the app detects your local data and offers to upload it.
+   Tap **Upload**. The export JSON is sent to `POST /api/v1/import?source=homeflow`;
+   the result shows how many cycles and days were created.
+6. **Verify** by opening the app on a second device ("Connect to a server", same host),
+   logging in, and confirming the data is present.
+
+**Idempotency:** re-running the upload from Settings is safe — cycles already on the
+server are reused; days that already exist are skipped (`dailyLogsSkipped` count).
+
+**Hostname ↔ Keycloak constraint:** the host you enter must match what Keycloak stamps
+in the `iss` claim and what the WebAuthn RP ID is configured to. If the canonical
+hostname doesn't match, login will 401 and the passkey won't work. See `KEYCLOAK.md`
+for the common-gotchas checklist.
 
 ---
 
