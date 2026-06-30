@@ -618,165 +618,601 @@ Constructor deps (all already in `AppDependencies`): `CyclesRepository`, `DailyL
 
 ## Phase 13 — Local persistence engine (SQLDelight + at-rest encryption)
 
-**Goal:** a fully-working **local store** in `:app:shared` — schema, a `LocalDataSource`
-implementing `HomeFlowDataSource` (Phase 11 seam) backed by SQLDelight, ref-data seeded
-locally, and at-rest encryption (**D5**). Built and **unit/integration-tested in
-isolation**; not yet surfaced as a user mode (that is Phase 14). This is the single
-biggest net-new piece.
+> **Executable spec.** Every decision below is **closed** — there are no "your call"
+> choices and no "spike then decide" gates. Implement exactly what is written; do not add
+> scope (no mode selection, no UI, no DI changes, no sync). If the code or a dependency
+> contradicts the spec, **STOP and report** rather than guessing or silently switching
+> approaches. This is the single biggest net-new piece — it is large but fully specified.
 
-### Background / why
-Mode A and the offline half of Mode C both stand on this. Build and prove it behind the
-seam before wiring any UI, so failures are caught in tests, not first-run.
+**Goal:** a fully-working **local store** in `:app:shared` — an encrypted SQLDelight
+database, a `LocalDataSource` that implements the Phase 11 `HomeFlowDataSource` seam
+against it, ref-data seeded locally by slug, and whole-database at-rest encryption (**D5**).
+Built and **tested in isolation on the JVM target**; **not** surfaced as a user-selectable
+mode (that is Phase 14 — do not add `AppMode`, a chooser, or any composition-root change
+here). **Net user-visible change: zero** (no `CHANGELOG.md` entry — Phase 14 ships Mode A).
 
-### Design decisions
-- **Library:** SQLDelight (KMP) — SQLite on Android, JDBC-SQLite on desktop. Add to
-  `libs.versions.toml` (`sqldelight` version + the `gradle-plugin`, `runtime`,
-  `coroutines-extensions`, `android-driver`, `sqlite-driver` for JVM). Mirrors the
-  server's Exposed tables 1:1 (same columns from `data-model.md`), plus **D2** columns
-  (`updated_at`, soft-delete) on the syncable aggregates.
-- **Ref data is bundled, not synced (D4):** ship the same seed as
-  `V2__seed_ref_data.sql` as a SQLDelight seed (or a bundled JSON in `:core`
-  `commonMain/resources`) and insert on first DB open. Identity inside the local DB is a
-  local UUID; the **slug** is the stable cross-store key.
-- **Domain rules come from `:core`'s `service/` (Phase 11)** — `LocalDataSource` runs the
-  *same* auto-close, option-validation, anchor/sub-log-replace, 409-on-duplicate, and
-  pain-clear rules as the server, against SQLDelight transactions instead of Exposed.
-- **Encryption (D5):** default SQLCipher for whole-DB encryption.
-  - Android: SQLDelight `AndroidSqliteDriver` + SQLCipher (`net.zetetic` / androidx
-    SQLCipher), key bytes from a Keystore-wrapped DEK.
-  - Desktop: a SQLCipher-capable JDBC driver. **Verify driver availability early** — if
-    cross-platform SQLCipher is painful, fall back to **app-layer column encryption**
-    (reuse the same approach as the server: AES-256-GCM on notes + sex + all health
-    option payloads) inside `LocalDataSource`, key from the OS keychain. Decide and
-    record which path was taken in this phase's notes.
-  - The DEK lifecycle reuses the existing secure-storage seam: extend `TokenStore` (or add
-    a sibling `LocalKeyStore` `expect`/`actual`) to wrap/unwrap the DEK with a
-    Keystore-backed key (Android) / OS keychain or passphrase-derived KEK (desktop,
-    reusing `AppLockGate.enroll`).
+### Why now / why behind the seam
+Mode A (Phase 14) and the offline half of Mode C (Phase 16) both stand on this store.
+Building and proving it behind the `HomeFlowDataSource` interface means a second, fully
+self-contained implementation of the *exact* contract `RemoteDataSource` already satisfies
+— so failures are caught by the parity tests here, not at first-run in Phase 14.
 
-### SQLDelight schema (mirror of `data-model.md` + D2/D3)
-- Tables: `cycles`, `daily_logs`, `daily_log_{emotions,sleep,energy,sex,discharge,skin,
-  digestion,flow,collection,mind}`, `pain_logs`, `pain_log_locations`,
-  `user_dashboard_preferences`, and the **ref** tables.
-- Syncable aggregates (`cycles`, `daily_logs`, `pain_logs`, `daily_log_sex`,
-  `user_dashboard_preferences`) get `updated_at TEXT NOT NULL` and
-  `deleted_at TEXT NULL` (ISO-8601). PKs are TEXT UUIDs (**D1**).
-- A `sync_outbox` table is **created here but exercised in Phase 16** (entity_type,
-  entity_id, op, updated_at, synced flag) — cheap to add now so the store records intent
-  from day one even before a server exists (offline-first from the start).
+### Key architectural facts (do not violate)
+- `LocalDataSource` sits **below** the seam, peer to `RemoteDataSource`. Everything in
+  `HomeFlowRepository` (shaping, the label cache, `changedWrites`/`saveDay`, the
+  `optional()` 404→absence mapping) is **reused unchanged** — it calls the data source's
+  per-route methods and never knows which implementation it has. Therefore the entire
+  correctness target for this phase is: *`LocalDataSource` returns the same `ApiResult`s,
+  with the same `ErrorCode`s and DTO shapes, that `RemoteDataSource` returns today.* The
+  interface KDoc in `HomeFlowDataSource.kt` is the **behavioral contract**; honor it exactly.
+- **Both `:app:shared` targets are JVM** (`jvm()` desktop + `androidLibrary`). There is no
+  native/JS target, so JVM/JDK APIs (`javax.crypto`, JDBC) are available in the platform
+  source sets. Crypto/driver code lives in `androidMain`/`jvmMain` behind `expect`/`actual`,
+  never in `commonMain`.
+- **Local DB files never cross devices.** Sync (Phase 16) exchanges plaintext over TLS, not
+  database files. So Android and desktop do **not** need a common on-disk cipher format —
+  each device encrypts its own DB with its own device-rooted key. This removes the only hard
+  cross-platform SQLCipher constraint.
 
-### Tasks
-**Build**
-- [ ] Add SQLDelight plugin + deps to `libs.versions.toml` and `:app:shared` build; define
-  the database module + drivers per platform (`expect`/`actual` driver factory).
+### Decisions (closed)
 
-**`:app:shared` commonMain**
-- [ ] `.sq` schema files (above). Generated queries for all read/write paths.
-- [ ] `LocalDataSource : HomeFlowDataSource` — every method implemented against SQLDelight
-  using `:core` `service/` rules. Mirror `RemoteDataSource` semantics exactly
-  (404→absence becomes "row absent → null/`RESOURCE_NOT_FOUND`"; 409-on-duplicate-day;
-  emptied selection clears; pain cleared when empty).
-- [ ] First-open bootstrap: create schema, seed ref data (idempotent), generate the local
-  user row.
-- [ ] At-rest encryption integration (DEK wrap/unwrap via secure storage).
+- **D-13.1 — Library: SQLDelight 2.x.** Add `sqldelight = "2.0.2"` to `libs.versions.toml`
+  (if 2.0.2 is unresolvable, use the latest `2.0.x`; do **not** move to a 2.1 milestone
+  without reporting). Add the Gradle plugin `app.cash.sqldelight` and the artifacts
+  `runtime`, `coroutines-extensions`, `android-driver` (androidMain), `sqlite-driver`
+  (the JDBC driver, jvmMain test/runtime). The generated database is configured in
+  `:app:shared`'s `commonMain` (`.sq` files), drivers are per-platform.
+- **D-13.2 — At-rest encryption: whole-DB SQLCipher; the DEK comes from platform secure
+  storage; NO client-side column crypto.** The entire local database is encrypted at rest
+  (this is the client analogue of the server's secured Postgres host). Notes and the sex
+  payload are stored as **plaintext columns *inside* the encrypted DB** — the encryption
+  boundary is the database file, not individual columns (do **not** add AES-GCM column
+  crypto on the client; that is a server-only concern). Drivers:
+  - **Android (`androidMain`):** SQLCipher community edition
+    `net.zetetic:sqlcipher-android` + `androidx.sqlite:sqlite` `SupportFactory`, passed to
+    SQLDelight's `AndroidSqliteDriver(schema, context, name, factory = SupportFactory(dek))`.
+  - **Desktop (`jvmMain`):** the encryption-capable JDBC driver
+    `io.github.willena:sqlite-jdbc` (bundles SQLite3MultipleCiphers; SQLCipher-compatible);
+    open a `JdbcSqliteDriver(url)` and immediately execute `PRAGMA key = "x'<hex-dek>'";`
+    before any other statement. **If `io.github.willena:sqlite-jdbc` cannot be resolved or
+    its `PRAGMA key` is rejected at runtime, STOP and report** — do not fall back to an
+    unencrypted desktop DB or to column crypto without an explicit decision from the user.
+- **D-13.3 — DEK lifecycle via a new `LocalKeyStore` `expect`/`actual`.** Add
+  `LocalKeyStore` (sibling of `TokenStore`, package `org.homeflow.app.shared.auth`) with
+  `fun loadOrCreateDek(): ByteArray` (32 random bytes on first call; same bytes thereafter)
+  and `fun clearDek()`. Actuals: **Android** stores the DEK (Base64) in a Keystore-backed
+  `EncryptedSharedPreferences` (mirror `AndroidTokenStore`; a separate prefs file is fine);
+  **desktop** stores it (Base64) in the OS keychain via `java-keyring` (mirror
+  `DesktopTokenStore`, new account key). The DEK is **never** written to a plaintext file or
+  a log. Phase 13 does **not** gate the DEK behind `AppLockGate` — that wiring is Phase 14.
+- **D-13.4 — Ref data is bundled and seeded locally by slug (D4), never synced.** The seed
+  is a single Kotlin constant `RefSeed` in `:app:shared/commonMain`
+  (`data/local/RefSeed.kt`) holding the categories/options/regions/locations from the
+  "Seed Data Summary" of `data-model.md` (same slugs, labels, sort orders, selection types,
+  phases). On first DB open, insert it idempotently; each row gets a **locally-generated
+  UUID** — the **slug** is the stable identity, the UUID is store-local. A test asserts the
+  seed's slug sets + counts equal `data-model.md` exactly (see Tests) so it cannot drift
+  from the server's `V2__seed_ref_data.sql`.
+- **D-13.5 — Reuse the EXISTING `:core` rules; do NOT extract more into `:core`.**
+  `LocalDataSource` reuses `org.homeflow.core.service.autoCloseEndDate` (Phase 11) and the
+  existing `org.homeflow.core.validation.*` functions (`validateCycleStart`,
+  `validateCycleEnd`, `validateDailyLogWithinCycle`, `validateNotes`,
+  `validatePainLocations`, `validateCategoryOrder`). The one rule not already shared —
+  *"a submitted option id must belong to its category"* — is a trivial set-membership check
+  and is **inlined** in `LocalDataSource`; do **not** create new `:core/service/` files for
+  it (same "don't over-extract until forced" lesson as Phases 11/12; there is still only one
+  natural home for each rule). The local store's auto-close, anchor/sub-log-replace,
+  409-on-duplicate, and pain-clear behaviors are **storage operations** expressed in
+  SQLDelight that *call* those shared pure rules — they are not themselves moved to `:core`.
+- **D-13.6 — Exactly one local user (CLAUDE.md: one account).** On first open, insert a
+  single `users` row with a fixed local id. All `LocalDataSource` reads/writes scope to it
+  implicitly. `getMe()` returns a synthetic `UserDto` for that row. `deleteAccount()`
+  **hard-wipes** the database (drop/recreate all data) and calls `LocalKeyStore.clearDek()`
+  — there is no Keycloak in local mode. (Hard wipe, not tombstones: account deletion is
+  global and intentional, per **D3**.)
+- **D-13.7 — D2/D3 columns exist now, are not exercised by the interface yet.** Syncable
+  aggregates carry `updated_at`/`deleted_at`; a `sync_outbox` table exists. The
+  `HomeFlowDataSource` interface has **no** delete-day/delete-cycle method, so tombstones
+  and the outbox are **written but never read** in Phase 13 (Phase 16 reads them). Clearing
+  a sub-log (empty selection) or pain is a **row delete inside the aggregate**, not an
+  aggregate tombstone. Stamp `updated_at` on every aggregate write so Phase 16 inherits it;
+  appending to `sync_outbox` on writes is **optional** in this phase (add the table; wiring
+  the append is allowed but untested — do not block on it).
+- **D-13.8 — Composition.** `LocalDataSource` is assembled from small internal stores that
+  mirror the server's module split (`LocalCyclesStore`, `LocalDailyLogsStore`,
+  `LocalSubsStore`, `LocalPrefsStore`, `LocalRefData`, `LocalAnalytics`) so each method stays
+  small and maps 1:1 to a server repository/service. A `LocalDatabaseFactory`
+  (`expect`/`actual`) builds the driver from the DEK and returns the SQLDelight `Database`.
 
-**platform actuals**
-- [ ] `androidMain`/`jvmMain` SQLDelight driver factories (+ SQLCipher wiring or the
-  column-encryption fallback), and `LocalKeyStore` actuals.
+### Timestamps, dates, and UUIDs (use exactly)
+- **UUIDs:** `kotlin.uuid.Uuid.random().toString()` (stable in Kotlin 2.4.0 — no opt-in).
+  Stored as `TEXT`. This is the client-generated id path of **D1**.
+- **Timestamps (`created_at`/`updated_at`):** ISO-8601 instants via
+  `kotlin.time.Clock.System.now().toString()`, stored as `TEXT`. **Do not** import
+  `kotlinx.datetime.Clock` — `:app:shared` forces kotlinx-datetime 0.7.1 where `Clock`/
+  `Instant` moved to `kotlin.time`; using the old type throws `NoClassDefFoundError` at
+  runtime. (See the project memory note on this.)
+- **Dates (`log_date`, cycle `start_date`/`end_date`):** `kotlinx.datetime.LocalDate`
+  serialized with `.toString()` → ISO `yyyy-MM-dd`, stored as `TEXT`; parse with
+  `LocalDate.parse(...)`.
 
-### Done when
-- [ ] **Parity suite:** a single shared test suite runs the *same* read/write scenarios
-  against `RemoteDataSource` (MockEngine) **and** `LocalDataSource` (in-memory/temp
-  SQLDelight) and asserts identical screen-shaped results — dashboard phase/labels,
-  day resolve, cycle list, analytics, day-editor load, `saveDay` diff behavior, cycle
-  start auto-closes prior, preference reorder. Both pass.
-- [ ] Duplicate-day create → `CONFLICT`; cross-date day fetch absent → null; emptied
-  category clears; pain cleared when no locations — all verified against `LocalDataSource`.
-- [ ] Analytics from `LocalDataSource` equal the server's `AnalyticsTest` fixture values
-  (same `:core` math over locally-stored rows).
-- [ ] **At-rest encryption proven:** a test (or documented manual check) shows the raw DB
-  file bytes do **not** contain a known plaintext note string; opening the DB without the
-  DEK fails. The DEK is never written to plaintext storage/logs.
-- [ ] `./gradlew :app:shared:check` green on JVM + Android host tests; both apps still
-  compile.
-- [ ] This phase's chosen encryption path (SQLCipher vs column-layer) is recorded in the
-  doc + `ARCHITECTURE-client.md`.
+### SQLDelight schema (mirror `data-model.md` 1:1 + D2/D3)
+Create `.sq` files under
+`app/shared/src/commonMain/sqldelight/org/homeflow/app/shared/db/` (package
+`org.homeflow.app.shared.db`). Tables mirror `data-model.md` column-for-column, with these
+type/representation rules: every PK and FK is `TEXT` (UUID string, **D1**); every date is
+`TEXT` (ISO yyyy-MM-dd); every timestamp is `TEXT` (ISO instant); `severity` is `INTEGER`;
+`category_order` is `TEXT` (JSON array of slugs, as the server stores it).
 
-### Risks
-- **Cross-platform SQLCipher** is the top risk — spike the desktop JDBC SQLCipher driver
-  in the first day; fall back to column encryption if it fights the build.
-- SQLDelight schema drift vs the server schema — keep a single source-of-truth table list
-  and cover with the parity suite.
+- `Users.sq` — `users(id, created_at, updated_at)` (no `keycloak_sub` locally; one row).
+- `Cycles.sq` — `cycles(id, user_id, start_date, end_date, created_at, updated_at,
+  deleted_at)`.
+- `DailyLogs.sq` — `daily_logs(id, user_id, cycle_id, log_date, notes, created_at,
+  updated_at, deleted_at)`, `UNIQUE(user_id, log_date)`.
+- `DailyLogSubs.sq` — the ten symptom tables exactly as in `data-model.md`:
+  multi-select `daily_log_{emotions,sleep,discharge,skin,digestion,mind}(id, daily_log_id,
+  user_id, option_id, created_at)` each `UNIQUE(daily_log_id, option_id)`; single-select
+  `daily_log_{energy,flow,collection}(id, daily_log_id UNIQUE, user_id, option_id,
+  created_at)`; and `daily_log_sex(id, daily_log_id UNIQUE, user_id, payload, created_at,
+  updated_at, deleted_at)` — **`payload` is a plaintext JSON array of option-id strings**
+  (the DB file is the encryption boundary; no column crypto, per D-13.2). Keep the single
+  `daily_log_sex` row shape (one row per day) from the sex addendum.
+- `PainLogs.sq` — `pain_logs(id, daily_log_id UNIQUE, user_id, created_at, updated_at,
+  deleted_at)` and `pain_log_locations(id, pain_log_id, user_id, location_id, severity,
+  created_at)`, `UNIQUE(pain_log_id, location_id)`.
+- `Preferences.sq` — `user_dashboard_preferences(id, user_id UNIQUE, category_order,
+  updated_at, deleted_at)`.
+- `RefData.sq` — `ref_symptom_categories(id, slug UNIQUE, label, selection_type, phase,
+  sort_order)`, `ref_symptom_options(id, category_id, slug, label, sort_order,
+  UNIQUE(category_id, slug))`, `ref_pain_regions(id, slug UNIQUE, label, sort_order)`,
+  `ref_pain_locations(id, region_id, slug, label, sort_order, UNIQUE(region_id, slug))`.
+- `SyncOutbox.sq` — `sync_outbox(id, entity_type, entity_id, op, updated_at, synced
+  INTEGER)` — **created, not read** in Phase 13 (D-13.7).
+
+Each `.sq` defines the labeled queries its store needs (insert/select/delete per the
+behaviors below). Generate the database under `databases { create("HomeFlowDb") { … } }` in
+the Gradle config.
+
+### The contract `LocalDataSource` must satisfy (mirror `RemoteDataSource` exactly)
+`class LocalDataSource(private val db: HomeFlowDb) : HomeFlowDataSource`. Every method
+returns an `ApiResult`, mapping outcomes to the same `ErrorCode`s the HTTP path produces:
+
+- `getMe()` → `Success(UserDto)` for the local user.
+- `deleteAccount()` → hard-wipe all data + `clearDek()`; `Success(Unit)`.
+- `getCycles()` → `Success(CyclesResponse(cycles newest-first by start_date))`.
+- `getCurrentCycle()` → the open cycle (`end_date IS NULL`); none → `Failure(RESOURCE_NOT_FOUND)`.
+- `createCycle(startDate)` → validate with `validateCycleStart(start, today)`
+  (`Failure(VALIDATION_ERROR)` on future date); **auto-close** any open cycle by setting its
+  `end_date = autoCloseEndDate(start)`; insert the new cycle (new UUID); `Success(CycleDto)`.
+- `closeCycle(cycleId, endDate)` → cycle absent → `Failure(RESOURCE_NOT_FOUND)`; validate
+  with `validateCycleEnd(start, end, today)`; set `end_date`; `Success(CycleDto)`.
+- `getDailyLog(date)` → assemble the day (anchor + all sub-logs + pain, with `sex` decoded
+  from its JSON payload to option-id strings); no anchor → `Failure(RESOURCE_NOT_FOUND)`.
+  A category with no rows is `null` (not `[]`), exactly as `DailyLogsService.getDailyLog`.
+- `createDailyLog(date, cycleId)` → cycle must be the local user's
+  (`Failure(VALIDATION_ERROR)` if unknown) and the date in range
+  (`validateDailyLogWithinCycle`, `Failure(VALIDATION_ERROR)` out of range); anchor already
+  exists for the date → `Failure(CONFLICT)`; else insert anchor (new UUID); `Success(Unit)`.
+- `putOptionIds(date, endpoint, optionIds)` → no anchor → `Failure(RESOURCE_NOT_FOUND)`;
+  validate each id ∈ the endpoint's category (inlined membership check,
+  `Failure(VALIDATION_ERROR)` on unknown), dedupe; **replace** the category's rows (delete
+  all, insert the set — empty clears); for the `sex` endpoint write/clear the single
+  `daily_log_sex.payload` row; bump anchor `updated_at`; `Success(Unit)`.
+- `putOptionId(date, endpoint, optionId)` → as above for a single-select table; `null`
+  clears; `Success(Unit)`.
+- `patchNotes(date, notes)` → no anchor → `Failure(RESOURCE_NOT_FOUND)`; `validateNotes`
+  (`Failure(VALIDATION_ERROR)` if too long); set/clear `daily_logs.notes`; `Success(Unit)`.
+- `putPain(date, locations)` → no anchor → `Failure(RESOURCE_NOT_FOUND)`;
+  `validatePainLocations` (dupe/severity → `Failure(VALIDATION_ERROR)`); each `locationId`
+  must be a known pain location (`Failure(VALIDATION_ERROR)` otherwise); **replace** the
+  pain log (delete then, if non-empty, insert anchor + locations; empty clears the
+  `pain_logs` row); `Success(Unit)`.
+- `getCycleStats()` / `getPeriodLengthChart()` / `getOvulationPrediction()` /
+  `getSleepPredictions()` → **always `Success`** (never NOT_FOUND); computed by the **same
+  `:core` math** the server's `AnalyticsService` uses (`cycleStats`, `periodLengthChart`,
+  `ovulationPredictions`, `bucketSleepByPhase`, with `predictPhase`/`cycleDayNumber` and the
+  `DEFAULT_*` fallbacks). `LocalAnalytics` builds `ClosedCycleInput`/`SleepDayInput` from
+  local rows exactly as `AnalyticsRepository` builds them from Postgres (bleeding-day =
+  distinct dates with a `daily_log_flow` row in the cycle; sleep bucketed by phase).
+- `getPreferences()` → saved `category_order`, or the default (categories by `sort_order`);
+  `Success(PreferencesDto)`.
+- `putPreferences(categoryOrder)` → `validateCategoryOrder(order, allSlugs)`
+  (`Failure(VALIDATION_ERROR)` on dup/unknown/missing); upsert; `Success(PreferencesResponse)`.
+- `getSymptomCategories()` / `getPainRegions()` → built from the seeded ref tables, grouped
+  and ordered identically to `RefDataService`.
+
+### File manifest (exhaustive — create / modify exactly these)
+
+**Modify build (2):**
+1. `gradle/libs.versions.toml` — add the `sqldelight` version, the `sqldelight` plugin, and
+   library aliases for `runtime`, `coroutines-extensions`, `android-driver`,
+   `sqlite-driver`; add `sqlcipher-android` (`net.zetetic:sqlcipher-android`) +
+   `androidx-sqlite` (`androidx.sqlite:sqlite`); add `willena-sqlite-jdbc`
+   (`io.github.willena:sqlite-jdbc`).
+2. `app/shared/build.gradle.kts` — apply the `app.cash.sqldelight` plugin; add the
+   `sqldelight { databases { create("HomeFlowDb") { packageName.set("org.homeflow.app.shared.db") } } }`
+   block; add `runtime` + `coroutines-extensions` to `commonMain`, `android-driver` +
+   `sqlcipher-android` + `androidx-sqlite` to `androidMain`, `sqlite-driver` +
+   `willena-sqlite-jdbc` to `jvmMain` (and to `jvmTest` so the encrypted JDBC driver is on
+   the test classpath).
+
+**Create — schema (8 `.sq` files):**
+3–10. `Users.sq`, `Cycles.sq`, `DailyLogs.sq`, `DailyLogSubs.sq`, `PainLogs.sq`,
+   `Preferences.sq`, `RefData.sq`, `SyncOutbox.sq` (schemas + queries, per above).
+
+**Create — commonMain Kotlin (`org/homeflow/app/shared/data/local/`):**
+11. `LocalDatabaseFactory.kt` — `expect class LocalDatabaseFactory` with
+    `fun create(dek: ByteArray): HomeFlowDb` (builds the encrypted driver, runs
+    `HomeFlowDb.Schema.create` on first open).
+12. `RefSeed.kt` — the bundled seed constant (D-13.4).
+13. `LocalBootstrap.kt` — first-open setup: create schema (handled by the factory), seed ref
+    data idempotently (only if `ref_symptom_categories` is empty), ensure the single `users`
+    row. Safe to call on every open.
+14. `LocalRefData.kt`, `LocalCyclesStore.kt`, `LocalDailyLogsStore.kt`, `LocalSubsStore.kt`,
+    `LocalPrefsStore.kt`, `LocalAnalytics.kt` — the internal stores (D-13.8).
+15. `LocalDataSource.kt` — `class LocalDataSource(db) : HomeFlowDataSource`, composing the
+    stores and mapping outcomes to `ApiResult` per the contract above.
+
+**Create — secure-storage seam:**
+16. `app/shared/.../auth/LocalKeyStore.kt` — `interface LocalKeyStore` +
+    `expect fun createLocalKeyStore(): LocalKeyStore` (D-13.3).
+
+**Create — platform actuals (4):**
+17. `androidMain/.../data/local/LocalDatabaseFactory.android.kt` — `AndroidSqliteDriver` +
+    SQLCipher `SupportFactory(dek)`.
+18. `jvmMain/.../data/local/LocalDatabaseFactory.jvm.kt` — `JdbcSqliteDriver` +
+    `PRAGMA key` over the willena driver; DB file under the desktop app-data dir.
+19. `androidMain/.../auth/LocalKeyStore.android.kt` — Keystore-backed `EncryptedSharedPreferences`.
+20. `jvmMain/.../auth/LocalKeyStore.jvm.kt` — `java-keyring`.
+
+**Create — tests (jvmTest; the Android host-test JVM cannot load SQLCipher native libs):**
+21. `jvmTest/.../data/local/LocalDataSourceParityTest.kt`
+22. `jvmTest/.../data/local/LocalDataSourceContractTest.kt`
+23. `jvmTest/.../data/local/LocalAnalyticsTest.kt`
+24. `jvmTest/.../data/local/RefSeedTest.kt`
+25. `jvmTest/.../data/local/LocalEncryptionAtRestTest.kt`
+
+**Docs (1):**
+26. `__docs/ARCHITECTURE-client.md` — add a "Local store (Phase 13)" subsection: the
+    `LocalDataSource` peer to `RemoteDataSource`, the SQLDelight schema, **whole-DB SQLCipher
+    as the chosen at-rest path** (and that notes/sex are plaintext *inside* the encrypted DB,
+    unlike the server which additionally column-encrypts them), the `LocalKeyStore`/DEK seam,
+    and the "no health data at rest" exception this introduces (encrypted local store).
+
+### Tests to add (concrete)
+- **`RefSeedTest`** — assert the seed's category slugs/labels/selection-types/phases, option
+  slugs per category, region slugs, and location slugs (and their counts) **exactly equal**
+  the "Seed Data Summary" in `data-model.md`. This is the anti-drift guard for D4.
+- **`LocalDataSourceParityTest`** — drive `HomeFlowRepository(LocalDataSource(...))` through
+  the same scenarios `HomeFlowRepositoryTest` drives over `RemoteDataSource`, asserting the
+  same **screen-shaped** results: `loadDashboard` (current cycle + cycle day + phase + today
+  resolved to labels), `loadDay`, `loadCycles` (newest first), `loadDayEditor` (categories in
+  saved preference order, initial selections pre-populated), `saveDay` (diff → only changed
+  categories written; emptied selection clears; re-`loadDay` reflects it), `startCycle`
+  auto-closes the prior open cycle, and `savePreferences` round-trips. Because the repository
+  resolves option/location ids to **labels** via each source's own ref-data, the two backends
+  yield identical labelled output despite different local UUIDs.
+- **`LocalDataSourceContractTest`** — the error/edge contract directly on `LocalDataSource`:
+  duplicate-day `createDailyLog` → `CONFLICT`; `getDailyLog` for an unlogged date →
+  `Failure(RESOURCE_NOT_FOUND)`; `getCurrentCycle` with no open cycle →
+  `Failure(RESOURCE_NOT_FOUND)`; `putOptionIds`/`patchNotes`/`putPain` before the anchor
+  exists → `Failure(RESOURCE_NOT_FOUND)`; an option id from the wrong category →
+  `Failure(VALIDATION_ERROR)`; an emptied multi-select clears the category; pain cleared when
+  `locations` is empty; `createDailyLog` with an out-of-range date → `Failure(VALIDATION_ERROR)`.
+- **`LocalAnalyticsTest`** — seed a fixture of cycles + flow/sleep days matching the inputs of
+  the server's `AnalyticsPreferencesTest`, and assert `LocalDataSource`'s `getCycleStats`,
+  `getPeriodLengthChart`, `getOvulationPrediction`, and `getSleepPredictions` DTOs equal the
+  same expected values (same `:core` math over locally-stored rows).
+- **`LocalEncryptionAtRestTest`** — write a day with a known notes string (e.g.
+  `"PLAINTEXT_CANARY_NOTE"`), close the DB, then: (1) read the raw DB file bytes and assert
+  the canary string does **not** appear; (2) attempt to open the same file with a **wrong**
+  DEK and assert it fails; (3) open with the correct DEK and assert the note round-trips.
+  Assert the DEK is never written to a plaintext file or logged.
+
+### Guardrails — do NOT
+- Do NOT add any mode concept, `AppMode`, first-run chooser, `SessionController`, DI/
+  composition-root change, file-export, or UI — those are Phases 14–16. Phase 13 only
+  constructs `LocalDataSource` in tests (and the factory/bootstrap it needs).
+- Do NOT touch `RemoteDataSource`, `HomeFlowRepository`, `AuthController`, or the
+  `HomeFlowDataSource` interface signatures — `LocalDataSource` conforms to the seam as-is.
+- Do NOT add AES-GCM (or any) column encryption on the client; the DB file is the boundary
+  (D-13.2). Do NOT fall back to an unencrypted desktop DB — STOP and report instead.
+- Do NOT extract new rules into `:core` — reuse the existing `:core` validation +
+  `autoCloseEndDate` and inline the one-line option-in-category check (D-13.5).
+- Do NOT seed ref data with hardcoded UUIDs or sync ref data — slugs are the cross-store key;
+  local UUIDs are random per store (D-13.4/D4).
+- Do NOT import `kotlinx.datetime.Clock`/`Instant` — use `kotlin.time.Clock` (see Timestamps).
+- Do NOT read/act on `sync_outbox` or tombstones (Phase 16); just create the columns/table.
+- Do NOT log health data, notes, the sex payload, the DEK, or DB rows — no body/row logging.
+- Do NOT put SQLDelight data-source tests in `commonTest` — they need a real driver and the
+  Android host-test JVM can't load SQLCipher native libs; keep them in `jvmTest`.
+
+### Done when (all automated unless noted; run from repo root)
+- [ ] `./gradlew :app:shared:check` green — ktlint + detekt + the JVM test suite (all five new
+  test files) pass; the Android host-test target still compiles and passes.
+- [ ] `./gradlew :app:androidApp:assembleDebug` and `:app:desktopApp:compileKotlinJvm` (or
+  `:app:desktopApp:run` smoke) succeed — both apps still build with the new deps and SQLCipher
+  driver on the classpath. (No app wires `LocalDataSource` yet; this only proves the deps and
+  generated DB compile into both entry points.)
+- [ ] **Parity:** `LocalDataSourceParityTest` passes — `HomeFlowRepository` over
+  `LocalDataSource` produces the same screen-shaped results (dashboard phase/labels, day
+  resolve, cycle list, editor order + initial selections, `saveDay` diff/clear, cycle-start
+  auto-close, preference reorder) as over `RemoteDataSource`.
+- [ ] **Contract:** `LocalDataSourceContractTest` passes — duplicate-day → `CONFLICT`;
+  unlogged date/open-cycle/missing-anchor → `RESOURCE_NOT_FOUND`; wrong-category /
+  out-of-range / bad-preference-order → `VALIDATION_ERROR`; emptied category clears; pain
+  cleared when empty.
+- [ ] **Analytics parity:** `LocalAnalyticsTest` equals the `AnalyticsPreferencesTest` fixture
+  values for all four analytics DTOs.
+- [ ] **Seed integrity:** `RefSeedTest` proves the bundled seed's slug sets + counts equal
+  `data-model.md` (no drift from `V2__seed_ref_data.sql`).
+- [ ] **Encryption proven:** `LocalEncryptionAtRestTest` passes — raw DB bytes contain no
+  plaintext canary; wrong-DEK open fails; correct-DEK round-trips; DEK never in plaintext/logs.
+- [ ] `git grep -n "kotlinx.datetime.Clock" app/shared/src` → no results in the new local code.
+- [ ] `ARCHITECTURE-client.md` records the chosen path (whole-DB SQLCipher) and the local-store
+  design. (No `CHANGELOG.md` entry — Phase 13 has no user-visible behavior.)
+
+### Risks / stop-conditions
+- **Desktop SQLCipher driver (top risk).** If `io.github.willena:sqlite-jdbc` does not resolve
+  on this toolchain, or `PRAGMA key` is rejected/ignored at runtime (the file opens
+  unencrypted), **STOP and report** with the exact error — do not ship an unencrypted desktop
+  DB and do not silently switch to column crypto. (Per D-13.2 the user decides any deviation.)
+- **SQLDelight 2.x ↔ AGP 9.2 `androidLibrary` plugin.** The `android-driver` is a normal AAR
+  dependency on `androidMain`; the Gradle plugin generates source for `commonMain`. If the
+  SQLDelight Gradle plugin conflicts with the new `com.android.kotlin.multiplatform.library`
+  plugin, STOP and report (do not downgrade AGP or restructure modules without asking).
+- **Schema drift.** The `.sq` tables must match `data-model.md` column-for-column (plus D2/D3).
+  `RefSeedTest` guards the seed; a one-line "table list" comment at the top of each `.sq` keeps
+  the columns auditable against the server's Exposed tables.
+- **`kotlin.uuid.Uuid` availability.** It is stable in Kotlin 2.4.0; if the compiler still
+  demands `@OptIn(ExperimentalUuidApi::class)`, add it locally rather than changing the
+  approach.
+- **Pain location slug uniqueness** (already relied on in Phase 12): the flat
+  `locationSlug→id` map is only valid because location slugs are globally unique in the seed —
+  the same `RefSeed` must preserve that. `RefSeedTest` asserts it.
 
 ---
 
 ## Phase 14 — Local-only app mode (Mode A)
 
-**Goal:** ship the first new user-visible capability — the desktop and Android apps run
-with **no server**, data in the local store, behind an app-lock (no Keycloak). This is
-Mode A.
+> **Executable spec.** Decisions are **closed**. Compose screen *layout* has latitude
+> (match the existing screens' style), but every seam, type, state transition, and file
+> below is fixed. Do not add Mode B's runtime-host config or any sync — those are Phases
+> 15/16. If the code contradicts the spec, **STOP and report**.
 
-### Background / why
-With the seam (11), the format (12), and the local engine (13) done, Mode A is mostly
-**composition + a no-server auth path + packaging**.
+**Goal:** ship the first new **user-visible** capability — the desktop and Android apps run
+with **no server and no Keycloak**, all data in the Phase 13 encrypted local store, behind
+the existing app-lock. A first-run chooser picks "Use this device only" (Mode A) or "Connect
+to a server" (today's online behavior, unchanged). This is **Mode A**.
 
-### Design decisions
-- **Mode selection & bootstrap.** Add a persisted `AppMode { LOCAL_ONLY, SERVER }`
-  setting (small `expect`/`actual` prefs or a row in the local DB). A first-run chooser
-  ("Use this device only" vs "Connect to a server") sets it. Composition root reads it and
-  injects `LocalDataSource` (Mode A) or the remote stack (Mode B, Phase 15).
-- **Auth in Mode A = app-lock only.** No Keycloak, no OIDC, no tokens. Reuse
-  `AppLockGate` (biometric on Android; passphrase/credential on desktop) as the *only*
-  gate, and gate it to the DEK unlock (D5). `AuthController` gains a local variant — or,
-  cleaner, factor a small `SessionController` interface with `KeycloakSessionController`
-  (today) and `LocalSessionController` (app-lock + DEK only). The UI's auth-gate states
-  (`LoggedOut`/`Locked`/`Authenticated`) map onto local equivalents (first-run enroll →
-  locked → unlocked).
-- **No network, ever, in Mode A.** No Ktor client is constructed; `FLAG_SECURE` and "no
-  body logging" still apply (no bodies exist, but keep the posture).
-- **Settings parity.** Local mode still offers preference reorder, account/data deletion
-  (wipes the local DB + DEK), and **export** (writes a `homeflow_export` file via Phase
-  12's `:core` mapper, locally) — export is the user's backup *and* their future
-  migration file.
+### Why now / what's actually left
+The seam (11), the interchange format (12), and the local engine (13, reviewed + green) are
+done. Mode A is therefore **composition + a no-server session path + local export +
+packaging** — almost no new domain logic. The local store already satisfies the entire
+`HomeFlowDataSource` contract; this phase wires it to the UI through a session abstraction
+and a mode chooser.
 
-### Tasks
-**`:app:shared`**
-- [ ] `AppMode` persisted setting + `expect`/`actual` store; first-run mode chooser screen.
-- [ ] `SessionController` abstraction; `LocalSessionController` (enroll → unlock DEK →
-  open `LocalDataSource`). Wire the existing shell/screens to render off it.
-- [ ] Local **export to file** (reuse Phase 12 `:core` mapper) and **local data wipe**.
-- [ ] Composition root: choose data source + session controller by `AppMode`.
+### Key facts (verified against the current client — do not violate)
+- The root `App.kt` already renders off `AuthController.state: StateFlow<AuthState>` with
+  states `LoggedOut / Authenticating / Locked(needsEnrollment) / Authenticated(user) /
+  Error`, and reads `controller.usesPassphraseGate` + `controller.repository`. `AppShell`
+  takes a `HomeFlowRepository` + `onLogout` + `onDeleteAccount`. **Mode A reuses all of
+  this** — same states, same shell, same screens — with a different controller behind it.
+- `AppLockGate` already implements `needsEnrollment()/enroll(secret)/authenticate(secret?)`
+  (desktop = PBKDF2 passphrase in the OS keychain; Android = `BiometricPrompt`). Mode A
+  reuses it **unchanged** as the only gate.
+- Phase 13 shipped `LocalKeyStore` (`loadDek/saveDek/clearDek`), `LocalDatabaseFactory`
+  (`create(dek): HomeFlowDb`), `LocalBootstrap.seed(db)`, and `LocalDataSource(db)`. Mode A
+  composes these; it does **not** modify them.
+- **There is no `:core` export mapper.** Phase 12's `D-12.5` deferred it; export lives only
+  in the server's `ImportExportService`. So Mode A builds its **own** local exporter that
+  emits the Phase 12 `:core` DTO `HomeFlowExport` (serialized identically) — it does **not**
+  call server code and does **not** extract a shared mapper (over-extraction; the server
+  builds its `ExportDay`s directly and keeps doing so).
 
-**platform**
-- [ ] Desktop file-save dialog for export; Android Storage Access Framework for export.
-- [ ] Packaging: a **local-only** desktop installer and Android build that excludes the
-  OIDC/server config requirement (the app must run with nothing else installed).
+### Decisions (closed)
 
-**docs**
-- [ ] `ARCHITECTURE-client.md`: document Mode A, the `SessionController` seam, and that
-  "no health data at rest" now has a Mode-A exception (encrypted local store).
-- [ ] `threat-model.md`: add the Mode-A at-rest threat + mitigation (D5).
+- **D-14.1 — `AppMode` lives in a NEW non-sensitive store, never the encrypted DB.** Add
+  `enum class AppMode { LOCAL_ONLY, SERVER }` and an `AppModeStore` (`expect`/`actual`,
+  `package org.homeflow.app.shared.config`) with `fun load(): AppMode?`, `fun save(mode:
+  AppMode)`, `fun clear()`. It must be readable **before** any unlock, so it cannot live in
+  the SQLCipher DB (which needs the DEK, which needs the chosen mode — chicken/egg). The
+  value is a non-sensitive enum: **Android** = plain `SharedPreferences`; **desktop** = a
+  small properties file at `~/.homeflow/mode.properties`. `null` (unset) ⇒ first run ⇒ show
+  the chooser.
+- **D-14.2 — `SessionController` interface; `AuthController` implements it; `repository`
+  moves into `AuthState.Authenticated`.** Define `interface SessionController` (package
+  `org.homeflow.app.shared.auth`) exposing exactly what `App.kt` consumes:
+  `val state: StateFlow<AuthState>`, `val usesPassphraseGate: Boolean`, `fun start()`,
+  `suspend fun login()`, `suspend fun enroll(secret: String)`,
+  `suspend fun unlock(secret: String?)`, `suspend fun logout()`,
+  `suspend fun deleteAccount(): ApiResult<Unit>`. To remove the "repository only valid after
+  unlock" sharp edge for the local controller, **move the repository into the state**:
+  `AuthState.Authenticated(val user: UserDto, val repository: HomeFlowRepository)`. Update
+  `App.kt`'s `Authenticated` branch to pass `current.repository` to `AppShell` (AppShell's
+  signature is unchanged). `AuthController` already has every method + `state` +
+  `usesPassphraseGate`; make it `: SessionController`, delete its top-level `repository` val,
+  and have `loadUser()` put the repository into `Authenticated`. Its behavior is otherwise
+  **byte-for-byte unchanged** (Mode B = today).
+- **D-14.3 — Mode A auth = app-lock + DEK only; zero network.** New
+  `LocalSessionController(gate: AppLockGate, keyStore: LocalKeyStore, modeStore:
+  AppModeStore, dbFactory: LocalDatabaseFactory) : SessionController`:
+  - `start()` → `Locked(needsEnrollment = gate.needsEnrollment())` (Mode A never enters
+    `LoggedOut`; there is no remote login).
+  - `login()` → no-op (unused in Mode A; the chooser, not a login screen, drives mode).
+  - `enroll(secret)` → `gate.enroll(secret)` then immediately `unlock(secret)`.
+  - `unlock(secret?)` → `Authenticating`; if `!gate.authenticate(secret)` → back to
+    `Locked`; else **load-or-create the DEK** (`keyStore.loadOrCreateDek()`), open the DB
+    (`dbFactory.create(dek)`), `LocalBootstrap.seed(db)`, build `LocalDataSource(db)` +
+    `HomeFlowRepository(...)`, then `Authenticated(localUser, repository)`. The synthetic
+    user is `LocalDataSource.getMe()`.
+  - `logout()` → drop the in-memory DB/repository handle and return to
+    `Locked(needsEnrollment = false)` (re-lock; the DEK stays in the key store).
+  - `deleteAccount()` → `localDataSource.deleteAccount()` (wipes user rows) **and**
+    `keyStore.clearDek()` **and** reset the gate enrollment (desktop: clear the keychain
+    passphrase record; Android: nothing to clear) **and** `modeStore.clear()`, then surface
+    a terminal state so `AppRoot` re-shows the chooser. Construct **no `HttpClient`** and
+    import no Ktor client anywhere in this class (the no-network invariant; asserted by a
+    test).
+- **D-14.4 — DEK generation.** Add `expect fun secureRandomBytes(size: Int): ByteArray`
+  (`package org.homeflow.app.shared.crypto`; both actuals use `java.security.SecureRandom`
+  — both targets are JVM). Add a `commonMain` extension
+  `fun LocalKeyStore.loadOrCreateDek(): ByteArray = loadDek() ?: secureRandomBytes(32).also
+  { saveDek(it) }`. The DEK is OS-secure-store-rooted (same posture as the refresh token);
+  the app-lock is the **use-gate**, not a passphrase-derived KEK (consistent with how the
+  refresh token is gated today — see `ARCHITECTURE-client.md`).
+- **D-14.5 — Composition root = new `AppRoot`; entry points call it.** Add
+  `@Composable fun AppRoot(serverConfig: AuthConfig = defaultAuthConfig())`: read
+  `AppModeStore.load()`; `null` → `ModeChooserScreen(onLocal = { save(LOCAL_ONLY); … },
+  onServer = { save(SERVER); … })`; `LOCAL_ONLY` → `App(localSessionController())`;
+  `SERVER` → `App(keycloakSessionController(serverConfig))`. `App(controller:
+  SessionController)` replaces today's `App(controller: AuthController)`. Desktop
+  `main.kt` → `AppRoot()`; Android `MainActivity` → `AppRoot(config)` (keeps its debuggable
+  host override for Mode B). After `deleteAccount` clears the mode, `AppRoot` falls back to
+  the chooser on recomposition.
+- **D-14.6 — Mode B in Phase 14 is today's behavior, UNCHANGED.** "Connect to a server"
+  selects the existing `AuthController` over the **compile-time** `AuthConfig` host. Runtime
+  server-host entry is **Phase 15** — do not add it here. One binary serves both modes; mode
+  is a runtime choice. There is **no** separate "local-only build flavor."
+- **D-14.7 — Local export built in `:app:shared`, emitting the Phase 12 `HomeFlowExport`
+  DTO.** Add `LocalExporter(db: HomeFlowDb, refData: LocalRefData, logsStore:
+  LocalDailyLogsStore)` with `fun export(): HomeFlowExport`: iterate cycles (sorted by
+  `start_date`) → `ExportCycle(start, end)`; for each cycle's logs
+  (`logsStore.getLogsByCycleId`) build `ExportDay` from `logsStore.assembleDto(row)`, mapping
+  each option/location **UUID → slug** (add `optionSlugById()` + `locationSlugById()` reverse
+  maps to `LocalRefData`), `cycleStartDate = ` the cycle's start. Notes/sex are already
+  plaintext in the local DB → copied straight through (sex as slug array). The result
+  serializes (kotlinx-serialization) to the **exact** `homeflow_export` JSON the server's
+  `POST /import?source=homeflow` accepts. **Export only** — no local *import* in Phase 14.
+- **D-14.8 — Export-to-file is a platform seam.** Add
+  `expect suspend fun writeExportFile(suggestedName: String, json: String): Boolean`
+  (`package org.homeflow.app.shared.platform`): **desktop** = AWT `FileDialog`/Swing
+  `JFileChooser` save dialog, write UTF-8, return false if cancelled; **Android** = Storage
+  Access Framework `ACTION_CREATE_DOCUMENT` via the `AndroidAppContext` launcher pattern
+  already used for AppAuth. Wire an "Export my data" action into `PreferencesScreen`
+  (Settings tab), available in Mode A (a `onExport: (suspend () -> Unit)?` passed through
+  `AppShell`; null/hidden in Mode B for this phase).
+
+### File manifest (exhaustive — create / modify exactly these)
+
+**Create — commonMain:**
+1. `config/AppMode.kt` — the enum.
+2. `config/AppModeStore.kt` — interface + `expect fun createAppModeStore(): AppModeStore`.
+3. `auth/SessionController.kt` — the interface (D-14.2).
+4. `auth/LocalSessionController.kt` — Mode A controller (D-14.3).
+5. `auth/SessionControllerFactory.kt` — `localSessionController()` /
+   `keycloakSessionController(config)` builders (the latter wraps today's `buildAuthController`).
+6. `crypto/SecureRandom.kt` — `expect fun secureRandomBytes(size: Int): ByteArray` + the
+   `LocalKeyStore.loadOrCreateDek()` extension.
+7. `data/local/LocalExporter.kt` — D-14.7.
+8. `ui/AppRoot.kt` — composition root + mode dispatch (D-14.5).
+9. `ui/ModeChooserScreen.kt` — first-run chooser (two large buttons; style like `LoginScreen`).
+10. `platform/ExportFile.kt` — `expect suspend fun writeExportFile(...)` (D-14.8).
+
+**Modify — commonMain:**
+11. `auth/AuthController.kt` — `: SessionController`; remove the top-level `repository` val;
+    `loadUser()` constructs the repository into `AuthState.Authenticated`.
+12. `auth/AuthController.kt` (same file) — `AuthState.Authenticated` gains
+    `val repository: HomeFlowRepository`.
+13. `ui/App.kt` — `App(controller: SessionController)`; `Authenticated` branch passes
+    `current.repository` to `AppShell`.
+14. `ui/shell/AppShell.kt` — add `onExport: (suspend () -> Unit)? = null`, thread it to
+    `PreferencesScreen`.
+15. `ui/screens/PreferencesScreen.kt` — add an "Export my data" button when `onExport != null`.
+16. `data/local/LocalRefData.kt` — add `optionSlugById()` + `locationSlugById()` reverse maps.
+
+**Create — platform actuals (6):**
+17. `androidMain/config/AppModeStore.android.kt` (SharedPreferences) +
+    `jvmMain/config/AppModeStore.jvm.kt` (`~/.homeflow/mode.properties`).
+18. `androidMain/crypto/SecureRandom.android.kt` + `jvmMain/crypto/SecureRandom.jvm.kt`
+    (`java.security.SecureRandom`).
+19. `androidMain/platform/ExportFile.android.kt` (SAF `ACTION_CREATE_DOCUMENT`) +
+    `jvmMain/platform/ExportFile.jvm.kt` (Swing/AWT save dialog).
+
+**Modify — entry points (2):**
+20. `app/desktopApp/src/main/kotlin/org/homeflow/main.kt` — `App()` → `AppRoot()`.
+21. `app/androidApp/src/main/kotlin/org/homeflow/MainActivity.kt` — `App(controller)` →
+    `AppRoot(config)`; register the SAF create-document launcher into `AndroidAppContext`
+    (mirror the existing `authLauncher` wiring).
+
+**Docs (3):**
+22. `__docs/ARCHITECTURE-client.md` — Mode A, the `SessionController` seam, the `AppRoot`
+    mode dispatch, and the "no health data at rest" **Mode-A exception** (encrypted local store).
+23. `__docs/threat-model.md` — add the Mode-A at-rest threat + mitigation (D5: whole-DB
+    SQLCipher, DEK in OS secure store, app-lock use-gate).
+24. `CHANGELOG.md` — Added: "Use HomeFlow entirely on one device — no server required."
+
+### Tests to add (jvmTest unless noted)
+- **`LocalSessionControllerTest`** — `start()` → `Locked` with `needsEnrollment` from a fake
+  gate; `enroll`→`unlock` reaches `Authenticated` and its `repository` reads/writes the local
+  store (start a cycle, read it back); `logout()` returns to `Locked`; `deleteAccount()`
+  wipes data, calls `clearDek()`, and clears the mode (use fakes for `AppLockGate`/
+  `LocalKeyStore`/`AppModeStore`, an in-memory `HomeFlowDb` via `TestDbHelper`).
+- **No-network assertion** — a test (reflection or a structural check) that
+  `LocalSessionController` holds **no** `HttpClient` field and the Mode-A path constructs
+  none. (Acceptable: assert `LocalSessionController` has no member of type `HttpClient`.)
+- **`LocalExporterTest`** — seed a full day (every category, pain w/ severities, notes, sex)
+  through `HomeFlowRepository(LocalDataSource)`, then `LocalExporter.export()`: assert
+  `homeflow_export == 1`, selections are **slugs** (no UUID via the `[0-9a-f]{8}-` regex),
+  `notes`/`sex` are plaintext slugs, and `cycleStartDate` links each day to its cycle — i.e.
+  byte-shape parity with the server's export test.
+- **`AppModeStoreTest`** (jvm) — `save`→`load` round-trips; `clear()` → `load()==null`.
+- **Manual / dev-server** (document, not automated here): the exported file imported via
+  `POST /import?source=homeflow` into a dev server is lossless (deep-compare) — this closes
+  the migration loop that Phase 15 depends on.
+
+### Guardrails — do NOT
+- Do NOT add runtime server-host config, a "Connect to a server" host field, or any sync —
+  Phases 15/16. "Connect to a server" in Phase 14 = today's compile-time Keycloak path.
+- Do NOT construct an `HttpClient`, import a Ktor client, or reference `AuthConfig`/OIDC in
+  the Mode-A path (`LocalSessionController`, `AppRoot`'s local branch, the chooser).
+- Do NOT extract a `:core` export mapper — build `LocalExporter` in `:app:shared` against the
+  existing `HomeFlowExport` DTO (D-14.7). Do NOT call server code from the client.
+- Do NOT store `AppMode` (or anything pre-unlock) in the encrypted local DB (D-14.1).
+- Do NOT change `LocalDataSource`/`LocalDatabaseFactory`/`LocalKeyStore`/`AppLockGate`
+  behavior — Mode A composes them as-is.
+- Do NOT add a local *import* path (export only). Do NOT log health data, the export JSON,
+  the DEK, or the passphrase. Keep `FLAG_SECURE` on Android.
+- Do NOT regress Mode B: `AuthController`'s flow must stay identical (only the `: SessionController`
+  conformance + moving `repository` into `Authenticated`).
 
 ### Done when
-- [ ] On a machine with **only the desktop app installed** (no server, no Keycloak,
-  offline), a fresh user: picks "Use this device only" → sets an app passphrase → logs a
-  full day (every category, pain w/ severities, notes, sex) → starts/closes cycles →
-  reorders preferences → reopens the app, unlocks, and sees all data. Same on Android with
-  biometrics.
-- [ ] Killing all network (airplane mode / no server reachable) has **no effect** on any
-  Mode-A operation.
-- [ ] Analytics/phase indicator render correctly from local data (same `:core` math).
-- [ ] **Local export** produces a `homeflow_export` file that Phase 12's server import
-  accepts losslessly (proven by importing it into a dev server and deep-comparing).
-- [ ] **Local data wipe** removes the DB + DEK; relaunch shows the first-run chooser.
-- [ ] Security: raw local DB file shows no plaintext health data; access token / server
-  concepts are entirely absent in Mode A (no Ktor client constructed — assert in a test).
-- [ ] Signed local-only desktop installer + Android build produced and launch clean.
-- [ ] `CHANGELOG.md`: "Use HomeFlow entirely on one device, no server required."
+- [ ] `./gradlew :app:shared:check` green (new tests pass; ktlint + detekt clean; Android
+  host-test target compiles). `:app:androidApp:assembleDebug` + `:app:desktopApp` build.
+- [ ] **Manual, desktop-only, offline** (no server/Keycloak): fresh launch → chooser → "Use
+  this device only" → set a passphrase → log a full day (every category, pain w/ severities,
+  notes, sex) → start/close cycles → reorder preferences → **relaunch, unlock, all data
+  present**. Same on Android with biometrics.
+- [ ] Airplane mode / no server reachable has **no effect** on any Mode-A operation
+  (no network is even attempted).
+- [ ] Analytics + phase indicator render from local data (same `:core` math) — visible in the
+  Analytics/Dashboard tabs.
+- [ ] **Export:** the "Export my data" action writes a `homeflow_export` file;
+  `LocalExporterTest` proves it is slug-keyed/UUID-free with plaintext notes/sex; the
+  documented dev-server import of that file is lossless.
+- [ ] **Delete:** account deletion wipes the local data, clears the DEK, and clears the mode;
+  relaunch shows the first-run chooser (`LocalSessionControllerTest` + manual).
+- [ ] **No-network proof:** `LocalSessionController` constructs no `HttpClient` (asserted in a
+  test); the Mode-A path references no `AuthConfig`/OIDC.
+- [ ] Signed desktop installer + Android build produced and launch clean into the chooser.
+- [ ] `ARCHITECTURE-client.md` + `threat-model.md` updated; `CHANGELOG.md`: "Use HomeFlow
+  entirely on one device — no server required."
 
-### Risks
-- Leaking a server assumption into shared screens (e.g., a hard `AuthConfig` access).
-  The mode chooser + `SessionController` must fully decouple this.
+### Risks / stop-conditions
+- **Export-to-file platform dialog** is the fiddliest bit. If the Android SAF
+  `ACTION_CREATE_DOCUMENT` round-trip (launcher → content URI → write stream) fights the
+  existing `AndroidAppContext` launcher wiring, STOP and report — do not write the export to
+  app-private storage or a hardcoded path as a silent fallback.
+- **Moving `repository` into `AuthState.Authenticated`** touches `App.kt` + `AppShell`
+  call-sites; the compiler verifies all of them. If any other code reads
+  `AuthController.repository` directly (grep first), update it — do not re-add the val.
+- **First-run gate on Android.** `gate.needsEnrollment()` is desktop-meaningful (passphrase);
+  Android biometric "enrollment" is owned by the OS. In Mode A on Android, `enroll` is a
+  no-op and `unlock(null)` shows the biometric prompt — confirm the `Locked` →
+  `needsEnrollment=false` path drives biometrics, matching today's `AuthController` behavior.
+- **`deleteAccount` terminal state.** Ensure clearing the mode actually re-renders the chooser
+  (the state read in `AppRoot` must recompose). If `AppRoot` caches the mode in a
+  non-observable `remember`, deletion won't return to the chooser — use observable state.
 
 ---
 

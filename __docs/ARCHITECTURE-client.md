@@ -17,8 +17,9 @@ Read it before any work under `app/`. DTOs + domain math come from `:core`
 
 ## Principles (carried from the Android client)
 
-- **No health data at rest** (current phase). Online-only; in-memory caches only.
-  On-device offline cache with its own client-side encryption is a later phase.
+- **No health data at rest** (remote-only mode). Online-only; in-memory caches
+  only. Phase 13 adds a local SQLDelight store with whole-DB SQLCipher encryption
+  for local-only and offline-capable modes (see below).
 - **Tokens in platform secure storage only**, never logged. Access token in memory
   only; refresh/offline token in the OS secure store.
 - **No HTTP body logging, ever** — tokens and health payloads must never reach a
@@ -40,14 +41,27 @@ app/
       App.kt                   # root composable: auth gate → signed-in shell
       di/                      # dependency wiring (Koin or manual)
       data/
-        HomeFlowDataSource.kt  # seam interface the repository renders off (RemoteDataSource today)
+        HomeFlowDataSource.kt  # seam interface the repository renders off
         RemoteDataSource.kt    # HTTP impl: Ktor client calls, typed via :core DTOs
         HomeFlowRepository.kt  # read/write surface for screens + ref-data label cache
         ApiResult.kt           # Success/Failure wrapper over one backend call
+        local/                 # Phase 13: local persistence engine (see below)
+          LocalDataSource.kt   # HomeFlowDataSource impl backed by SQLDelight
+          LocalDatabaseFactory.kt  # expect: opens encrypted HomeFlowDb
+          LocalBootstrap.kt    # seeds ref data + users row on first open
+          LocalKeyStore.kt     # expect: DEK in platform secure store
+          RefSeed.kt           # bundled ref-data constant (slugs + labels)
+          LocalCyclesStore.kt  # cycle CRUD + auto-close rule
+          LocalDailyLogsStore.kt  # daily-log anchor + pain
+          LocalSubsStore.kt    # symptom sub-log replace (multi/single/sex payload)
+          LocalPrefsStore.kt   # dashboard preference ordering
+          LocalAnalytics.kt    # cycle stats + chart + ovulation + sleep (calls :core)
+          LocalRefData.kt      # ref-table reader + slug→id helpers
       auth/
         AuthController.kt       # orchestrates login → token → gate → silent refresh
         OidcClient.kt          # expect: platform OIDC (Auth Code + PKCE)
         TokenStore.kt          # expect: platform secure storage for the refresh token
+        LocalKeyStore.kt       # expect: platform secure storage for the local DEK
         AppLockGate.kt         # expect: biometric / credential gate on app open
       ui/
         shell/                 # top bar + navigation over the screens
@@ -56,8 +70,14 @@ app/
         theme/                 # Material 3 theme (color, type, shapes)
     src/androidMain/kotlin/... # actual: AppAuth, Keystore/EncryptedSharedPreferences,
                                #         BiometricPrompt, FLAG_SECURE, custom-scheme redirect
+                               #         AndroidSqliteDriver + SQLCipher SupportFactory
     src/jvmMain/kotlin/...     # actual: system-browser + loopback redirect OIDC,
                                #         OS keychain (DPAPI/secret-service/Keychain)
+                               #         JdbcSqliteDriver + willena SQLCipher
+    src/commonMain/sqldelight/org/homeflow/app/shared/db/
+                               # SQLDelight schema (.sq files) — one per logical group:
+                               # Users, Cycles, DailyLogs, DailyLogSubs, PainLogs,
+                               # Preferences, RefData, SyncOutbox
   androidApp/                  # the :app:androidApp module — MainActivity, manifest (pkg org.homeflow)
   desktopApp/                  # the :app:desktopApp module — main() (org.homeflow.MainKt) + packaging
 ```
@@ -66,7 +86,7 @@ app/
 `RemoteDataSource` is the HTTP implementation of that interface: it uses the **Ktor
 client** (multiplatform) with `ContentNegotiation(kotlinx.serialization)` and the
 **`:core` DTOs** directly — there is no OpenAPI codegen and no hand-maintained model
-copy. A future `LocalDataSource` (Phase 13) implements the same interface against a
+copy. `LocalDataSource` (Phase 13) implements the same interface against the SQLDelight
 local store.
 
 ---
@@ -107,52 +127,107 @@ owns the sequence; `OidcClient`/`TokenStore`/`AppLockGate` are `expect`/`actual`
 3. **App-open gate.** `AppLockGate` requires a strong factor before the stored
    refresh token is used: BiometricPrompt (Android, device-credential fallback);
    OS credential prompt or app passphrase (desktop).
-4. **Silent refresh.** The Ktor auth plugin refreshes proactively + once on `401`.
-   Full re-login only when the offline session expires or is revoked.
-5. **Logout.** Best-effort refresh-token revocation at the realm end-session
-   endpoint, then clear `TokenStore` regardless.
 
 ---
 
-## Configuration & hostnames
+## Local store (Phase 13)
 
-`AuthConfig` (in `commonMain`, with platform overrides as needed) is the single
-place the apps key off:
+Phase 13 introduces a complete local persistence engine in `:app:shared/data/local/`.
+This is the foundation for Mode A (local-only) and Mode C (offline sync). Key facts:
 
-| Constant | Value | Notes |
-|---|---|---|
-| `HOST` | `homeflow.<tailnet>.ts.net` | drives `apiBaseUrl` and `issuer` (`DEPLOYMENT.md` §11) |
-| `REALM` | `homeflow` | |
-| `CLIENT_ID` | `homeflow-android` / `homeflow-desktop` | public Keycloak client per platform (`KEYCLOAK.md`) |
-| `REDIRECT_URI` | custom scheme (Android) / loopback (desktop) | must match the Keycloak client |
-| `SCOPES` | `openid offline_access` | `offline_access` = long-lived session |
+### Database
 
-> **Android emulator** reaches the dev host at `10.0.2.2`, not `localhost`. For
-> end-to-end auth the hostname + trusted cert must line up (same `iss`/RP-ID
-> constraint as everywhere) — prefer reaching the full stack over Tailscale.
+- **Engine:** SQLDelight 2.0.x with platform-specific drivers.
+  - Android: `AndroidSqliteDriver` + SQLCipher `SupportOpenHelperFactory`.
+  - Desktop (JVM): `JdbcSqliteDriver` + willena SQLite+SQLCipher JDBC driver.
+- **Encryption:** Whole-database SQLCipher (D-13.2). The DEK is passed to
+  `LocalDatabaseFactory.create(dek)` and consumed there. No column-level
+  encryption — all health data is plaintext *inside* the encrypted DB. The sex
+  payload is stored as a plaintext JSON array of option-id strings in
+  `daily_log_sex.payload` (server-side encryption is a server concern only).
+- **Schema location:** `src/commonMain/sqldelight/org/homeflow/app/shared/db/`
+- **Generated package:** `org.homeflow.app.shared.db`, database class `HomeFlowDb`.
+
+### DEK lifecycle
+
+`LocalKeyStore` (expect/actual, mirrors `TokenStore`) stores the 32-byte DEK
+(Base64-encoded) in platform secure storage:
+- Android: Keystore-backed `EncryptedSharedPreferences`.
+- Desktop: OS keychain via java-keyring.
+
+`LocalDatabaseFactory` takes the DEK as `ByteArray` and opens the encrypted DB.
+Phase 14 wires `LocalKeyStore → LocalDatabaseFactory → LocalDataSource` at the
+composition root. Phase 13 just provides the pieces; tests construct the DB directly.
+
+### Seeding and bootstrap
+
+`LocalBootstrap.seed(db)` seeds the `ref_*` tables and the single `users` row on
+first open. It is idempotent (count-guard on `ref_symptom_categories`). Reference
+data is bundled in `RefSeed` (slugs → labels → options/locations). Local UUIDs are
+`kotlin.uuid.Uuid.random().toString()` — they differ per device, which is why slugs
+are used at every cross-store boundary (D4 in the spec).
+
+### Business rules
+
+`LocalDataSource` re-implements the same rules as the server's service layer using
+`:core` shared functions (D7):
+
+| Rule | `:core` function |
+|---|---|
+| Cycle auto-close on new cycle | `autoCloseEndDate` |
+| Cycle start validation | `validateCycleStart` |
+| Cycle end validation | `validateCycleEnd` |
+| Daily-log within-cycle date | `validateDailyLogWithinCycle` |
+| Notes length | `validateNotes` |
+| Pain location dedup + severity | `validatePainLocations` |
+| Preference category order | `validateCategoryOrder` |
+| Option-in-category validation | inlined in `LocalSubsStore` (not extracted to `:core`) |
+
+### Timestamps
+
+All ISO-8601 timestamps written to the DB use `kotlin.time.Clock.System.now().toString()`.
+Never `kotlinx.datetime.Clock`. Dates use `kotlinx.datetime.LocalDate.toString()` (ISO `yyyy-MM-dd`).
+UUIDs use `kotlin.uuid.Uuid.random().toString()` (stored as TEXT).
+
+### Sync placeholders
+
+`sync_outbox`, `updated_at`, and `deleted_at` columns exist on every syncable table
+but are NOT exercised in Phase 13. Phase 15 activates them.
+
+### Tests
+
+All local store tests live in `jvmTest` (SQLCipher native libs won't load in Android
+host tests). Tests use one of two helper patterns:
+- **In-memory (no encryption):** `JdbcSqliteDriver(IN_MEMORY)` + `Schema.create` via
+  `TestDbHelper.inMemory()` — for contract, parity, analytics, and seed tests.
+- **File-based (encrypted):** willena driver with a temp file + DEK — for
+  `LocalEncryptionAtRestTest` only.
 
 ---
 
-## Per-platform responsibilities (`expect`/`actual`)
+## UI structure
 
-| Concern | `androidMain` | `jvmMain` |
-|---|---|---|
-| OIDC | AppAuth + Custom Tab, custom-scheme redirect | system browser + loopback listener |
-| Token storage | Keystore-backed `EncryptedSharedPreferences` | OS keychain (DPAPI / secret-service / macOS Keychain) |
-| App-open gate | `BiometricPrompt` | OS credential prompt / passphrase |
-| Anti-screenshot | `FLAG_SECURE` | best-effort / N/A |
-| HTTP engine | OkHttp | CIO or Java engine |
-| Packaging | AAB via `bundleRelease` | `packageDmg` / `packageMsi` / `packageDeb` |
+```
+HomeFlowRepository
+   └─ HomeFlowDataSource (interface)
+        ├─ RemoteDataSource  — HTTP/Ktor (Phases 8–12)
+        └─ LocalDataSource   — SQLDelight/SQLCipher (Phase 13+)
+```
 
-Keep `commonMain` free of platform APIs — anything touching the Keystore, a
-browser, biometrics, or a window flag goes behind an `expect`/`actual`.
+Screens bind to `HomeFlowRepository` through ViewModels (Compose Multiplatform
+lifecycle-aware). The current data source is chosen by DI at the composition root
+(Phase 14 wires this).
 
 ---
 
-## Build & run
+## Building + running locally
 
-- **Gradle root is the repo root** (KMP multi-module: `:core`, `:server`,
-  `:app:shared`, `:app:androidApp`, `:app:desktopApp`). Versions managed in
+- `./gradlew :app:shared:compileCommonMainKotlinMetadata` — compile shared sources
+  (SQLDelight codegen runs first).
+- `./gradlew :app:shared:jvmTest` — run local-store unit tests (in-memory SQLite,
+  no SQLCipher native needed for most tests).
+- `./gradlew build` — build all modules (`:core`, `:server`, `:app:shared`,
+  `:app:androidApp`, `:app:desktopApp`). Versions managed in
   `gradle/libs.versions.toml`.
 - Desktop run: `./gradlew :app:desktopApp:run` (hot reload:
   `./gradlew :app:desktopApp:hotRun --auto`). Package:
@@ -166,8 +241,10 @@ browser, biometrics, or a window flag goes behind an `expect`/`actual`.
 
 Verified at Phase 10 (hardening). Evidence in parentheses.
 
-- [x] No health data persisted on device (in-memory only) — `HomeFlowRepository` caches only
-  ref-data labels in memory; no DB/file persistence of health data.
+- [x] No health data persisted on device (in-memory only, remote-only mode) —
+  `HomeFlowRepository` caches only ref-data labels in memory; no DB/file persistence
+  of health data in remote-only mode. **Phase 13 adds local persistence with
+  whole-DB SQLCipher encryption; the DEK is held in platform secure store only.**
 - [x] Refresh token only in platform secure storage; access token in memory only —
   `TokenStore` (Keystore-backed prefs / OS keychain) holds the refresh token; the access
   token lives in the in-memory `TokenHolder` only.
@@ -185,6 +262,8 @@ Verified at Phase 10 (hardening). Evidence in parentheses.
 - [x] Account deletion removes server data + the Keycloak identity, then clears local
   storage — `DELETE /users/me` via the Settings danger zone; `AuthController.deleteAccount`
   drops to the login screen on success.
+- [ ] **Phase 13+:** Local DEK cleared on `deleteAccount()` — `LocalKeyStore.clearDek()`
+  wired to account deletion at the composition root (Phase 14).
 
 ---
 
@@ -197,5 +276,10 @@ Verified at Phase 10 (hardening). Evidence in parentheses.
 - **Phase 3 — Write MVP:** full daily logging, cycle start/close, preferences.
 - **Phase 4 — Polish & release:** settings, account deletion, error UX, signed
   desktop installers + Android AAB.
-- **Future:** offline read-cache with on-device encryption → full offline + sync;
-  finalize mobile/desktop 2FA (native passkey via Credential Manager vs TOTP).
+- **Phase 13 — Local persistence engine:** SQLDelight + SQLCipher whole-DB encryption;
+  `LocalDataSource` implements `HomeFlowDataSource`; jvmTest contract + analytics tests.
+- **Phase 14 — Local-only app mode (Mode A):** DI wiring, `LocalKeyStore` → DEK generation,
+  mode picker, `deleteAccount` DEK clearing.
+- **Phase 15 — Server-connected + migration (Mode B):** adopt-a-server flow, slug-keyed
+  export/import, `RemoteDataSource` remains the default for server-connected users.
+- **Phase 16 — Offline sync (Mode C):** `SyncEngine`, outbox drain, pull cursor, LWW.
