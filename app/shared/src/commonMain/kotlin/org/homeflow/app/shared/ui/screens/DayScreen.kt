@@ -62,7 +62,7 @@ fun DayScreen(repository: HomeFlowRepository) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete this day?") },
-            text = { Text("This will permanently delete the log for ${date}. This cannot be undone.") },
+            text = { Text("This will permanently delete the log for $date. This cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
@@ -84,8 +84,17 @@ fun DayScreen(repository: HomeFlowRepository) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        DateStepperField(date = date, onDateChange = { date = it; deleteError = null })
-        deleteError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        DateStepperField(date = date, onDateChange = {
+            date = it
+            deleteError = null
+        })
+        deleteError?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Loadable(state, onRetry = { reloadKey++ }) { content: DayContent? ->
             if (content == null) {
                 EmptyHint("Nothing logged on this day.")

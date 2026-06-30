@@ -19,8 +19,8 @@ import org.homeflow.lib.parseIsoDate
 import org.homeflow.lib.toIsoString
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.dailylogs.AssembledPainLocation
-import org.homeflow.modules.dailylogs.DailyLogsRepository
 import org.homeflow.modules.dailylogs.DailyLogSubsRepository
+import org.homeflow.modules.dailylogs.DailyLogsRepository
 import org.homeflow.modules.preferences.PreferencesRepository
 import org.homeflow.modules.refdata.RefDataRepository
 import org.homeflow.modules.refdata.SymptomOptionRow
@@ -180,14 +180,7 @@ class SyncService(
                 dailyLogsRepository.upsertById(userId, dayId, cycleId, date, updatedAt)
 
                 val notesEncrypted = incoming.notes?.let(encryption::encrypt)
-                val sexEncrypted =
-                    if (incoming.sex.isEmpty()) {
-                        null
-                    } else {
-                        val sexIds = resolveSlugs(incoming.sex, SEX, ctx.optionsByCategoryAndSlug)
-                        if (sexIds.isEmpty()) null
-                        else encryption.encrypt(Json.encodeToString(ID_LIST, sexIds.map(UUID::toString)))
-                    }
+                val sexEncrypted = encryptSexPayload(incoming.sex, ctx)
 
                 dailyLogSubsRepository.applyAllFromSync(
                     userId = userId,
@@ -216,6 +209,17 @@ class SyncService(
         } else {
             assembleSyncDay(assembledCurrent, ctx)
         }
+    }
+
+    /** Encrypts the sex selection (slugs → option ids → JSON), or null when nothing is selected. */
+    private fun encryptSexPayload(
+        sex: List<String>,
+        ctx: RefDataContext,
+    ): String? {
+        if (sex.isEmpty()) return null
+        val sexIds = resolveSlugs(sex, SEX, ctx.optionsByCategoryAndSlug)
+        if (sexIds.isEmpty()) return null
+        return encryption.encrypt(Json.encodeToString(ID_LIST, sexIds.map(UUID::toString)))
     }
 
     private fun applyPushPreferences(
@@ -277,22 +281,8 @@ class SyncService(
                     val cycle = cyclesRepository.findByIdIncludingDeleted(userId, change.entityId)
                     if (cycle != null) resultCycles.add(cycle.toSyncCycle())
                 }
-                ChangeLogRepository.TYPE_DAY -> {
-                    if (change.deleted) {
-                        resultDays.add(
-                            SyncDay(
-                                id = change.entityId.toString(),
-                                date = "",
-                                cycleId = "",
-                                updatedAt = change.updatedAt.toIsoString(),
-                                deleted = true,
-                            ),
-                        )
-                    } else {
-                        val assembled = dailyLogSubsRepository.assembleDayById(userId, change.entityId)
-                        if (assembled != null) resultDays.add(assembleSyncDay(assembled, ctx))
-                    }
-                }
+                ChangeLogRepository.TYPE_DAY ->
+                    readDayChange(userId, change, ctx)?.let(resultDays::add)
                 ChangeLogRepository.TYPE_PREFERENCES -> {
                     val prefs = preferencesRepository.find(userId)
                     if (prefs != null) {
@@ -313,6 +303,25 @@ class SyncService(
             preferences = resultPrefs,
             cursor = newCursor,
         )
+    }
+
+    /** A pulled `day` change → a tombstone [SyncDay] when deleted, the assembled day when live, else null. */
+    private fun readDayChange(
+        userId: UUID,
+        change: SyncChangeRow,
+        ctx: RefDataContext,
+    ): SyncDay? {
+        if (change.deleted) {
+            return SyncDay(
+                id = change.entityId.toString(),
+                date = "",
+                cycleId = "",
+                updatedAt = change.updatedAt.toIsoString(),
+                deleted = true,
+            )
+        }
+        val assembled = dailyLogSubsRepository.assembleDayById(userId, change.entityId) ?: return null
+        return assembleSyncDay(assembled, ctx)
     }
 
     // ──────────────────────────────────────────────────────────────────────────

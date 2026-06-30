@@ -105,8 +105,9 @@ class LocalDataSource(
     }
 
     override suspend fun deleteCycle(cycleId: String): ApiResult<Unit> {
-        val row = db.cyclesQueries.selectById(cycleId, userId).executeAsOneOrNull()
-            ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Cycle not found.", 404)
+        val row =
+            db.cyclesQueries.selectById(cycleId, userId).executeAsOneOrNull()
+                ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Cycle not found.", 404)
         val now = Clock.System.now().toString()
         // Cascade: tombstone every live day in this cycle and enqueue day deletes so the
         // cascade propagates on sync, mirroring the server's softDeleteCascade (D-16b.6).
@@ -136,8 +137,9 @@ class LocalDataSource(
     }
 
     override suspend fun deleteDay(date: String): ApiResult<Unit> {
-        val row = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
-            ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "No log exists for this date.", 404)
+        val row =
+            db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "No log exists for this date.", 404)
         val now = Clock.System.now().toString()
         db.dailyLogsQueries.softDeleteByDate(now, now, userId, date)
         outbox.record(ENTITY_DAY, row.id, OP_DELETE, now)

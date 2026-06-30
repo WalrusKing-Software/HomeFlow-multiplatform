@@ -96,8 +96,7 @@ class DailyLogSubsRepository(
                         (DailyLogs.userId eq userId) and
                             (DailyLogs.logDate eq date) and
                             DailyLogs.deletedAt.isNull()
-                    }
-                    .singleOrNull()
+                    }.singleOrNull()
                     ?: return@transaction null
             val anchor = toDailyLogRow(anchorRow)
             val id = anchor.id
@@ -417,8 +416,7 @@ class DailyLogSubsRepository(
                     (DailyLogs.userId eq userId) and
                         (DailyLogs.logDate eq date) and
                         DailyLogs.deletedAt.isNull()
-                }
-                .map { it[DailyLogs.id] }
+                }.map { it[DailyLogs.id] }
                 .singleOrNull()
                 ?: return null
         return id to OffsetDateTime.now(ZoneOffset.UTC)

@@ -21,7 +21,9 @@ import org.homeflow.core.dto.SyncPreferences
  * Sex payloads are stored as a plaintext JSON array of option-id strings locally;
  * the assembler maps them to slugs before sending.
  */
-class LocalSyncAssembler(private val db: HomeFlowDb) {
+class LocalSyncAssembler(
+    private val db: HomeFlowDb,
+) {
     /** Builds a [SyncCycle] from a local cycles row. */
     fun assembleCycle(row: Cycles): SyncCycle =
         SyncCycle(
@@ -76,7 +78,9 @@ class LocalSyncAssembler(private val db: HomeFlowDb) {
         val painRow = db.painLogsQueries.selectByLogId(logId).executeAsOneOrNull()
         val painSlugs =
             if (painRow != null) {
-                db.painLogsQueries.selectLocationsByPainLogId(painRow.id).executeAsList()
+                db.painLogsQueries
+                    .selectLocationsByPainLogId(painRow.id)
+                    .executeAsList()
                     .mapNotNull { loc ->
                         ctx.locationSlugById[loc.location_id]?.let { slug ->
                             ExportPain(location = slug, severity = loc.severity?.toInt())

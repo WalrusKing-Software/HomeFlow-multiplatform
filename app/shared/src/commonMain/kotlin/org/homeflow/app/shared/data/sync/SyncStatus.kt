@@ -9,8 +9,12 @@ sealed interface SyncStatus {
     data object Syncing : SyncStatus
 
     /** Last sync completed successfully. [lastSyncAt] is the ISO instant string. */
-    data class Success(val lastSyncAt: String) : SyncStatus
+    data class Success(
+        val lastSyncAt: String,
+    ) : SyncStatus
 
     /** Last sync failed. [message] is a user-visible or log-safe description. */
-    data class Error(val message: String) : SyncStatus
+    data class Error(
+        val message: String,
+    ) : SyncStatus
 }
