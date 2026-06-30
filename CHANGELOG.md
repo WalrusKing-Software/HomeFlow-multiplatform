@@ -167,6 +167,13 @@ Ktor server). Pre-implementation: documentation and specification only.
     (`keystore.properties.example` shows the format).
   - **Polished desktop installers.** The desktop distribution now carries a proper
     app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
+- **Export and import your data (Phase 12).** `GET /api/v1/export` downloads all of
+  your cycles and daily logs as a portable `homeflow` backup file (decrypted notes
+  and sex data, every option/location identified by a stable slug instead of a
+  database-specific id); `POST /api/v1/import?source=homeflow` restores or merges
+  one back in. Re-importing the same file is a no-op — existing days are never
+  duplicated or overwritten, and unrecognized values are skipped and reported back
+  in a `warnings` list rather than failing the whole import.
 
 ### Fixed
 - **Android unlock button.** Tapping "Unlock" on the lock screen silently returned

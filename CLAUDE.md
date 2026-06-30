@@ -6,6 +6,23 @@ rules are non-negotiable, and how to run things.
 
 ---
 
+## Environment & Tooling Rules
+
+- **OS:** Windows. The Bash tool runs on a POSIX compatibility layer (Git
+  Bash/MSYS2), not a real Unix filesystem.
+- **NEVER run `find /`, `find ~`, `grep -r /`, or any unbounded recursive search
+  from a root-ish path.** MSYS2's `find`/`grep` will walk the entire `C:` drive
+  through the Windows filesystem shim, which is extremely slow and can hang the
+  session for hours.
+- Scope every search: to the project directory (use the `Glob`/`Grep` tools, which
+  are fast and sandboxed), or to a specific cache directory when hunting for a
+  dependency jar, e.g. `find ~/.gradle/caches -type f -iname 'some-lib*.jar'`.
+- If a broad filesystem search is genuinely required (e.g. "where on this machine
+  is X installed"), use the `PowerShell` tool with `Get-ChildItem -Recurse` scoped
+  to a specific drive/folder — never an unscoped Bash `find`.
+
+---
+
 ## What This Project Is
 
 A **self-hosted, Kotlin-everywhere** rebuild of HomeFlow: a period tracking
