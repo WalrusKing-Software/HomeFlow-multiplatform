@@ -8,6 +8,7 @@ import org.homeflow.core.dto.CycleDto
 import org.homeflow.core.dto.CycleStatsDto
 import org.homeflow.core.dto.CyclesResponse
 import org.homeflow.core.dto.DailyLogDto
+import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.NotesUpdateRequest
 import org.homeflow.core.dto.OptionIdRequest
 import org.homeflow.core.dto.OptionIdsRequest
@@ -124,4 +125,14 @@ class RemoteDataSource(
         client.apiGet("ref-data/symptom-categories")
 
     override suspend fun getPainRegions(): ApiResult<PainRegionsResponse> = client.apiGet("ref-data/pain-regions")
+
+    // ── Migration (not on the seam — LocalDataSource must not implement this) ──
+
+    /**
+     * POST [json] to `POST /import?source=homeflow` as multipart form data. Used
+     * exclusively by the "adopt a server" migration path (D-15.6). The JSON is
+     * health data — never log it.
+     */
+    suspend fun uploadHomeflowImport(json: String): ApiResult<ImportResultDto> =
+        client.apiUploadImport("import?source=homeflow", json)
 }

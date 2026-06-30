@@ -10,8 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CompletableDeferred
-import org.homeflow.app.shared.config.AuthConfig
-import org.homeflow.app.shared.config.defaultAuthConfig
 import org.homeflow.app.shared.platform.AndroidAppContext
 import org.homeflow.app.shared.ui.AppRoot
 
@@ -61,18 +59,18 @@ class MainActivity : FragmentActivity() {
             deferred.await()
         }
 
-        // Debug builds target the dev stack via `adb reverse` (the emulator can't bind a
-        // privileged device-side port, so it uses 8443 → host Caddy 443). Keycloak pins the
-        // token issuer via KC_HOSTNAME, so the :8443 client port doesn't affect validation,
-        // and Caddy's cert is for the hostname `localhost` (port-independent). Set up with:
+        // Debug builds seed the SERVER host with localhost:8443 so dev testing skips the
+        // host-entry gate; a stored host always wins inside AppRoot, and release passes null
+        // so the gate is shown (D-15.2).
+        //
+        // Debug setup via adb reverse:
         //   adb reverse tcp:8443 tcp:443     # app https://localhost:8443 -> host Caddy
         //   adb reverse tcp:8180 tcp:8180    # Keycloak frontend URL (login page) -> host
-        // Release uses the platform default (override for a real device or the Tailscale host).
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val config: AuthConfig = if (debuggable) AuthConfig(host = "localhost:8443") else defaultAuthConfig()
+        val serverHostOverride = if (debuggable) "localhost:8443" else null
 
         setContent {
-            AppRoot(config)
+            AppRoot(serverHostOverride = serverHostOverride)
         }
     }
 
