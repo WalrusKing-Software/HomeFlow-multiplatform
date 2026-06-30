@@ -6,8 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.homeflow.app.shared.config.AuthConfig
 import org.homeflow.app.shared.data.ApiResult
-import org.homeflow.app.shared.data.HomeFlowApi
+import org.homeflow.app.shared.data.HomeFlowDataSource
 import org.homeflow.app.shared.data.HomeFlowRepository
+import org.homeflow.app.shared.data.RemoteDataSource
 import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
 import org.homeflow.app.shared.data.userMessage
@@ -60,7 +61,7 @@ class AuthController(
     val usesPassphraseGate: Boolean = gate.usesPassphrase
 
     private val http: HttpClient = httpClientFactory(config, tokenHolder, ::refreshAndPersist)
-    private val api = HomeFlowApi(http)
+    private val api: HomeFlowDataSource = RemoteDataSource(http)
 
     /** The Phase 8 read surface for the signed-in shell — backed by the same authenticated client. */
     val repository: HomeFlowRepository = HomeFlowRepository(api)

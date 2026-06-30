@@ -36,29 +36,29 @@ import org.homeflow.core.dto.UserDto
  * an absence rather than an error. Sub-log replaces echo a response the client doesn't
  * need (it reloads the day), so they return [ApiResult]`<Unit>`.
  */
-class HomeFlowApi(
+class RemoteDataSource(
     private val client: HttpClient,
-) {
-    suspend fun getMe(): ApiResult<UserDto> = client.apiGet("users/me")
+) : HomeFlowDataSource {
+    override suspend fun getMe(): ApiResult<UserDto> = client.apiGet("users/me")
 
     /**
      * Permanently delete the account: all health data + the Keycloak identity (server-side).
      * The server replies `204 No Content`, so this is an [ApiResult]`<Unit>`.
      */
-    suspend fun deleteAccount(): ApiResult<Unit> = client.apiSendEmpty(HttpMethod.Delete, "users/me")
+    override suspend fun deleteAccount(): ApiResult<Unit> = client.apiSendEmpty(HttpMethod.Delete, "users/me")
 
     // ── Cycles ───────────────────────────────────────────────────────────────
-    suspend fun getCycles(): ApiResult<CyclesResponse> = client.apiGet("cycles")
+    override suspend fun getCycles(): ApiResult<CyclesResponse> = client.apiGet("cycles")
 
     /** `404 RESOURCE_NOT_FOUND` when no cycle is open. */
-    suspend fun getCurrentCycle(): ApiResult<CycleDto> = client.apiGet("cycles/current")
+    override suspend fun getCurrentCycle(): ApiResult<CycleDto> = client.apiGet("cycles/current")
 
     /** Start a new cycle on [startDate]; the server auto-closes any open cycle. */
-    suspend fun createCycle(startDate: String): ApiResult<CycleDto> =
+    override suspend fun createCycle(startDate: String): ApiResult<CycleDto> =
         client.apiSendReceiving(HttpMethod.Post, "cycles", CreateCycleRequest(startDate))
 
     /** Close [cycleId] by setting its end date. */
-    suspend fun closeCycle(
+    override suspend fun closeCycle(
         cycleId: String,
         endDate: String,
     ): ApiResult<CycleDto> = client.apiSendReceiving(HttpMethod.Patch, "cycles/$cycleId", UpdateCycleRequest(endDate))
@@ -66,60 +66,62 @@ class HomeFlowApi(
     // ── Daily logs ───────────────────────────────────────────────────────────
 
     /** [date] is an ISO `yyyy-MM-dd` string. `404` when no log exists for that day. */
-    suspend fun getDailyLog(date: String): ApiResult<DailyLogDto> = client.apiGet("daily-logs/$date")
+    override suspend fun getDailyLog(date: String): ApiResult<DailyLogDto> = client.apiGet("daily-logs/$date")
 
     /** Create the anchor row for [date] in [cycleId]; `409 CONFLICT` if it already exists. */
-    suspend fun createDailyLog(
+    override suspend fun createDailyLog(
         date: String,
         cycleId: String,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Post, "daily-logs", CreateDailyLogRequest(date, cycleId))
 
     /** Replace a multi-select sub-log ([endpoint] = `emotions`, `sleep`, …); empty list clears it. */
-    suspend fun putOptionIds(
+    override suspend fun putOptionIds(
         date: String,
         endpoint: String,
         optionIds: List<String>,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Put, "daily-logs/$date/$endpoint", OptionIdsRequest(optionIds))
 
     /** Replace a single-select sub-log ([endpoint] = `energy`, `flow`, `collection`); null clears it. */
-    suspend fun putOptionId(
+    override suspend fun putOptionId(
         date: String,
         endpoint: String,
         optionId: String?,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Put, "daily-logs/$date/$endpoint", OptionIdRequest(optionId))
 
     /** Replace the free-text notes for [date]; null clears them. */
-    suspend fun patchNotes(
+    override suspend fun patchNotes(
         date: String,
         notes: String?,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Patch, "daily-logs/$date/notes", NotesUpdateRequest(notes))
 
     /** Replace the whole pain log for [date]; an empty [locations] clears it. */
-    suspend fun putPain(
+    override suspend fun putPain(
         date: String,
         locations: List<PainLocationDto>,
     ): ApiResult<Unit> = client.apiSend(HttpMethod.Put, "daily-logs/$date/pain", PainUpdateRequest(locations))
 
     // ── Analytics (always 200; null fields signal thin data) ─────────────────
-    suspend fun getCycleStats(): ApiResult<CycleStatsDto> = client.apiGet("analytics/cycle-stats")
+    override suspend fun getCycleStats(): ApiResult<CycleStatsDto> = client.apiGet("analytics/cycle-stats")
 
-    suspend fun getPeriodLengthChart(): ApiResult<PeriodLengthChartDto> = client.apiGet("analytics/period-length-chart")
+    override suspend fun getPeriodLengthChart(): ApiResult<PeriodLengthChartDto> =
+        client.apiGet("analytics/period-length-chart")
 
-    suspend fun getOvulationPrediction(): ApiResult<OvulationPredictionDto> =
+    override suspend fun getOvulationPrediction(): ApiResult<OvulationPredictionDto> =
         client.apiGet("analytics/ovulation-prediction")
 
-    suspend fun getSleepPredictions(): ApiResult<SleepPredictionsDto> = client.apiGet("analytics/sleep-predictions")
+    override suspend fun getSleepPredictions(): ApiResult<SleepPredictionsDto> =
+        client.apiGet("analytics/sleep-predictions")
 
     // ── Preferences ──────────────────────────────────────────────────────────
-    suspend fun getPreferences(): ApiResult<PreferencesDto> = client.apiGet("preferences")
+    override suspend fun getPreferences(): ApiResult<PreferencesDto> = client.apiGet("preferences")
 
     /** Replace the dashboard category order with [categoryOrder] (every slug exactly once). */
-    suspend fun putPreferences(categoryOrder: List<String>): ApiResult<PreferencesResponse> =
+    override suspend fun putPreferences(categoryOrder: List<String>): ApiResult<PreferencesResponse> =
         client.apiSendReceiving(HttpMethod.Put, "preferences", UpdatePreferencesRequest(categoryOrder))
 
     // ── Reference data (fetched once, cached by the repository) ──────────────
-    suspend fun getSymptomCategories(): ApiResult<SymptomCategoriesResponse> =
+    override suspend fun getSymptomCategories(): ApiResult<SymptomCategoriesResponse> =
         client.apiGet("ref-data/symptom-categories")
 
-    suspend fun getPainRegions(): ApiResult<PainRegionsResponse> = client.apiGet("ref-data/pain-regions")
+    override suspend fun getPainRegions(): ApiResult<PainRegionsResponse> = client.apiGet("ref-data/pain-regions")
 }

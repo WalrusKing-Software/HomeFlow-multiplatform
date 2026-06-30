@@ -50,7 +50,7 @@ class HttpClientAuthTest {
                     engine = engine,
                 )
 
-            val result = HomeFlowApi(client).getMe()
+            val result = RemoteDataSource(client).getMe()
 
             assertIs<ApiResult.Success<*>>(result)
             assertEquals(1, refreshCalls)
@@ -70,7 +70,7 @@ class HttpClientAuthTest {
                 }
             val client = buildHttpClient(config, holder, onRefresh = { null }, engine = engine)
 
-            val result = HomeFlowApi(client).getMe()
+            val result = RemoteDataSource(client).getMe()
 
             val failure = assertIs<ApiResult.Failure>(result)
             assertEquals(ErrorCode.RESOURCE_NOT_FOUND, failure.code)
@@ -84,7 +84,7 @@ class HttpClientAuthTest {
             val engine = MockEngine { respond(content = meBody, status = HttpStatusCode.OK, headers = jsonHeaders()) }
             val client = buildHttpClient(config, holder, onRefresh = { null }, engine = engine)
 
-            val result = HomeFlowApi(client).getMe()
+            val result = RemoteDataSource(client).getMe()
 
             val success = assertIs<ApiResult.Success<*>>(result)
             assertEquals("user-1", (success.value as org.homeflow.core.dto.UserDto).id)

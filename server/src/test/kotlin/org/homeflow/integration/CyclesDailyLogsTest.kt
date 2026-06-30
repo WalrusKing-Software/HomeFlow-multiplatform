@@ -58,6 +58,7 @@ import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.util.Base64
 import java.util.Date
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -294,6 +295,63 @@ class CyclesDailyLogsTest {
             assertEquals(ErrorCode.RESOURCE_NOT_FOUND, response.body<ApiError>().error.code)
         }
 
+    // ── Client-supplied id (Phase 11 / D1 groundwork) ────────────────────────────
+
+    @Test
+    fun `create cycle honors a client-supplied id`() =
+        withApp { client ->
+            val response = client.createCycle(SUB, "2024-01-15", id = CLIENT_UUID)
+            assertEquals(HttpStatusCode.Created, response.status)
+            val cycle = response.body<CycleDto>()
+            assertEquals(CLIENT_UUID, cycle.id)
+            val stored =
+                transaction(db) {
+                    Cycles.selectAll().where { Cycles.id eq UUID.fromString(CLIENT_UUID) }.single()
+                }
+            assertEquals(CLIENT_UUID, stored[Cycles.id].toString())
+        }
+
+    @Test
+    fun `create cycle rejects a malformed client-supplied id 400`() =
+        withApp { client ->
+            val response = client.createCycle(SUB, "2024-01-15", id = "not-a-uuid")
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            assertEquals(ErrorCode.VALIDATION_ERROR, response.body<ApiError>().error.code)
+        }
+
+    @Test
+    fun `create cycle generates an id when none is supplied`() =
+        withApp { client ->
+            val cycle = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
+            assertTrue(runCatching { UUID.fromString(cycle.id) }.isSuccess)
+        }
+
+    @Test
+    fun `create daily-log anchor honors a client-supplied id`() =
+        withApp { client ->
+            val cycle = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
+            val response = client.createAnchor(SUB, "2024-01-20", cycle.id, id = CLIENT_UUID)
+            assertEquals(HttpStatusCode.Created, response.status)
+            assertEquals(CLIENT_UUID, response.body<DailyLogAnchorDto>().id)
+        }
+
+    @Test
+    fun `create daily-log anchor rejects a malformed client-supplied id 400`() =
+        withApp { client ->
+            val cycle = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
+            val response = client.createAnchor(SUB, "2024-01-20", cycle.id, id = "not-a-uuid")
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            assertEquals(ErrorCode.VALIDATION_ERROR, response.body<ApiError>().error.code)
+        }
+
+    @Test
+    fun `create daily-log anchor generates an id when none is supplied`() =
+        withApp { client ->
+            val cycle = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
+            val anchor = client.createAnchor(SUB, "2024-01-20", cycle.id).body<DailyLogAnchorDto>()
+            assertTrue(runCatching { UUID.fromString(anchor.id) }.isSuccess)
+        }
+
     // ── Harness ─────────────────────────────────────────────────────────────────
 
     private fun withApp(block: suspend (HttpClient) -> Unit) =
@@ -306,10 +364,11 @@ class CyclesDailyLogsTest {
     private suspend fun HttpClient.createCycle(
         sub: String,
         startDate: String,
+        id: String? = null,
     ) = post("/api/v1/cycles") {
         bearer(sub)
         contentType(ContentType.Application.Json)
-        setBody(CreateCycleRequest(startDate))
+        setBody(CreateCycleRequest(startDate, id))
     }
 
     private suspend fun HttpClient.patchCycle(
@@ -326,10 +385,11 @@ class CyclesDailyLogsTest {
         sub: String,
         date: String,
         cycleId: String,
+        id: String? = null,
     ) = post("/api/v1/daily-logs") {
         bearer(sub)
         contentType(ContentType.Application.Json)
-        setBody(CreateDailyLogRequest(date, cycleId))
+        setBody(CreateDailyLogRequest(date, cycleId, id))
     }
 
     private suspend fun HttpClient.patchNotes(
@@ -356,6 +416,7 @@ class CyclesDailyLogsTest {
         private const val SUB = "11111111-1111-1111-1111-111111111111"
         private const val OTHER_SUB = "22222222-2222-2222-2222-222222222222"
         private const val UNKNOWN_UUID = "33333333-3333-3333-3333-333333333333"
+        private const val CLIENT_UUID = "44444444-4444-4444-4444-444444444444"
         private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
         private const val AUDIENCE = "homeflow-backend"
         private const val RSA_KEY_SIZE = 2048
