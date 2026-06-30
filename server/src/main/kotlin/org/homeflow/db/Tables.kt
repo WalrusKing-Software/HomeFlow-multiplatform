@@ -36,6 +36,7 @@ object Cycles : Table("cycles") {
     val endDate = date("end_date").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
+
     /** Soft-delete timestamp (D3); null = live. Added in V3__sync.sql. */
     val deletedAt = timestampWithTimeZone("deleted_at").nullable()
 
@@ -109,6 +110,7 @@ object DailyLogs : Table("daily_logs") {
     val notes = text("notes").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
+
     /** Soft-delete timestamp (D3); null = live. Added in V3__sync.sql. */
     val deletedAt = timestampWithTimeZone("deleted_at").nullable()
 
@@ -244,10 +246,6 @@ object UserDashboardPreferences : Table("user_dashboard_preferences") {
     override val primaryKey = PrimaryKey(id)
 }
 
-/**
- * `jsonb` is not in core Exposed; this minimal column type (backed by [PGobject])
- * lets `category_order` be written and read as the proper Postgres `jsonb` type.
- */
 // ── Sync change-log (Phase 16a) ───────────────────────────────────────────────
 
 /**
@@ -271,6 +269,10 @@ object SyncChanges : Table("sync_changes") {
     }
 }
 
+/**
+ * `jsonb` is not in core Exposed; this minimal column type (backed by [PGobject])
+ * lets `category_order` be written and read as the proper Postgres `jsonb` type.
+ */
 private class JsonbColumnType : ColumnType<String>() {
     override fun sqlType(): String = "jsonb"
 

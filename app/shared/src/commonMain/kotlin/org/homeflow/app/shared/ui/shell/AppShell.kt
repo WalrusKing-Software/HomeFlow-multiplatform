@@ -76,7 +76,8 @@ fun AppShell(
     syncStatusFlow: StateFlow<SyncStatus>? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
-    val syncStatus by syncStatusFlow?.collectAsState() ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
+    val syncStatus by syncStatusFlow?.collectAsState()
+        ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
 
     Scaffold(
         topBar = {

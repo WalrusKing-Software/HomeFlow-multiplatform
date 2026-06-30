@@ -58,8 +58,7 @@ class DailyLogsRepository(
                     (DailyLogs.userId eq userId) and
                         (DailyLogs.logDate eq date) and
                         DailyLogs.deletedAt.isNull()
-                }
-                .map(::toRow)
+                }.map(::toRow)
                 .singleOrNull()
         }
 
@@ -119,8 +118,7 @@ class DailyLogsRepository(
                         (DailyLogs.userId eq userId) and
                             (DailyLogs.logDate eq date) and
                             DailyLogs.deletedAt.isNull()
-                    }
-                    .map(::toRow)
+                    }.map(::toRow)
                     .singleOrNull()
             if (existing != null) return@transaction null
 
@@ -175,7 +173,10 @@ class DailyLogsRepository(
                 }
                 changeLogRepository.record(userId, TYPE_DAY, id, now, deleted = false)
                 return@transaction DailyLogRow(
-                    id, userId, cycleId, date,
+                    id,
+                    userId,
+                    cycleId,
+                    date,
                     notes = existing.notes,
                     createdAt = existing.createdAt,
                     updatedAt = now,
@@ -231,8 +232,7 @@ class DailyLogsRepository(
                             (DailyLogs.userId eq userId) and
                                 (DailyLogs.logDate eq date) and
                                 DailyLogs.deletedAt.isNull()
-                        }
-                        .map(::toRow)
+                        }.map(::toRow)
                         .single()
                 changeLogRepository.record(userId, TYPE_DAY, row.id, now, deleted = false)
                 row
@@ -258,8 +258,7 @@ class DailyLogsRepository(
                         (DailyLogs.userId eq userId) and
                             (DailyLogs.logDate eq date) and
                             DailyLogs.deletedAt.isNull()
-                    }
-                    .map(::toRow)
+                    }.map(::toRow)
                     .singleOrNull()
                     ?: return@transaction null
 

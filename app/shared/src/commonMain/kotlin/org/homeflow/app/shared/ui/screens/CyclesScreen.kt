@@ -142,7 +142,13 @@ private fun CycleCard(
         val length = cycle.endDate?.let { cycleLength(LocalDate.parse(cycle.startDate), LocalDate.parse(it)) }
         KeyValueRow("Status", if (cycle.endDate == null) "Open" else "Closed")
         KeyValueRow("Length", length?.let { "$it days" } ?: "In progress")
-        deleteError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        deleteError?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (cycle.endDate == null) {
             CloseCycleControls(repository, cycle, onClosed)
         }

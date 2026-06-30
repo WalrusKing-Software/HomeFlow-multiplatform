@@ -10,9 +10,6 @@ import org.homeflow.core.dto.CyclesResponse
 import org.homeflow.core.dto.DailyLogDto
 import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.NotesUpdateRequest
-import org.homeflow.core.dto.SyncPullResponse
-import org.homeflow.core.dto.SyncPushRequest
-import org.homeflow.core.dto.SyncPushResponse
 import org.homeflow.core.dto.OptionIdRequest
 import org.homeflow.core.dto.OptionIdsRequest
 import org.homeflow.core.dto.OvulationPredictionDto
@@ -24,6 +21,9 @@ import org.homeflow.core.dto.PreferencesDto
 import org.homeflow.core.dto.PreferencesResponse
 import org.homeflow.core.dto.SleepPredictionsDto
 import org.homeflow.core.dto.SymptomCategoriesResponse
+import org.homeflow.core.dto.SyncPullResponse
+import org.homeflow.core.dto.SyncPushRequest
+import org.homeflow.core.dto.SyncPushResponse
 import org.homeflow.core.dto.UpdateCycleRequest
 import org.homeflow.core.dto.UpdatePreferencesRequest
 import org.homeflow.core.dto.UserDto
@@ -144,8 +144,7 @@ class RemoteDataSource(
         client.apiSendReceiving(HttpMethod.Post, "sync/changes", request)
 
     /** Pull server changes since [cursor]; returns changed entities + new cursor. */
-    suspend fun pullSync(cursor: Long): ApiResult<SyncPullResponse> =
-        client.apiGet("sync/changes?cursor=$cursor")
+    suspend fun pullSync(cursor: Long): ApiResult<SyncPullResponse> = client.apiGet("sync/changes?cursor=$cursor")
 
     // ── Migration (not on the seam — LocalDataSource must not implement this) ──
 

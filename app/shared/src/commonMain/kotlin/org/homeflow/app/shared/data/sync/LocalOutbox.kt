@@ -20,7 +20,9 @@ const val OP_DELETE = "delete"
  * sends only the LATEST entry per entity (via LWW on the server).
  */
 @OptIn(ExperimentalUuidApi::class)
-class LocalOutbox(private val db: HomeFlowDb) {
+class LocalOutbox(
+    private val db: HomeFlowDb,
+) {
     /** Records a pending sync operation for [entityType]/[entityId]. */
     fun record(
         entityType: String,

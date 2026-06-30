@@ -39,6 +39,7 @@ data class CycleRow(
  * All write methods call [changeLogRepository.record] inside the same Exposed
  * transaction so the change entry and the data row are atomic (Phase 16a D-16a.3).
  */
+@Suppress("TooManyFunctions") // small per-operation DB readers/writers plus sync soft-delete, by design
 class CyclesRepository(
     private val db: Database,
     private val changeLogRepository: ChangeLogRepository,
@@ -63,8 +64,7 @@ class CyclesRepository(
                 .selectAll()
                 .where {
                     (Cycles.id eq cycleId) and (Cycles.userId eq userId) and Cycles.deletedAt.isNull()
-                }
-                .map(::toRow)
+                }.map(::toRow)
                 .singleOrNull()
         }
 
@@ -91,8 +91,7 @@ class CyclesRepository(
                 .selectAll()
                 .where {
                     (Cycles.userId eq userId) and Cycles.endDate.isNull() and Cycles.deletedAt.isNull()
-                }
-                .orderBy(Cycles.startDate to SortOrder.DESC)
+                }.orderBy(Cycles.startDate to SortOrder.DESC)
                 .map(::toRow)
                 .firstOrNull()
         }
@@ -233,8 +232,9 @@ class CyclesRepository(
                     it[Cycles.updatedAt] = updatedAt
                     it[deletedAt] = null
                 }
-            if (updated == 0) null
-            else {
+            if (updated == 0) {
+                null
+            } else {
                 changeLogRepository.record(userId, TYPE_CYCLE, cycleId, updatedAt, deleted = false)
                 findByIdIncludingDeleted(userId, cycleId)
             }
@@ -259,8 +259,7 @@ class CyclesRepository(
                     .selectAll()
                     .where {
                         (Cycles.id eq cycleId) and (Cycles.userId eq userId) and Cycles.deletedAt.isNull()
-                    }
-                    .map(::toRow)
+                    }.map(::toRow)
                     .singleOrNull()
                     ?: return@transaction false
 
