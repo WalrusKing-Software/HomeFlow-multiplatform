@@ -76,6 +76,21 @@ suspend inline fun <reified B> HttpClient.apiSend(
         onFailure = { ApiResult.Failure(ErrorCode.INTERNAL_ERROR, it.message ?: "Network error", 0) },
     )
 
+/**
+ * Send a bodyless request via [method] to [path] (e.g. `DELETE`). 2xx (incl. `204 No Content`)
+ * → `Success(Unit)`; anything else maps to the typed [ApiError] failure.
+ */
+suspend fun HttpClient.apiSendEmpty(
+    method: HttpMethod,
+    path: String,
+): ApiResult<Unit> =
+    runCatching {
+        request(path) { this.method = method }
+    }.fold(
+        onSuccess = { response -> if (response.status.isSuccess()) ApiResult.Success(Unit) else response.toFailure() },
+        onFailure = { ApiResult.Failure(ErrorCode.INTERNAL_ERROR, it.message ?: "Network error", 0) },
+    )
+
 /** Like [apiSend] but decodes the success body to [R] — for writes whose response the caller needs. */
 suspend inline fun <reified B, reified R> HttpClient.apiSendReceiving(
     method: HttpMethod,

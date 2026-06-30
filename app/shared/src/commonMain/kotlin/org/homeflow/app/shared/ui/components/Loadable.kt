@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.homeflow.app.shared.data.ApiResult
+import org.homeflow.app.shared.data.userFacingMessage
 import org.homeflow.core.ErrorCode
 
 /**
@@ -63,7 +64,7 @@ fun <T> Loadable(
                 ) {
                     Text("Couldn't load this", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        state.message,
+                        userFacingMessage(state.code, state.message),
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

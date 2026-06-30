@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.ui.screens.AnalyticsScreen
 import org.homeflow.app.shared.ui.screens.CyclesScreen
@@ -45,6 +46,7 @@ private enum class Tab(
 fun AppShell(
     repository: HomeFlowRepository,
     onLogout: () -> Unit,
+    onDeleteAccount: suspend () -> ApiResult<Unit>,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
 
@@ -73,7 +75,7 @@ fun AppShell(
                 Tab.DAY -> DayScreen(repository)
                 Tab.CYCLES -> CyclesScreen(repository)
                 Tab.ANALYTICS -> AnalyticsScreen(repository)
-                Tab.SETTINGS -> PreferencesScreen(repository)
+                Tab.SETTINGS -> PreferencesScreen(repository, onDeleteAccount)
             }
         }
     }
