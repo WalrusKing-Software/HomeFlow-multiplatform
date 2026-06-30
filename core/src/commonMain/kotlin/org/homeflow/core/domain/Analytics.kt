@@ -1,6 +1,6 @@
 package org.homeflow.core.domain
 
-import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.minus
@@ -66,7 +66,7 @@ fun cycleStats(closedCycles: List<ClosedCycleInput>): CycleStatsDto {
     val averageCycleLength = round(lengths.average()).toInt()
 
     val mostRecentStart = closedCycles.maxOf { it.startDate }
-    val windowStart = mostRecentStart.minus(CYCLE_VARIATION_WINDOW_DAYS, DateTimeUnit.DAY)
+    val windowStart = mostRecentStart.minus(DatePeriod(days = CYCLE_VARIATION_WINDOW_DAYS))
     val recentLengths =
         closedCycles
             .filter { it.startDate >= windowStart }
@@ -107,10 +107,10 @@ fun ovulationPredictions(
     avgCycleLength: Int,
 ): List<OvulationPrediction> =
     (1..OVULATION_PREDICTION_COUNT).map { n ->
-        val periodStart = mostRecentStart.plus(avgCycleLength * n, DateTimeUnit.DAY)
+        val periodStart = mostRecentStart.plus(DatePeriod(days = avgCycleLength * n))
         OvulationPrediction(
             predictedPeriodStart = periodStart.toString(),
-            predictedOvulationDate = periodStart.minus(LUTEAL_PHASE_LENGTH, DateTimeUnit.DAY).toString(),
+            predictedOvulationDate = periodStart.minus(DatePeriod(days = LUTEAL_PHASE_LENGTH)).toString(),
         )
     }
 
