@@ -198,6 +198,9 @@ class HomeFlowRepository(
         end: LocalDate,
     ): ApiResult<CycleDto> = api.closeCycle(cycleId, end.toString())
 
+    /** Permanently delete the account and all its health data (server-side cascade + Keycloak). */
+    suspend fun deleteAccount(): ApiResult<Unit> = api.deleteAccount()
+
     /** The dashboard categories in their saved order, paired with labels, for the reorder UI. */
     suspend fun loadPreferences(): ApiResult<PreferencesEditor> {
         val labels = ensureRefData().valueOr { return it }

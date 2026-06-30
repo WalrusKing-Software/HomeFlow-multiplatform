@@ -10,6 +10,7 @@ import org.homeflow.app.shared.data.HomeFlowApi
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
+import org.homeflow.app.shared.data.userMessage
 import org.homeflow.core.dto.UserDto
 
 /** The auth-gate state the root composable renders off. */
@@ -128,6 +129,21 @@ class AuthController(
         _state.value = AuthState.LoggedOut
     }
 
+    /**
+     * Permanently delete the account. On success the server has already destroyed the data and
+     * the Keycloak identity, so we just clear local secure storage + memory and drop to the login
+     * screen (no revocation — the identity is gone). On failure the session is left intact and the
+     * caller renders the error; the stored token stays valid.
+     */
+    suspend fun deleteAccount(): ApiResult<Unit> =
+        repository.deleteAccount().also { result ->
+            if (result is ApiResult.Success) {
+                tokenStore.clear()
+                tokenHolder.clear()
+                _state.value = AuthState.LoggedOut
+            }
+        }
+
     private suspend fun loadUser() {
         _state.value =
             when (val result = api.getMe()) {
@@ -137,7 +153,7 @@ class AuthController(
                 }
                 is ApiResult.Failure -> {
                     authDebugLog("getMe FAILED: code=${result.code} status=${result.httpStatus} msg=${result.message}")
-                    AuthState.Error("${result.code}: ${result.message}")
+                    AuthState.Error(result.userMessage())
                 }
             }
     }

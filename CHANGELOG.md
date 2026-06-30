@@ -153,3 +153,29 @@ Ktor server). Pre-implementation: documentation and specification only.
   - **Reorder tracking categories.** A new Settings tab lets you rearrange the order
     your categories appear when logging, and the saved order is applied to the day
     editor.
+- **Hardening & release prep (Phase 10).** The clients are now ready to package and
+  ship, with the release-facing rough edges smoothed:
+  - **Delete your account from the app.** A danger zone in Settings permanently
+    deletes your account and all tracked data after a type-to-confirm prompt; on
+    success the app clears its local session and returns to the login screen.
+  - **Friendlier errors.** Failures now show calm, actionable messages instead of
+    raw error codes (e.g. an expired session or a lost connection), while never
+    surfacing server internals.
+  - **Signed Android release builds.** `:app:androidApp:bundleRelease` produces a
+    signed AAB when a (gitignored) `keystore.properties` is present, and an unsigned
+    one otherwise — signing secrets never enter the build script or VCS
+    (`keystore.properties.example` shows the format).
+  - **Polished desktop installers.** The desktop distribution now carries a proper
+    app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
+
+### Fixed
+- **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
+  to the same screen with no feedback when biometrics/device credential weren't
+  enrolled, or when the biometric prompt errored — the gate still fails closed,
+  but the failure now surfaces as a visible error message instead of looking like
+  a dead button.
+
+### Changed
+- The client security checklist in `ARCHITECTURE-client.md` is verified and ticked
+  (no health data at rest, tokens in secure storage, no body logging, PKCE S256,
+  `FLAG_SECURE`, gated refresh, revoke-on-logout, account deletion).

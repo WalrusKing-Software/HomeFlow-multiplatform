@@ -50,6 +50,7 @@ fun App(controller: AuthController = remember { buildAuthController() }) {
                 AppShell(
                     repository = controller.repository,
                     onLogout = { scope.launch { controller.logout() } },
+                    onDeleteAccount = { controller.deleteAccount() },
                 )
 
             is AuthState.Error ->

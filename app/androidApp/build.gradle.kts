@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -58,9 +59,27 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    // Release signing is driven by an untracked `keystore.properties` at the repo root
+    // (see keystore.properties.example). When absent — local dev, CI without secrets —
+    // no release signing config is wired and `bundleRelease` produces an unsigned AAB.
+    // Secrets never live in the build script or VCS. See __docs/BRANCHING.md / DEPLOYMENT.md.
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    val releaseSigning =
+        if (keystorePropsFile.exists()) {
+            val props = Properties().apply { keystorePropsFile.inputStream().use { load(it) } }
+            signingConfigs.create("release") {
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        } else {
+            null
+        }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            releaseSigning?.let { signingConfig = it }
         }
     }
     compileOptions {
