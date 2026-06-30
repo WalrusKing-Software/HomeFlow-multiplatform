@@ -3,6 +3,7 @@ package org.homeflow.app.shared.data.sync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.datetime.LocalDate
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -18,7 +19,6 @@ import org.homeflow.core.service.CycleBoundary
 import org.homeflow.core.service.MergeWinner
 import org.homeflow.core.service.mergeDecision
 import org.homeflow.core.service.reconcileOpenCycles
-import kotlinx.datetime.LocalDate
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -82,7 +82,8 @@ class SyncEngine(
             when (entry.entity_type) {
                 ENTITY_CYCLE -> {
                     val row =
-                        db.cyclesQueries.selectByIdIncludingDeleted(entry.entity_id, userId)
+                        db.cyclesQueries
+                            .selectByIdIncludingDeleted(entry.entity_id, userId)
                             .executeAsOneOrNull()
                     if (row != null) {
                         val cycle = assembler.assembleCycle(row)
@@ -94,7 +95,8 @@ class SyncEngine(
                 }
                 ENTITY_DAY -> {
                     val row =
-                        db.dailyLogsQueries.selectByIdIncludingDeleted(entry.entity_id, userId)
+                        db.dailyLogsQueries
+                            .selectByIdIncludingDeleted(entry.entity_id, userId)
                             .executeAsOneOrNull()
                     if (row != null) {
                         val day = assembler.assembleDay(row)
@@ -130,12 +132,19 @@ class SyncEngine(
         when (val result = remote.pushSync(request)) {
             is ApiResult.Success -> {
                 pending.forEach { outbox.markSynced(it.id) }
+                // Adopt the server's authoritative post-merge state (D-16a.6) so a push that
+                // LOST a conflict is corrected immediately. Without this, the cursor advances
+                // past the winning change (below) and the local losing value would never be
+                // pulled back. applyRemote* writes WITHOUT recording outbox entries (no echo loop).
+                val response = result.value
+                response.cycles.forEach { applier.applyRemoteCycle(it) }
+                response.days.forEach { applier.applyRemoteDay(it) }
+                response.preferences?.let { applier.applyRemotePreferences(it) }
+                reconcileLocalOpenCycles()
                 ensureSyncStateRow()
-                result.value.cursor.let { newCursor ->
-                    val current = db.syncStateQueries.getCursor().executeAsOneOrNull() ?: 0L
-                    if (newCursor > current) {
-                        db.syncStateQueries.updateCursor(newCursor)
-                    }
+                val current = db.syncStateQueries.getCursor().executeAsOneOrNull() ?: 0L
+                if (response.cursor > current) {
+                    db.syncStateQueries.updateCursor(response.cursor)
                 }
             }
             is ApiResult.Failure -> error("Push failed: ${result.message}")
@@ -172,7 +181,10 @@ class SyncEngine(
      */
     private fun reconcileLocalOpenCycles() {
         val openRows =
-            db.cyclesQueries.selectAll(userId).executeAsList().filter { it.end_date == null }
+            db.cyclesQueries
+                .selectAll(userId)
+                .executeAsList()
+                .filter { it.end_date == null }
         if (openRows.size <= 1) return
         val boundaries = openRows.map { CycleBoundary(it.id, LocalDate.parse(it.start_date), null) }
         val rowsById = openRows.associateBy { it.id }
@@ -292,7 +304,13 @@ private class SyncApplier(
             slugs.forEach { slug ->
                 val optId = ctx.optionIdByCategoryAndSlug[catSlug to slug] ?: return@forEach
                 db.dailyLogSubsQueries.insertMulti(
-                    Uuid.random().toString(), logId, catId, optId, now, now, null,
+                    Uuid.random().toString(),
+                    logId,
+                    catId,
+                    optId,
+                    now,
+                    now,
+                    null,
                 )
             }
         }
@@ -307,7 +325,13 @@ private class SyncApplier(
                 val optId = ctx.optionIdByCategoryAndSlug[catSlug to slug] ?: return
                 val now = Clock.System.now().toString()
                 db.dailyLogSubsQueries.insertSingle(
-                    Uuid.random().toString(), logId, catId, optId, now, now, null,
+                    Uuid.random().toString(),
+                    logId,
+                    catId,
+                    optId,
+                    now,
+                    now,
+                    null,
                 )
             }
         }
@@ -344,7 +368,12 @@ private class SyncApplier(
             remote.pain.forEach { p ->
                 val locId = ctx.locationIdBySlug[p.location] ?: return@forEach
                 db.painLogsQueries.insertLocation(
-                    Uuid.random().toString(), painLogId, locId, p.severity?.toLong(), now, now,
+                    Uuid.random().toString(),
+                    painLogId,
+                    locId,
+                    p.severity?.toLong(),
+                    now,
+                    now,
                 )
             }
         }
