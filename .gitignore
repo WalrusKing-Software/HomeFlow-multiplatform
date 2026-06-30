@@ -20,6 +20,9 @@ captures
 node_modules/
 VERSION
 
+# Claude Code conversation exports (/export) — may contain sensitive context; never commit.
+*-local-command-caveat*.txt
+
 # --- Secrets / signing / sensitive (HomeFlow) -------------------------------
 .env
 .env.*
