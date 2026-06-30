@@ -244,6 +244,14 @@ Ktor server). Pre-implementation: documentation and specification only.
   duplicated or overwritten, and unrecognized values are skipped and reported back
   in a `warnings` list rather than failing the whole import.
 
+- **Release pipeline.** Pushing a `vX.Y.Z` tag (or running manually via
+  `workflow_dispatch`) now builds and publishes all three deliverables to a GitHub
+  Release in one automated pipeline: the server distribution (`.zip` + `.tar.gz`) and
+  a multi-arch (`amd64` + `arm64`) Docker image pushed to GHCR, desktop installers
+  for all three platforms (Windows `.msi`, macOS `.dmg`, Linux `.deb`), and a signed
+  Android APK + AAB. Pre-release tags (`-alpha.N`, `-rc.N`) produce a GitHub
+  pre-release and do not move the Docker `:latest` tag.
+
 ### Fixed
 - **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
   to the same screen with no feedback when biometrics/device credential weren't

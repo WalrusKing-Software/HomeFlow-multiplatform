@@ -87,15 +87,13 @@ build. Desktop installer version = the same `X.Y.Z`.
 
 ---
 
-## Release artifacts (wire when nearing first release)
+## Release artifacts
 
-Tag-triggered workflows:
-- `v*` → `./gradlew :server:installDist` + build/push the backend image; deploy per
-  `DEPLOYMENT.md`.
-- `v*` → `./gradlew :app:androidApp:bundleRelease` (signed AAB) and
-  `:app:desktopApp:packageDistributionForCurrentOS` (desktop installers), attached to a
-  GitHub Release. Desktop installers are per-OS, so build the macOS/Windows/Linux
-  artifacts on their respective runners.
+The release pipeline is implemented. See `__docs/RELEASE-PIPELINE.md` for the full
+specification and the implementation checklist. In short: push a `vX.Y.Z` tag (or
+trigger `workflow_dispatch`) to build the server distribution + multi-arch Docker
+image, desktop installers for all three platforms, and a signed Android APK/AAB —
+all attached to a single GitHub Release.
 
 ---
 

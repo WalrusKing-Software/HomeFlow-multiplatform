@@ -45,9 +45,11 @@ android {
             libs.versions.android.targetSdk
                 .get()
                 .toInt()
-        // versionName tracks the project version (gradle.properties); bump
-        // versionCode manually on every distributed build (see __docs/BRANCHING.md).
-        versionCode = 1
+        // versionName tracks the project version (gradle.properties). versionCode is
+        // a monotonic integer supplied by the release pipeline via -PversionCode
+        // (derived from the version core); defaults to 1 for local/dev builds.
+        // See __docs/RELEASE-PIPELINE.md §3.4.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = project.version.toString()
         // AppAuth's RedirectUriReceiverActivity captures the OIDC custom-scheme
         // redirect; the scheme must match homeflow-android's Valid Redirect URI
