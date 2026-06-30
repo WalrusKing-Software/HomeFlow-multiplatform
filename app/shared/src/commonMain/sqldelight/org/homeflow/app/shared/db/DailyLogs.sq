@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS daily_logs (
+    id         TEXT NOT NULL PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    cycle_id   TEXT NOT NULL REFERENCES cycles(id),
+    log_date   TEXT NOT NULL,
+    notes      TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT,
+    UNIQUE(user_id, log_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date);
+CREATE INDEX IF NOT EXISTS idx_daily_logs_cycle_id ON daily_logs(cycle_id);
+
+selectByDate:
+SELECT * FROM daily_logs WHERE user_id = :userId AND log_date = :logDate AND deleted_at IS NULL;
+
+selectByCycleId:
+SELECT * FROM daily_logs WHERE cycle_id = :cycleId AND deleted_at IS NULL ORDER BY log_date;
+
+insert:
+INSERT INTO daily_logs (id, user_id, cycle_id, log_date, notes, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateNotes:
+UPDATE daily_logs SET notes = :notes, updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+updateTimestamp:
+UPDATE daily_logs SET updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+deleteAll:
+DELETE FROM daily_logs;
+
+-- Used by analytics: dates with a flow log (blood_flow category is single-select).
+selectDatesWithFlow:
+SELECT dl.log_date FROM daily_logs dl
+INNER JOIN daily_log_single_select dlss ON dlss.log_id = dl.id
+INNER JOIN ref_symptom_options rso ON rso.id = dlss.option_id
+INNER JOIN ref_symptom_categories rsc ON rsc.id = rso.category_id
+WHERE dl.cycle_id = :cycleId AND rsc.slug = 'blood_flow' AND dl.deleted_at IS NULL;

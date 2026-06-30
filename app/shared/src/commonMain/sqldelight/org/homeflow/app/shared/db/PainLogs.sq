@@ -1,0 +1,49 @@
+CREATE TABLE IF NOT EXISTS pain_logs (
+    id         TEXT NOT NULL PRIMARY KEY,
+    log_id     TEXT NOT NULL REFERENCES daily_logs(id) UNIQUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pain_log_locations (
+    id          TEXT NOT NULL PRIMARY KEY,
+    pain_log_id TEXT NOT NULL REFERENCES pain_logs(id),
+    location_id TEXT NOT NULL REFERENCES ref_pain_locations(id),
+    severity    INTEGER,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE(pain_log_id, location_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pain_log_locations_pain_log ON pain_log_locations(pain_log_id);
+
+selectByLogId:
+SELECT pl.id, pl.log_id, pl.created_at, pl.updated_at
+FROM pain_logs pl
+WHERE pl.log_id = :logId AND pl.deleted_at IS NULL;
+
+selectLocationsByPainLogId:
+SELECT pll.location_id, pll.severity
+FROM pain_log_locations pll
+WHERE pll.pain_log_id = :painLogId;
+
+insertPainLog:
+INSERT OR REPLACE INTO pain_logs (id, log_id, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?);
+
+insertLocation:
+INSERT INTO pain_log_locations (id, pain_log_id, location_id, severity, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteLocationsByPainLogId:
+DELETE FROM pain_log_locations WHERE pain_log_id = :painLogId;
+
+deletePainLogByLogId:
+DELETE FROM pain_logs WHERE log_id = :logId;
+
+deleteAllLocations:
+DELETE FROM pain_log_locations;
+
+deleteAllPainLogs:
+DELETE FROM pain_logs;

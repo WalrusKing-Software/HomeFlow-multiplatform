@@ -1,0 +1,97 @@
+CREATE TABLE IF NOT EXISTS ref_symptom_categories (
+    id             TEXT NOT NULL PRIMARY KEY,
+    slug           TEXT NOT NULL UNIQUE,
+    label          TEXT NOT NULL,
+    selection_type TEXT NOT NULL,
+    phase          TEXT NOT NULL,
+    sort_order     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ref_symptom_options (
+    id          TEXT NOT NULL PRIMARY KEY,
+    category_id TEXT NOT NULL REFERENCES ref_symptom_categories(id),
+    slug        TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    sort_order  INTEGER NOT NULL,
+    UNIQUE(category_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ref_options_category ON ref_symptom_options(category_id);
+
+CREATE TABLE IF NOT EXISTS ref_pain_regions (
+    id         TEXT NOT NULL PRIMARY KEY,
+    slug       TEXT NOT NULL UNIQUE,
+    label      TEXT NOT NULL,
+    sort_order INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ref_pain_locations (
+    id         TEXT NOT NULL PRIMARY KEY,
+    region_id  TEXT NOT NULL REFERENCES ref_pain_regions(id),
+    slug       TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    UNIQUE(region_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ref_pain_locations_region ON ref_pain_locations(region_id);
+
+-- Category queries --
+
+countCategories:
+SELECT COUNT(*) FROM ref_symptom_categories;
+
+selectAllCategories:
+SELECT * FROM ref_symptom_categories ORDER BY sort_order;
+
+selectCategoryBySlug:
+SELECT * FROM ref_symptom_categories WHERE slug = :slug;
+
+insertCategory:
+INSERT OR IGNORE INTO ref_symptom_categories (id, slug, label, selection_type, phase, sort_order)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- Option queries --
+
+selectOptionsByCategory:
+SELECT * FROM ref_symptom_options WHERE category_id = :categoryId ORDER BY sort_order;
+
+selectOptionById:
+SELECT * FROM ref_symptom_options WHERE id = :id;
+
+selectOptionBySlug:
+SELECT * FROM ref_symptom_options WHERE category_id = :categoryId AND slug = :slug;
+
+selectAllOptions:
+SELECT * FROM ref_symptom_options ORDER BY category_id, sort_order;
+
+insertOption:
+INSERT OR IGNORE INTO ref_symptom_options (id, category_id, slug, label, sort_order)
+VALUES (?, ?, ?, ?, ?);
+
+-- Pain region queries --
+
+countRegions:
+SELECT COUNT(*) FROM ref_pain_regions;
+
+selectAllRegions:
+SELECT * FROM ref_pain_regions ORDER BY sort_order;
+
+insertRegion:
+INSERT OR IGNORE INTO ref_pain_regions (id, slug, label, sort_order)
+VALUES (?, ?, ?, ?);
+
+-- Pain location queries --
+
+selectLocationsByRegion:
+SELECT * FROM ref_pain_locations WHERE region_id = :regionId ORDER BY sort_order;
+
+selectAllLocations:
+SELECT * FROM ref_pain_locations ORDER BY region_id, sort_order;
+
+selectLocationById:
+SELECT * FROM ref_pain_locations WHERE id = :id;
+
+insertLocation:
+INSERT OR IGNORE INTO ref_pain_locations (id, region_id, slug, label, sort_order)
+VALUES (?, ?, ?, ?, ?);
