@@ -307,6 +307,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: assets
+          # Explicit pattern so the docker/build-push-action BuildKit cache artifact
+          # (named like `owner~repo~xxxxxx.dockerbuild`) is not downloaded here.
+          pattern: '{server-dist,android,desktop-*}'
           merge-multiple: true
       - name: Extract release notes from CHANGELOG
         shell: bash
