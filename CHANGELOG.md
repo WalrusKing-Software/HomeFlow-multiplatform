@@ -167,6 +167,36 @@ Ktor server). Pre-implementation: documentation and specification only.
     (`keystore.properties.example` shows the format).
   - **Polished desktop installers.** The desktop distribution now carries a proper
     app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
+- **Use HomeFlow entirely on one device — no server required (Phase 14 — Mode A).**
+  Both the desktop and Android apps now support a **Local-only mode**: all data
+  stays on your device, encrypted at rest, with no server or Keycloak needed:
+  - On first launch a **mode chooser** appears: "Use this device only" or
+    "Connect to a server". The choice is remembered; clearing it (via account
+    deletion) resets back to the chooser.
+  - In Local mode the full app — dashboard, day logging, cycle management,
+    analytics, preferences — works offline forever. The data source is the
+    Phase 13 SQLCipher-encrypted local store.
+  - An **Export my data** button in Settings serializes your entire history into
+    a portable `homeflow-export.json` (slug-keyed, UUID-free, same format as the
+    server's `GET /api/v1/export`) and opens a system save dialog. Desktop uses
+    AWT's FileDialog; Android uses the Storage Access Framework.
+  - **Deleting your account** in Local mode wipes the database DEK from the OS
+    secure store (making the encrypted database unreadable), clears the
+    app-lock passphrase/biometric enrollment, and returns to the first-run
+    chooser.
+- **Local persistence engine (Phase 13).**
+  The apps ship a complete on-device storage layer backed by SQLDelight 2.0 with
+  whole-database SQLCipher encryption — the foundation for Mode A and future
+  offline sync (Mode C):
+  - An encrypted local database (`homeflow_local.db`) stores cycles, daily logs
+    (including all symptom selections, pain, notes, and the sex tracking payload),
+    and dashboard preferences — the full data model, not a cache.
+  - The 32-byte data-encryption key (DEK) is stored exclusively in OS-level
+    secure storage (Android Keystore / desktop OS keychain) and never written to
+    disk in plaintext.
+  - All domain rules from the server (cycle auto-close, daily-log-within-cycle
+    date validation, option-in-category validation, etc.) are re-implemented using
+    shared `:core` functions so Mode A behaves identically to the server mode.
 - **Export and import your data (Phase 12).** `GET /api/v1/export` downloads all of
   your cycles and daily logs as a portable `homeflow` backup file (decrypted notes
   and sex data, every option/location identified by a stable slug instead of a

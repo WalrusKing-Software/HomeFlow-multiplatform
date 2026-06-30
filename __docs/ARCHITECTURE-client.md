@@ -205,18 +205,113 @@ host tests). Tests use one of two helper patterns:
 
 ---
 
+## Mode A — local-only app (Phase 14)
+
+Phase 14 delivers the first user-visible deployment mode: the app runs **with no
+server and no Keycloak**, all data in the Phase 13 encrypted local store.
+
+### AppMode + AppModeStore
+
+`AppMode { LOCAL_ONLY, SERVER }` is persisted in a **non-encrypted** store
+(`AppModeStore`) so it can be read before the app-lock gate is satisfied
+(and before the DEK is available):
+
+- **Desktop:** `~/.homeflow/mode.properties` (plain `java.util.Properties`)
+- **Android:** plain `SharedPreferences` (key `"app_mode"`)
+
+`AppModeStore` is `null` on first run → `AppRoot` shows the one-time chooser.
+
+### AppRoot — composition root
+
+`AppRoot` (in `commonMain`) replaces the old single-mode `App()` entry point in
+both `main.kt` and `MainActivity`:
+
+```
+AppRoot
+  ├─ mode == null   → ModeChooserScreen (first run)
+  ├─ mode == LOCAL  → LocalSessionController + App(controller, onExport)
+  └─ mode == SERVER → AuthController (Keycloak OIDC) + App(controller)
+```
+
+After `deleteAccount()` in Mode A, the controller reaches `AuthState.LoggedOut`
+and `AppModeStore.clear()` is called; `AppRoot`'s `LaunchedEffect` detects the
+cleared mode and re-shows the chooser.
+
+### SessionController — shared interface
+
+`SessionController` is the interface both `AuthController` (Mode B) and
+`LocalSessionController` (Mode A) implement, so `AppRoot` and `App` remain
+mode-agnostic:
+
+```kotlin
+interface SessionController {
+    val state: StateFlow<AuthState>
+    val usesPassphraseGate: Boolean
+    fun start()
+    suspend fun login()
+    suspend fun enroll(secret: String)
+    suspend fun unlock(secret: String? = null)
+    suspend fun logout()
+    suspend fun deleteAccount(): ApiResult<Unit>
+}
+```
+
+`AuthState.Authenticated` now carries `val repository: HomeFlowRepository` so
+the UI never needs a separate "repository only valid after unlock" reference.
+
+### LocalSessionController — Mode A controller
+
+`LocalSessionController` constructs a `HomeFlowDb` from the DEK (via
+`LocalDatabaseFactory`), seeds it on first open, and transitions the state
+machine through `Locked → Authenticating → Authenticated`. It has **no
+`HttpClient`** — network-free by construction.
+
+State machine:
+- `start()` → `Locked(needsEnrollment = gate.needsEnrollment())`
+- `enroll(secret)` → `gate.enroll` then `unlock(secret)`
+- `unlock(secret)` → `Authenticating` → gate pass → DEK → DB → seed →
+  `Authenticated(localUser, repository)`
+- `logout()` → drop DB handle → `Locked`
+- `deleteAccount()` → `ds.deleteAccount()` → clear DEK + enrollment + mode →
+  `LoggedOut`
+
+### at-rest encryption (Mode A exception)
+
+> The "No health data at rest on clients" principle applies only to **remote-only
+> mode (Mode B)**. Mode A explicitly stores all health data locally — **in a
+> whole-database SQLCipher-encrypted file** with the DEK held in the OS secure
+> store (identical to the Phase 13 infrastructure). This is the intended trade-off,
+> documented here so it doesn't look like a gap.
+
+### Export (Mode A)
+
+`LocalSessionController.exportData()` serializes a `HomeFlowExport` from the
+local store using `LocalExporter` (which maps option/location UUIDs → slugs via
+`LocalRefData`), serializes it to JSON, and invokes the platform save-file dialog
+(`writeExportFile` — `expect`/`actual`):
+- **Desktop:** AWT `FileDialog` (save mode)
+- **Android:** SAF `ACTION_CREATE_DOCUMENT` via `AndroidAppContext.exportLauncher`
+
+### SecureRandom
+
+`secureRandomBytes(size)` (`expect`/`actual`) generates cryptographically secure
+random bytes. Both platforms use `java.security.SecureRandom`. The DEK is generated
+once via `LocalKeyStore.loadOrCreateDek()` = `loadDek() ?: secureRandomBytes(32).also { saveDek(it) }`.
+
+---
+
 ## UI structure
 
 ```
 HomeFlowRepository
    └─ HomeFlowDataSource (interface)
-        ├─ RemoteDataSource  — HTTP/Ktor (Phases 8–12)
-        └─ LocalDataSource   — SQLDelight/SQLCipher (Phase 13+)
+        ├─ RemoteDataSource  — HTTP/Ktor (Mode B: server-connected)
+        └─ LocalDataSource   — SQLDelight/SQLCipher (Mode A: local-only)
 ```
 
-Screens bind to `HomeFlowRepository` through ViewModels (Compose Multiplatform
-lifecycle-aware). The current data source is chosen by DI at the composition root
-(Phase 14 wires this).
+`AppRoot` wires the mode-appropriate `SessionController` and passes
+`repository` from `AuthState.Authenticated` into the screens. No screen
+needs to know which mode it is in.
 
 ---
 
@@ -262,8 +357,9 @@ Verified at Phase 10 (hardening). Evidence in parentheses.
 - [x] Account deletion removes server data + the Keycloak identity, then clears local
   storage — `DELETE /users/me` via the Settings danger zone; `AuthController.deleteAccount`
   drops to the login screen on success.
-- [ ] **Phase 13+:** Local DEK cleared on `deleteAccount()` — `LocalKeyStore.clearDek()`
-  wired to account deletion at the composition root (Phase 14).
+- [x] **Phase 14:** Local DEK cleared on `deleteAccount()` — `LocalSessionController`
+  calls `LocalKeyStore.clearDek()` + `resetAppLockGateEnrollment()` + `AppModeStore.clear()`
+  on success, then transitions to `AuthState.LoggedOut`.
 
 ---
 

@@ -2,32 +2,38 @@ package org.homeflow
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.remember
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CompletableDeferred
-import org.homeflow.app.shared.auth.buildAuthController
 import org.homeflow.app.shared.config.AuthConfig
 import org.homeflow.app.shared.config.defaultAuthConfig
 import org.homeflow.app.shared.platform.AndroidAppContext
-import org.homeflow.app.shared.ui.App
+import org.homeflow.app.shared.ui.AppRoot
 
 /**
  * Android entry point. A [FragmentActivity] (required by `BiometricPrompt`) that sets
- * `FLAG_SECURE` for the sensitive health data, wires the AppAuth result launcher into
- * [AndroidAppContext], and hosts the shared Compose [App].
+ * `FLAG_SECURE` for the sensitive health data, wires the AppAuth and SAF export
+ * result launchers into [AndroidAppContext], and hosts the shared Compose [AppRoot].
  */
 class MainActivity : FragmentActivity() {
     private var pendingAuth: CompletableDeferred<Intent?>? = null
+    private var pendingExport: CompletableDeferred<Uri?>? = null
 
     private val authLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             pendingAuth?.complete(result.data)
             pendingAuth = null
+        }
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            pendingExport?.complete(result.data?.data)
+            pendingExport = null
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +54,12 @@ class MainActivity : FragmentActivity() {
             authLauncher.launch(intent)
             deferred.await()
         }
+        AndroidAppContext.exportLauncher = { intent ->
+            val deferred = CompletableDeferred<Uri?>()
+            pendingExport = deferred
+            exportLauncher.launch(intent)
+            deferred.await()
+        }
 
         // Debug builds target the dev stack via `adb reverse` (the emulator can't bind a
         // privileged device-side port, so it uses 8443 → host Caddy 443). Keycloak pins the
@@ -57,11 +69,10 @@ class MainActivity : FragmentActivity() {
         //   adb reverse tcp:8180 tcp:8180    # Keycloak frontend URL (login page) -> host
         // Release uses the platform default (override for a real device or the Tailscale host).
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val config = if (debuggable) AuthConfig(host = "localhost:8443") else defaultAuthConfig()
+        val config: AuthConfig = if (debuggable) AuthConfig(host = "localhost:8443") else defaultAuthConfig()
 
         setContent {
-            val controller = remember { buildAuthController(config) }
-            App(controller)
+            AppRoot(config)
         }
     }
 
