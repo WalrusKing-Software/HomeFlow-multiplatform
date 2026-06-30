@@ -195,7 +195,6 @@ jobs:
         # package the desktop (jvm) app.
         uses: android-actions/setup-android@v3
       - name: Install required SDK packages
-        shell: bash
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
 
