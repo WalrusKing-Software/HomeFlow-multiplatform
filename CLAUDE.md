@@ -87,6 +87,7 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/DEPLOYMENT.md` | Pi deployment runbook; Tailscale + canonical hostname (§11) | Deploying to the homelab |
 | `__docs/BACKUP.md` | Encrypted backup/restore (`pg_dump \| gpg`) | Any backup / disaster-recovery work |
 | `__docs/BRANCHING.md` | Branching model, release trains, CI gates | Any work on branches, PRs, CI |
+| `__docs/RELEASE-PIPELINE.md` | Release packaging & GitHub Actions pipeline | Any release, packaging, or CI artifact work |
 | `__docs/project-planning/features.md` | Feature requirements and UX notes | Any client UI work |
 | `__docs/project-planning/project-overview.md` | Product overview | Orienting on the product |
 | `CHANGELOG.md` | User-/developer-visible changes by version | After any behavior change |

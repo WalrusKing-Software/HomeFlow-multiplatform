@@ -25,11 +25,11 @@ compose.desktop {
             description = "HomeFlow — self-hosted period tracking"
             vendor = "HomeFlow"
             copyright = "© 2026 HomeFlow"
-            // Intentionally decoupled from the project version (gradle.properties):
-            // jpackage requires the major component to be >= 1 for macOS dmg/pkg,
-            // so a 0.x project version would break packageDmg. Reconcile to the
-            // release X.Y.Z (>= 1.0.0) at packaging time. See __docs/BRANCHING.md.
-            packageVersion = "1.0.0"
+            // Installer version. jpackage requires major >= 1 (macOS dmg/pkg), so the
+            // release pipeline passes -PdesktopPackageVersion = the release X.Y.Z when
+            // major >= 1, else "1.0.0". Defaults to "1.0.0" for local packaging.
+            // See __docs/RELEASE-PIPELINE.md §3.2.
+            packageVersion = (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
 
             // Best-effort screenshot protection on desktop is a runtime concern (the window
             // is not added to the OS screen-capture exclusion here); see the client security

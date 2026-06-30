@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# Thin RUNTIME-ONLY image built FROM a prebuilt :server installDist distribution.
+#
+# The distribution is plain JVM bytecode + launch scripts (architecture-independent),
+# so this image is trivially multi-arch: buildx layers the SAME /app onto each
+# platform's native Temurin JRE base. No Gradle, no Android SDK in the image build.
+#
+# Build context MUST be the distribution directory (server/build/install/server),
+# because the repo .dockerignore excludes **/build/. The release workflow sets
+# `context: server/build/install/server` and references this file via `file:`.
+# See __docs/RELEASE-PIPELINE.md §3.1.
+#
+# Produce the distribution first:  ./gradlew :server:installDist
+FROM eclipse-temurin:21-jre AS production
+WORKDIR /app
+COPY . ./
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+USER appuser
+EXPOSE 8080
+# Migrations are NOT run from this image (CLAUDE.md / DEPLOYMENT.md §5).
+CMD ["./bin/server"]
