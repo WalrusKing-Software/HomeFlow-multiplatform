@@ -9,6 +9,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.SessionController
+import org.homeflow.app.shared.data.HomeFlowRepository
+import org.homeflow.app.shared.data.sync.SyncEngine
 import org.homeflow.app.shared.ui.shell.AppShell
 import org.homeflow.core.dto.ImportResultDto
 
@@ -22,6 +24,7 @@ import org.homeflow.core.dto.ImportResultDto
  * - [onConnectServer]: non-null in Mode A — shows "Connect to a server".
  * - [onUploadToServer]: non-null in Mode B while the local data has not been migrated yet.
  * - [connectedHost]: non-null in Mode B — displayed in the Server section of Settings.
+ * - [syncEngine] + [syncRepository]: non-null in Mode C — local-first repository with background sync.
  */
 @Composable
 fun App(
@@ -30,6 +33,8 @@ fun App(
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
+    syncEngine: SyncEngine? = null,
+    syncRepository: HomeFlowRepository? = null,
 ) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
@@ -57,16 +62,39 @@ fun App(
                     onLogout = { scope.launch { controller.logout() } },
                 )
 
-            is AuthState.Authenticated ->
-                AppShell(
-                    repository = current.repository,
-                    onLogout = { scope.launch { controller.logout() } },
-                    onDeleteAccount = { controller.deleteAccount() },
-                    onExport = onExport,
-                    onConnectServer = onConnectServer,
-                    onUploadToServer = onUploadToServer,
-                    connectedHost = connectedHost,
-                )
+            is AuthState.Authenticated -> {
+                // Mode C: use local-first repository + background sync triggers.
+                if (syncEngine != null && syncRepository != null) {
+                    // Initial sync on foreground + periodic timer (~15 min).
+                    LaunchedEffect(current) {
+                        syncEngine.syncNow()
+                        while (true) {
+                            kotlinx.coroutines.delay(15 * 60 * 1_000L)
+                            syncEngine.syncNow()
+                        }
+                    }
+                    AppShell(
+                        repository = syncRepository,
+                        onLogout = { scope.launch { controller.logout() } },
+                        onDeleteAccount = { controller.deleteAccount() },
+                        onExport = onExport,
+                        onConnectServer = onConnectServer,
+                        onUploadToServer = onUploadToServer,
+                        connectedHost = connectedHost,
+                        syncStatusFlow = syncEngine.status,
+                    )
+                } else {
+                    AppShell(
+                        repository = current.repository,
+                        onLogout = { scope.launch { controller.logout() } },
+                        onDeleteAccount = { controller.deleteAccount() },
+                        onExport = onExport,
+                        onConnectServer = onConnectServer,
+                        onUploadToServer = onUploadToServer,
+                        connectedHost = connectedHost,
+                    )
+                }
+            }
 
             is AuthState.Error ->
                 ErrorScreen(message = current.message, onRetry = { controller.start() })

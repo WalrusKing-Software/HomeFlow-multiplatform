@@ -1,0 +1,16 @@
+-- Single-row table storing the server-side pull cursor (D-16b.2).
+-- Only one row ever exists (ensured by the fixed sentinel id = 'cursor').
+CREATE TABLE IF NOT EXISTS sync_state (
+    id             TEXT NOT NULL PRIMARY KEY DEFAULT 'cursor',
+    last_pulled_seq INTEGER NOT NULL DEFAULT 0
+);
+
+-- Insert the sentinel row on first access (idempotent via INSERT OR IGNORE).
+ensureRow:
+INSERT OR IGNORE INTO sync_state (id, last_pulled_seq) VALUES ('cursor', 0);
+
+getCursor:
+SELECT last_pulled_seq FROM sync_state WHERE id = 'cursor';
+
+updateCursor:
+UPDATE sync_state SET last_pulled_seq = :seq WHERE id = 'cursor';

@@ -167,6 +167,30 @@ Ktor server). Pre-implementation: documentation and specification only.
     (`keystore.properties.example` shows the format).
   - **Polished desktop installers.** The desktop distribution now carries a proper
     app name, vendor, description, Windows menu group, and a stable MSI upgrade UUID.
+- **Work offline; your devices sync through your server when reconnected (Phase 16 — Mode C).**
+  Once you connect to your self-hosted server, the app now works offline-first: all data lives
+  on the device, and changes reconcile automatically whenever your server is reachable:
+  - **Offline-first data source.** Mode B (server-connected) is now Mode C by default. The
+    local SQLCipher-encrypted database replaces the remote data source as the primary store;
+    every read and write hits the local DB instantly without a network round-trip.
+  - **Automatic background sync.** `SyncEngine.syncNow()` runs on app foreground and every
+    15 minutes while open. It pushes your pending local changes to the server, then pulls
+    server changes (from other devices) and reconciles them locally — all without touching the UI.
+  - **Last-Write-Wins merge.** Each aggregate (cycle, day, preferences) carries an
+    `updatedAt` timestamp; the newer version wins a conflict. Same-timestamp ties break by
+    UUID string comparison — deterministic and consistent on both devices. The merge rule
+    (`mergeDecision()` in `:core`) is pure and tested.
+  - **Sync status indicator.** A small label in the top bar (Syncing / Synced / Sync error)
+    shows the current sync state, visible only in Mode C.
+  - **Server: soft-delete + change-log.** Every cycle and day write records a row in
+    `sync_changes`. Deleting a cycle or day sets a `deleted_at` tombstone and cascades to
+    sub-logs; live reads continue to filter `deleted_at IS NULL`. The server exposes
+    `GET /api/v1/sync/changes` (cursor-based pull) and `POST /api/v1/sync/changes` (push).
+  - **Delete cycles and days.** A "Delete cycle" button appears on each cycle card in the
+    Cycles tab; a "Delete day" button appears on the Day tab when a log exists. Both require
+    a tap-to-confirm dialog. Deletes are soft (tombstoned) so they propagate via sync.
+  - **Client outbox.** Every local write (create, update, delete) appends an entry to a
+    `sync_outbox` table. The engine drains the outbox on each push, de-duplicating by entity.
 - **Connect the app to your self-hosted server and upload your local data to it (Phase 15 — Mode B).**
   You can now point the app at your self-hosted server at runtime, log in once, and your
   data becomes available across all your devices:

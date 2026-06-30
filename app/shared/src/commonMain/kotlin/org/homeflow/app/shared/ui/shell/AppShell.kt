@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -12,19 +13,36 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.StateFlow
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
+import org.homeflow.app.shared.data.sync.SyncStatus
 import org.homeflow.app.shared.ui.screens.AnalyticsScreen
 import org.homeflow.app.shared.ui.screens.CyclesScreen
 import org.homeflow.app.shared.ui.screens.DashboardScreen
 import org.homeflow.app.shared.ui.screens.DayScreen
 import org.homeflow.app.shared.ui.screens.PreferencesScreen
 import org.homeflow.core.dto.ImportResultDto
+
+/** Small sync-status label for the top bar; only shown in Mode C. */
+@Composable
+private fun SyncStatusChip(status: SyncStatus) {
+    val (label, color) =
+        when (status) {
+            is SyncStatus.Idle -> "Synced" to MaterialTheme.colorScheme.onSurfaceVariant
+            is SyncStatus.Syncing -> "Syncing…" to MaterialTheme.colorScheme.primary
+            is SyncStatus.Success -> "Synced" to MaterialTheme.colorScheme.onSurfaceVariant
+            is SyncStatus.Error -> "Sync error" to MaterialTheme.colorScheme.error
+        }
+    Text(label, fontSize = 12.sp, color = color)
+}
 
 /** The destinations of the signed-in shell, in tab order. */
 private enum class Tab(
@@ -55,15 +73,23 @@ fun AppShell(
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
+    syncStatusFlow: StateFlow<SyncStatus>? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
+    val syncStatus by syncStatusFlow?.collectAsState()
+        ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
 
     Scaffold(
         topBar = {
             Column {
                 TopAppBar(
                     title = { Text("HomeFlow") },
-                    actions = { TextButton(onClick = onLogout) { Text("Log out") } },
+                    actions = {
+                        if (syncStatusFlow != null) {
+                            SyncStatusChip(syncStatus)
+                        }
+                        TextButton(onClick = onLogout) { Text("Log out") }
+                    },
                 )
                 PrimaryTabRow(selectedTabIndex = tab.ordinal) {
                     Tab.entries.forEach { entry ->

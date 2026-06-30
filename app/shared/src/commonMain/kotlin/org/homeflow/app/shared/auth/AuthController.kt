@@ -70,9 +70,9 @@ class AuthController(
 
     private val http: HttpClient = httpClientFactory(config, tokenHolder, ::refreshAndPersist)
 
-    // Typed as RemoteDataSource so uploadLocalData can call uploadHomeflowImport (D-15.9).
+    // Typed as RemoteDataSource so uploadLocalData and sync can call extra methods (D-15.9, D-16b).
     // Both fields point at the same instance; api uses the seam type for all other call sites.
-    private val remote: RemoteDataSource = RemoteDataSource(http)
+    internal val remote: RemoteDataSource = RemoteDataSource(http)
     private val api: HomeFlowDataSource = remote
 
     // Kept private — the repository is now surfaced through AuthState.Authenticated.

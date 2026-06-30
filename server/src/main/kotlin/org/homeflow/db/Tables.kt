@@ -37,6 +37,9 @@ object Cycles : Table("cycles") {
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
 
+    /** Soft-delete timestamp (D3); null = live. Added in V3__sync.sql. */
+    val deletedAt = timestampWithTimeZone("deleted_at").nullable()
+
     override val primaryKey = PrimaryKey(id)
 
     init {
@@ -107,6 +110,9 @@ object DailyLogs : Table("daily_logs") {
     val notes = text("notes").nullable()
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
+
+    /** Soft-delete timestamp (D3); null = live. Added in V3__sync.sql. */
+    val deletedAt = timestampWithTimeZone("deleted_at").nullable()
 
     override val primaryKey = PrimaryKey(id)
 
@@ -238,6 +244,29 @@ object UserDashboardPreferences : Table("user_dashboard_preferences") {
     val updatedAt = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
+}
+
+// ── Sync change-log (Phase 16a) ───────────────────────────────────────────────
+
+/**
+ * One row per (user, entity_type, entity_id) — upserted, not appended — so
+ * `server_seq` is always the most recent sequence value for that aggregate.
+ * entity_type ∈ { "cycle", "day", "preferences" }.
+ * `server_seq` is assigned from the PostgreSQL sequence `sync_seq`.
+ */
+object SyncChanges : Table("sync_changes") {
+    val userId = reference("user_id", Users.id, onDelete = ReferenceOption.CASCADE)
+    val entityType = varchar("entity_type", 50)
+    val entityId = uuid("entity_id")
+    val serverSeq = long("server_seq")
+    val updatedAt = timestampWithTimeZone("updated_at")
+    val deleted = bool("deleted")
+
+    override val primaryKey = PrimaryKey(userId, entityType, entityId)
+
+    init {
+        index(false, userId, serverSeq)
+    }
 }
 
 /**

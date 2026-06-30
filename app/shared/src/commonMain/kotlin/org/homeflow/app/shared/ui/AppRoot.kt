@@ -24,7 +24,12 @@ import org.homeflow.app.shared.config.AppMode
 import org.homeflow.app.shared.config.authConfigForHost
 import org.homeflow.app.shared.config.createAppModeStore
 import org.homeflow.app.shared.config.createServerConfigStore
+import org.homeflow.app.shared.crypto.loadOrCreateDek
+import org.homeflow.app.shared.data.HomeFlowRepository
+import org.homeflow.app.shared.data.local.LocalBootstrap
+import org.homeflow.app.shared.data.local.LocalDataSource
 import org.homeflow.app.shared.data.local.LocalDatabaseFactory
+import org.homeflow.app.shared.data.sync.SyncEngine
 import org.homeflow.core.dto.ImportResultDto
 
 /**
@@ -99,7 +104,22 @@ fun AppRoot(serverHostOverride: String? = null) {
                         host = newHost
                     })
                 } else {
+                    val localKeyStore = remember { createLocalKeyStore() }
+                    val dbFactory = remember { LocalDatabaseFactory() }
+                    // Mode C: open (or create) the local encrypted DB for offline-first storage.
+                    // authController, syncEngine, and syncRepository are all created together so
+                    // the engine shares the same authenticated HttpClient as the controller.
                     val authController = remember(host) { buildAuthController(authConfigForHost(host!!)) }
+                    val (syncEngine, syncRepository) =
+                        remember(host) {
+                            val dek = localKeyStore.loadOrCreateDek()
+                            val db = dbFactory.create(dek)
+                            LocalBootstrap.seed(db)
+                            val engine = SyncEngine(db, authController.remote)
+                            val localDs = LocalDataSource(db)
+                            val repo = HomeFlowRepository(localDs)
+                            Pair(engine, repo)
+                        }
                     val controllerState by authController.state.collectAsState()
                     val scope = rememberCoroutineScope()
 
@@ -131,6 +151,8 @@ fun AppRoot(serverHostOverride: String? = null) {
                         controller = authController,
                         connectedHost = host,
                         onUploadToServer = onUploadToServer,
+                        syncEngine = syncEngine,
+                        syncRepository = syncRepository,
                     )
 
                     // Auto-prompt overlay — rendered on top of the signed-in App content. Confirm
