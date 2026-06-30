@@ -24,6 +24,7 @@ import org.homeflow.app.shared.ui.screens.CyclesScreen
 import org.homeflow.app.shared.ui.screens.DashboardScreen
 import org.homeflow.app.shared.ui.screens.DayScreen
 import org.homeflow.app.shared.ui.screens.PreferencesScreen
+import org.homeflow.core.dto.ImportResultDto
 
 /** The destinations of the signed-in shell, in tab order. */
 private enum class Tab(
@@ -37,9 +38,12 @@ private enum class Tab(
 }
 
 /**
- * The signed-in shell: a top bar with logout, a tab row over the read/write screens, and the
- * selected screen below. [onExport] is non-null in Mode A and threads through to the Settings
- * tab where the "Export my data" action lives.
+ * The signed-in shell: a top bar with logout, a tab row over the read/write screens, and
+ * the selected screen below. Optional callbacks thread through to the Settings tab:
+ * - [onExport]: non-null in Mode A — "Export my data".
+ * - [onConnectServer]: non-null in Mode A — "Connect to a server".
+ * - [onUploadToServer]: non-null in Mode B while unmigrated — "Upload local data to server".
+ * - [connectedHost]: non-null in Mode B — displayed in the Server section.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +52,9 @@ fun AppShell(
     onLogout: () -> Unit,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
     onExport: (suspend () -> Unit)? = null,
+    onConnectServer: (() -> Unit)? = null,
+    onUploadToServer: (suspend () -> ImportResultDto?)? = null,
+    connectedHost: String? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
 
@@ -76,7 +83,15 @@ fun AppShell(
                 Tab.DAY -> DayScreen(repository)
                 Tab.CYCLES -> CyclesScreen(repository)
                 Tab.ANALYTICS -> AnalyticsScreen(repository)
-                Tab.SETTINGS -> PreferencesScreen(repository, onDeleteAccount, onExport)
+                Tab.SETTINGS ->
+                    PreferencesScreen(
+                        repository = repository,
+                        onDeleteAccount = onDeleteAccount,
+                        onExport = onExport,
+                        onConnectServer = onConnectServer,
+                        onUploadToServer = onUploadToServer,
+                        connectedHost = connectedHost,
+                    )
             }
         }
     }

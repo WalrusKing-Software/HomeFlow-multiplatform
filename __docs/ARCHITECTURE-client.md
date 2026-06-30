@@ -205,6 +205,83 @@ host tests). Tests use one of two helper patterns:
 
 ---
 
+## Mode B — server-connected + "adopt a server" migration (Phase 15)
+
+Phase 15 delivers Mode B: the user points the app at their self-hosted server **at
+runtime** (hostname entered in-app and persisted), the existing Keycloak OIDC + PKCE
+login runs against it, and a one-time "adopt a server" migration lifts any pre-existing
+Mode-A local data to the server.
+
+### Runtime host configuration
+
+`ServerConfigStore` (expect/actual, sibling of `AppModeStore`) persists two items in a
+**non-encrypted** store (the host is a public hostname, not secret):
+
+- **Desktop:** `~/.homeflow/server.properties` (keys `server_host`, `migrated`)
+- **Android:** plain `SharedPreferences` (`homeflow_server`)
+
+`AuthConfig.authConfigForHost(host)` builds the full Keycloak + API config from the
+single bare host string (`myhost.ts.net`), reusing all other defaults from `AuthConfig`.
+
+### Mode B is "local DB dormant, server is source of truth"
+
+After adoption the app is an online client exactly as in the original design. The local
+SQLCipher DB and its DEK are **not deleted** (they serve as the pre-migration backup and
+will become Phase 16's live cache), but Mode B **never reads or writes them** — all
+reads and writes go to the server.
+
+### AppRoot — SERVER branch (Phase 15)
+
+```
+AppMode.SERVER
+  ├─ serverConfigStore.loadHost() == null  → ServerConnectScreen (collect host)
+  └─ host stored
+       ├─ build AuthController (concrete, typed RemoteDataSource)
+       ├─ On first Authenticated: if hasUnmigratedLocalData() → MigrationPromptDialog
+       └─ App(controller, connectedHost, onUploadToServer?)
+```
+
+`AppRoot` creates the concrete `AuthController` in the SERVER branch (not just a
+`SessionController` reference) so it can pass `authController::uploadLocalData` to
+`ServerMigration` without the method appearing on the `SessionController` interface.
+
+### Adoption migration — `ServerMigration`
+
+`ServerMigration` orchestrates the one-time local→server upload:
+
+1. `hasUnmigratedLocalData()` — short-circuits to `false` when `LocalKeyStore.loadDek()`
+   returns `null` (a pure Mode-B install never created a DEK).
+2. `migrate(upload)` — opens the local DB, builds a `HomeFlowExport` via `LocalExporter`
+   (slug-keyed, UUID-free), serializes it to JSON, calls the `upload` lambda (bound to
+   `AuthController.uploadLocalData → RemoteDataSource.uploadHomeflowImport`), and on
+   success calls `serverConfigStore.setMigrated()`.
+
+The upload is the same `POST /api/v1/import?source=homeflow` multipart endpoint (Phase 12)
+— additive and idempotent, so re-running is safe.
+
+### `AuthController.uploadLocalData` (D-15.9)
+
+`AuthController` keeps a `private val remote: RemoteDataSource` typed reference (the same
+instance as `api: HomeFlowDataSource`) so it can call `remote.uploadHomeflowImport(json)`
+without adding the method to the `SessionController` interface or the
+`HomeFlowDataSource` seam.
+
+### `RemoteDataSource.uploadHomeflowImport` (D-15.6)
+
+`apiUploadImport(path, json)` in `ApiResult.kt` POSTs a `multipart/form-data` body with
+the JSON as a file part named `"file"`. **The JSON is health data — never log it.**
+
+### Settings — Server section (D-15.10)
+
+`PreferencesScreen` gains a "Server" section threaded through `AppShell`:
+
+| Mode | Content |
+|---|---|
+| Mode A | "Connect to a server" button → flips `AppMode=SERVER` (local DB stays) |
+| Mode B | Shows connected host; if not yet migrated: "Upload local data to server" |
+
+---
+
 ## Mode A — local-only app (Phase 14)
 
 Phase 14 delivers the first user-visible deployment mode: the app runs **with no
@@ -229,8 +306,10 @@ both `main.kt` and `MainActivity`:
 ```
 AppRoot
   ├─ mode == null   → ModeChooserScreen (first run)
-  ├─ mode == LOCAL  → LocalSessionController + App(controller, onExport)
-  └─ mode == SERVER → AuthController (Keycloak OIDC) + App(controller)
+  ├─ mode == LOCAL  → LocalSessionController + App(controller, onExport, onConnectServer)
+  └─ mode == SERVER → host-entry gate → AuthController (Keycloak OIDC)
+                      + migration prompt (if unmigrated local data)
+                      + App(controller, connectedHost, onUploadToServer?)
 ```
 
 After `deleteAccount()` in Mode A, the controller reaches `AuthState.LoggedOut`

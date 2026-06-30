@@ -10,19 +10,26 @@ import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.SessionController
 import org.homeflow.app.shared.ui.shell.AppShell
+import org.homeflow.core.dto.ImportResultDto
 
 /**
  * Auth gate composable: renders off [SessionController.state] — login → app-lock →
  * signed-in shell. Once authenticated it reads the repository from
  * [AuthState.Authenticated.repository] and passes it to [AppShell].
  *
- * The [onExport] action is non-null in Mode A (local-only) and null in Mode B so the
- * export button in settings is visible only when data is stored locally.
+ * Optional callbacks thread through to the Settings tab:
+ * - [onExport]: non-null in Mode A — shows "Export my data".
+ * - [onConnectServer]: non-null in Mode A — shows "Connect to a server".
+ * - [onUploadToServer]: non-null in Mode B while the local data has not been migrated yet.
+ * - [connectedHost]: non-null in Mode B — displayed in the Server section of Settings.
  */
 @Composable
 fun App(
     controller: SessionController,
     onExport: (suspend () -> Unit)? = null,
+    onConnectServer: (() -> Unit)? = null,
+    onUploadToServer: (suspend () -> ImportResultDto?)? = null,
+    connectedHost: String? = null,
 ) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
@@ -56,6 +63,9 @@ fun App(
                     onLogout = { scope.launch { controller.logout() } },
                     onDeleteAccount = { controller.deleteAccount() },
                     onExport = onExport,
+                    onConnectServer = onConnectServer,
+                    onUploadToServer = onUploadToServer,
+                    connectedHost = connectedHost,
                 )
 
             is AuthState.Error ->
