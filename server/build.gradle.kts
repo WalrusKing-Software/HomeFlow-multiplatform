@@ -43,6 +43,34 @@ dependencies {
     testImplementation(libs.flyway.databasePostgresql)
 }
 
+// Exposed 0.56.0's `exposed-kotlin-datetime` is built against kotlinx-datetime 0.6.1 and is
+// binary-incompatible with 0.7.x: `TimeZoneKt.atStartOfDayIn` changed its return type to
+// `kotlin.time.Instant`, so any date-column operation throws NoSuchMethodError at runtime.
+// `:core` is shared with the client (which requires 0.7.1 for `kotlin.time.Clock`), but `:core`
+// and the server use only stable `LocalDate` APIs — so the SERVER safely pins kotlinx-datetime
+// to 0.6.1, the version Exposed 0.56.0 expects. (The client keeps 0.7.1; the modules are
+// separate runtime artifacts.)
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-datetime")) {
+            useVersion("0.6.1")
+        }
+    }
+}
+
+// Integration tests use Testcontainers. The bundled docker-java probes the daemon with
+// Docker API v1.32, but modern Docker Engine/Desktop (25+) raised the MINIMUM supported
+// API version above that, so the daemon rejects the probe with HTTP 400 ("client version
+// too old") and Testcontainers reports "Could not find a valid Docker environment". Pin a
+// modern, widely-supported API version for the forked test JVM (docker-java reads the
+// `api.version` system property). An explicit DOCKER_API_VERSION from the environment
+// (e.g. CI) takes precedence and disables the override.
+tasks.withType<Test>().configureEach {
+    if (System.getenv("DOCKER_API_VERSION") == null) {
+        systemProperty("api.version", "1.43")
+    }
+}
+
 // ── Flyway migrations (manual only) ──────────────────────────────────────────
 // Driven through the Flyway CLI rather than the org.flywaydb.flyway Gradle plugin:
 // that plugin uses Gradle APIs removed in Gradle 9 (JavaPluginConvention) and is
