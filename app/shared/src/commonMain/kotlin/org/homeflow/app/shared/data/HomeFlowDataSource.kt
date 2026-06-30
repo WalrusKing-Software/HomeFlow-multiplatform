@@ -42,12 +42,16 @@ interface HomeFlowDataSource {
         endDate: String,
     ): ApiResult<CycleDto>
 
+    suspend fun deleteCycle(cycleId: String): ApiResult<Unit>
+
     suspend fun getDailyLog(date: String): ApiResult<DailyLogDto>
 
     suspend fun createDailyLog(
         date: String,
         cycleId: String,
     ): ApiResult<Unit>
+
+    suspend fun deleteDay(date: String): ApiResult<Unit>
 
     suspend fun putOptionIds(
         date: String,

@@ -6,6 +6,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
@@ -40,6 +41,11 @@ fun Route.dailyLogsRoutes(
             get("/{date}") {
                 val principal = requirePrincipal()
                 call.respond(dailyLogsService.getDailyLog(principal, date()))
+            }
+            delete("/{date}") {
+                val principal = requirePrincipal()
+                dailyLogsService.deleteDay(principal, date())
+                call.respond(HttpStatusCode.NoContent)
             }
             patch("/{date}/notes") {
                 val principal = requirePrincipal()

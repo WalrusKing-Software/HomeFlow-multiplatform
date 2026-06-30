@@ -2,6 +2,12 @@ package org.homeflow.app.shared.data.local
 
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowDataSource
+import org.homeflow.app.shared.data.sync.LocalOutbox
+import org.homeflow.app.shared.data.sync.OP_DELETE
+import org.homeflow.app.shared.data.sync.OP_UPSERT
+import org.homeflow.app.shared.data.sync.SyncEngine.Companion.ENTITY_CYCLE
+import org.homeflow.app.shared.data.sync.SyncEngine.Companion.ENTITY_DAY
+import org.homeflow.app.shared.data.sync.SyncEngine.Companion.ENTITY_PREFERENCES
 import org.homeflow.app.shared.db.HomeFlowDb
 import org.homeflow.core.ErrorCode
 import org.homeflow.core.dto.CycleDto
@@ -38,6 +44,7 @@ class LocalDataSource(
     private val logsStore = LocalDailyLogsStore(db, userId, cyclesStore, subsStore, refData)
     private val prefsStore = LocalPrefsStore(db, userId, refData)
     private val analytics = LocalAnalytics(db, userId, refData, logsStore)
+    private val outbox = LocalOutbox(db)
 
     // ── User ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +68,7 @@ class LocalDataSource(
             db.dailyLogsQueries.deleteAll()
             db.cyclesQueries.deleteAll()
             db.preferencesQueries.deleteAll()
-            db.syncOutboxQueries.deleteAll()
+            outbox.clearAll()
             db.usersQueries.deleteAll()
             ApiResult.Success(Unit)
         }.getOrElse {
@@ -78,12 +85,40 @@ class LocalDataSource(
 
     override suspend fun getCurrentCycle(): ApiResult<CycleDto> = cyclesStore.getCurrentCycle()
 
-    override suspend fun createCycle(startDate: String): ApiResult<CycleDto> = cyclesStore.createCycle(startDate)
+    override suspend fun createCycle(startDate: String): ApiResult<CycleDto> {
+        val result = cyclesStore.createCycle(startDate)
+        if (result is ApiResult.Success) {
+            outbox.record(ENTITY_CYCLE, result.value.id, OP_UPSERT, result.value.updatedAt)
+        }
+        return result
+    }
 
     override suspend fun closeCycle(
         cycleId: String,
         endDate: String,
-    ): ApiResult<CycleDto> = cyclesStore.closeCycle(cycleId, endDate)
+    ): ApiResult<CycleDto> {
+        val result = cyclesStore.closeCycle(cycleId, endDate)
+        if (result is ApiResult.Success) {
+            outbox.record(ENTITY_CYCLE, result.value.id, OP_UPSERT, result.value.updatedAt)
+        }
+        return result
+    }
+
+    override suspend fun deleteCycle(cycleId: String): ApiResult<Unit> {
+        val row =
+            db.cyclesQueries.selectById(cycleId, userId).executeAsOneOrNull()
+                ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "Cycle not found.", 404)
+        val now = Clock.System.now().toString()
+        // Cascade: tombstone every live day in this cycle and enqueue day deletes so the
+        // cascade propagates on sync, mirroring the server's softDeleteCascade (D-16b.6).
+        db.dailyLogsQueries.selectByCycleId(cycleId).executeAsList().forEach { day ->
+            db.dailyLogsQueries.softDelete(now, now, day.id, userId)
+            outbox.record(ENTITY_DAY, day.id, OP_DELETE, now)
+        }
+        db.cyclesQueries.softDelete(now, now, cycleId, userId)
+        outbox.record(ENTITY_CYCLE, cycleId, OP_DELETE, now)
+        return ApiResult.Success(Unit)
+    }
 
     // ── Daily logs ────────────────────────────────────────────────────────────
 
@@ -92,7 +127,24 @@ class LocalDataSource(
     override suspend fun createDailyLog(
         date: String,
         cycleId: String,
-    ): ApiResult<Unit> = logsStore.createDailyLog(date, cycleId)
+    ): ApiResult<Unit> {
+        val result = logsStore.createDailyLog(date, cycleId)
+        if (result is ApiResult.Success) {
+            val row = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+            if (row != null) outbox.record(ENTITY_DAY, row.id, OP_UPSERT, row.updated_at)
+        }
+        return result
+    }
+
+    override suspend fun deleteDay(date: String): ApiResult<Unit> {
+        val row =
+            db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+                ?: return ApiResult.Failure(ErrorCode.RESOURCE_NOT_FOUND, "No log exists for this date.", 404)
+        val now = Clock.System.now().toString()
+        db.dailyLogsQueries.softDeleteByDate(now, now, userId, date)
+        outbox.record(ENTITY_DAY, row.id, OP_DELETE, now)
+        return ApiResult.Success(Unit)
+    }
 
     override suspend fun putOptionIds(
         date: String,
@@ -110,6 +162,7 @@ class LocalDataSource(
         if (result is ApiResult.Success) {
             val now = Clock.System.now().toString()
             db.dailyLogsQueries.updateTimestamp(now, log.id, userId)
+            outbox.record(ENTITY_DAY, log.id, OP_UPSERT, now)
         }
         return result
     }
@@ -130,6 +183,7 @@ class LocalDataSource(
         if (result is ApiResult.Success) {
             val now = Clock.System.now().toString()
             db.dailyLogsQueries.updateTimestamp(now, log.id, userId)
+            outbox.record(ENTITY_DAY, log.id, OP_UPSERT, now)
         }
         return result
     }
@@ -137,12 +191,26 @@ class LocalDataSource(
     override suspend fun patchNotes(
         date: String,
         notes: String?,
-    ): ApiResult<Unit> = logsStore.patchNotes(date, notes)
+    ): ApiResult<Unit> {
+        val result = logsStore.patchNotes(date, notes)
+        if (result is ApiResult.Success) {
+            val row = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+            if (row != null) outbox.record(ENTITY_DAY, row.id, OP_UPSERT, row.updated_at)
+        }
+        return result
+    }
 
     override suspend fun putPain(
         date: String,
         locations: List<PainLocationDto>,
-    ): ApiResult<Unit> = logsStore.putPain(date, locations)
+    ): ApiResult<Unit> {
+        val result = logsStore.putPain(date, locations)
+        if (result is ApiResult.Success) {
+            val row = db.dailyLogsQueries.selectByDate(userId, date).executeAsOneOrNull()
+            if (row != null) outbox.record(ENTITY_DAY, row.id, OP_UPSERT, row.updated_at)
+        }
+        return result
+    }
 
     // ── Analytics ─────────────────────────────────────────────────────────────
 
@@ -159,8 +227,14 @@ class LocalDataSource(
 
     override suspend fun getPreferences(): ApiResult<PreferencesDto> = prefsStore.getPreferences()
 
-    override suspend fun putPreferences(categoryOrder: List<String>): ApiResult<PreferencesResponse> =
-        prefsStore.putPreferences(categoryOrder)
+    override suspend fun putPreferences(categoryOrder: List<String>): ApiResult<PreferencesResponse> {
+        val result = prefsStore.putPreferences(categoryOrder)
+        if (result is ApiResult.Success) {
+            val row = db.preferencesQueries.selectByUserId(userId).executeAsOneOrNull()
+            if (row != null) outbox.record(ENTITY_PREFERENCES, row.id, OP_UPSERT, row.updated_at)
+        }
+        return result
+    }
 
     // ── Ref data ──────────────────────────────────────────────────────────────
 

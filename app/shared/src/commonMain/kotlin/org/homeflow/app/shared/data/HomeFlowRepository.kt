@@ -198,6 +198,12 @@ class HomeFlowRepository(
         end: LocalDate,
     ): ApiResult<CycleDto> = api.closeCycle(cycleId, end.toString())
 
+    /** Soft-delete [cycleId] and cascade to its daily logs. */
+    suspend fun deleteCycle(cycleId: String): ApiResult<Unit> = api.deleteCycle(cycleId)
+
+    /** Soft-delete the daily log anchor for [date] and its sub-logs. */
+    suspend fun deleteDay(date: String): ApiResult<Unit> = api.deleteDay(date)
+
     /** Permanently delete the account and all its health data (server-side cascade + Keycloak). */
     suspend fun deleteAccount(): ApiResult<Unit> = api.deleteAccount()
 

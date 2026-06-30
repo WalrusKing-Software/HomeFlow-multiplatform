@@ -27,5 +27,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 closeById:
 UPDATE cycles SET end_date = :endDate, updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
 
+softDelete:
+UPDATE cycles SET deleted_at = :deletedAt, updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+upsert:
+INSERT OR REPLACE INTO cycles (id, user_id, start_date, end_date, created_at, updated_at, deleted_at)
+VALUES (:id, :userId, :startDate, :endDate, :createdAt, :updatedAt, :deletedAt);
+
+selectAllIncludingDeleted:
+SELECT * FROM cycles WHERE user_id = :userId ORDER BY start_date DESC;
+
+selectByIdIncludingDeleted:
+SELECT * FROM cycles WHERE id = :id AND user_id = :userId;
+
 deleteAll:
 DELETE FROM cycles;

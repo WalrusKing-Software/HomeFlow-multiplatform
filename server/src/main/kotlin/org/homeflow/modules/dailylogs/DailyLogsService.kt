@@ -133,6 +133,20 @@ class DailyLogsService(
     }
 
     /**
+     * Soft-deletes the daily log anchor for [dateStr]. 404 if no live anchor exists.
+     * Sub-log rows stay but are unreachable via live reads. A `day` tombstone is recorded
+     * atomically with the soft-delete (D-16a.4).
+     */
+    fun deleteDay(
+        principal: UserPrincipal,
+        dateStr: String,
+    ) {
+        val date = parseIsoDate(dateStr)
+        dailyLogsRepository.softDeleteByDate(principal.id, date)
+            ?: throw NotFoundException("No log exists for this date.")
+    }
+
+    /**
      * Resolves the request's `cycleId` to a cycle owned by the user, or rejects it
      * (400): a malformed UUID and a cycle that isn't the user's are both validation
      * failures here (`__docs/API.md` — `POST /daily-logs`), never a 404 disclosure.
