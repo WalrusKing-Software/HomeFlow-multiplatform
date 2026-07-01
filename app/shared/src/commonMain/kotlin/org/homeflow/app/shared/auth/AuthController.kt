@@ -14,6 +14,7 @@ import org.homeflow.app.shared.data.buildHttpClient
 import org.homeflow.app.shared.data.userMessage
 import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.UserDto
+import org.homeflow.core.validation.semverAtLeast
 
 /** The auth-gate state the root composable renders off. */
 sealed interface AuthState {
@@ -59,6 +60,7 @@ class AuthController(
     private val tokenStore: TokenStore,
     private val gate: AppLockGate,
     private val tokenHolder: TokenHolder = TokenHolder(),
+    private val clientVersion: String = "unknown",
     httpClientFactory: (AuthConfig, TokenHolder, suspend (String) -> OidcTokens?) -> HttpClient =
         { c, h, onRefresh -> buildHttpClient(c, h, onRefresh) },
 ) : SessionController {
@@ -166,6 +168,34 @@ class AuthController(
     suspend fun uploadLocalData(json: String): ApiResult<ImportResultDto> = remote.uploadHomeflowImport(json)
 
     private suspend fun loadUser() {
+        // Check server compatibility before loading the user. A 404 or network error
+        // means the server predates the /version endpoint — treat as compatible.
+        when (val versionResult = remote.getServerVersion()) {
+            is ApiResult.Success -> {
+                val ver = versionResult.value
+                if (!semverAtLeast(clientVersion, ver.minClientVersion)) {
+                    authDebugLog(
+                        "compatibility check FAILED: clientVersion=$clientVersion " +
+                            "minRequired=${ver.minClientVersion}",
+                    )
+                    _state.value =
+                        AuthState.Error(
+                            "This app (version $clientVersion) is too old for your server. " +
+                                "Please update to version ${ver.minClientVersion} or newer.",
+                        )
+                    return
+                }
+                authDebugLog(
+                    "compatibility check OK: server=${ver.serverVersion} " +
+                        "minClient=${ver.minClientVersion} client=$clientVersion",
+                )
+            }
+            is ApiResult.Failure -> {
+                // 404 = server predates /version endpoint; or a transient network error.
+                // Do not block login in either case.
+                authDebugLog("version check skipped: code=${versionResult.code}")
+            }
+        }
         _state.value =
             when (val result = api.getMe()) {
                 is ApiResult.Success -> {

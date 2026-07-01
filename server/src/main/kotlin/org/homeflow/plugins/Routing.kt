@@ -22,6 +22,7 @@ import org.homeflow.modules.sync.SyncService
 import org.homeflow.modules.sync.syncRoutes
 import org.homeflow.modules.users.UsersService
 import org.homeflow.modules.users.usersRoutes
+import org.homeflow.modules.version.versionRoutes
 
 /**
  * Top-level route table. `/health` is public (Docker/Caddy probe); everything under
@@ -39,11 +40,14 @@ fun Application.configureRouting(
     preferencesService: PreferencesService,
     importExportService: ImportExportService,
     syncService: SyncService,
+    serverVersion: String,
+    minClientVersion: String,
 ) {
     routing {
         get("/health") {
             call.respond(HealthDto(status = "ok"))
         }
+        versionRoutes(serverVersion, minClientVersion)
         usersRoutes(usersService)
         cyclesRoutes(cyclesService)
         dailyLogsRoutes(dailyLogsService, dailyLogSubsService)

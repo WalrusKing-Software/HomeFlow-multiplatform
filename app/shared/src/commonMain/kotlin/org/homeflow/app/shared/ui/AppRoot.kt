@@ -47,7 +47,10 @@ import org.homeflow.core.dto.ImportResultDto
  * Desktop `main.kt` and Android `MainActivity` both call this instead of [App] directly.
  */
 @Composable
-fun AppRoot(serverHostOverride: String? = null) {
+fun AppRoot(
+    serverHostOverride: String? = null,
+    clientVersion: String = "unknown",
+) {
     MaterialTheme {
         val modeStore = remember { createAppModeStore() }
         var mode by remember { mutableStateOf(modeStore.load()) }
@@ -109,7 +112,8 @@ fun AppRoot(serverHostOverride: String? = null) {
                     // Mode C: open (or create) the local encrypted DB for offline-first storage.
                     // authController, syncEngine, and syncRepository are all created together so
                     // the engine shares the same authenticated HttpClient as the controller.
-                    val authController = remember(host) { buildAuthController(authConfigForHost(host!!)) }
+                    val authController =
+                        remember(host) { buildAuthController(authConfigForHost(host!!), clientVersion) }
                     val (syncEngine, syncRepository) =
                         remember(host) {
                             val dek = localKeyStore.loadOrCreateDek()

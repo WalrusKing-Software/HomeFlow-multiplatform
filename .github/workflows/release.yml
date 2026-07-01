@@ -53,7 +53,7 @@ jobs:
           elif [[ -n "${INPUT_VERSION}" ]]; then
             raw="${INPUT_VERSION#v}"
           else
-            raw="$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+            raw="$(grep -E '^version\.server=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
           fi
           echo "Resolved raw version: $raw"
 
@@ -67,10 +67,17 @@ jobs:
           pre="${BASH_REMATCH[4]}"
           core="${major}.${minor}.${patch}"
 
-          # 3. On a tag build, the tag core must match gradle.properties.
-          gp="$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$core" != "$gp" ]]; then
-            echo "::error::tag core '$core' != gradle.properties version '$gp' — bump gradle.properties or fix the tag"; exit 1
+          # 3. On a tag build, ALL THREE component versions must equal the tag core.
+          # A full lockstep v* release requires them to be synchronized.
+          gp_s="$(grep -E '^version\.server='  gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          gp_d="$(grep -E '^version\.desktop=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          gp_a="$(grep -E '^version\.android=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "$core" != "$gp_s" || "$core" != "$gp_d" || "$core" != "$gp_a" ]]; then
+              echo "::error::Full release tag '$core' requires all three gradle.properties version.* keys to match."
+              echo "::error::  version.server=$gp_s  version.desktop=$gp_d  version.android=$gp_a"
+              exit 1
+            fi
           fi
 
           # 4. Desktop installer version: jpackage/macOS need major >= 1.
@@ -166,6 +173,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: SERVER_VERSION=${{ needs.prepare.outputs.version }}
           provenance: false
 
   # ── Desktop installers, one per OS ──────────────────────────────────────────

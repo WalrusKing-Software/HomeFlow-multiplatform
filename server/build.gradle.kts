@@ -3,8 +3,10 @@ plugins {
     alias(libs.plugins.ktor)
 }
 
-// group + version come from the root build (allprojects), sourced from
-// gradle.properties `version=`. Do not hardcode here.
+// Version sourced from gradle.properties `version.server`. Independent of the client
+// versions; see COMPATIBILITY.md and __docs/BRANCHING.md.
+version = providers.gradleProperty("version.server").getOrElse("0.0.0")
+
 application {
     mainClass = "org.homeflow.ApplicationKt"
 }
