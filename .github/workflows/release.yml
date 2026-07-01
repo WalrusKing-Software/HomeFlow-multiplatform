@@ -334,6 +334,9 @@ jobs:
             echo "Release ${{ needs.prepare.outputs.version }}." > release-notes.md
           fi
           echo "----- release notes -----"; cat release-notes.md
+      - name: Attach setup documentation
+        shell: bash
+        run: cp __docs/SETUP-SERVER.md __docs/SETUP-DESKTOP.md __docs/SETUP-ANDROID.md assets/
       - name: List collected assets
         shell: bash
         run: ls -lR assets
