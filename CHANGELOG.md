@@ -294,11 +294,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   host" state that reappeared on every launch (and reinstalling didn't clear it,
   since that config lives in your home directory, not the install folder). Now the
   mode is only committed once a host is actually confirmed, and the hostname
-  screen's "Back" decides where to go from durable state: an existing local install
-  returns to the app on the Settings screen (button reads "Back to settings") and
-  repairs any stale server-mode flag, while a genuine first-run server user returns
-  to the chooser ("Back to setup"). This also **self-heals** installs already stuck
-  on the hostname screen from a previous build.
+  screen's "Back" returns to wherever the flow was started — tracked reliably in
+  memory from the moment you tap "Connect to a server": an existing local install
+  returns to the app on the Settings screen (button reads "Back to settings"),
+  while a genuine first-run server user returns to the chooser ("Back to setup").
+  Routing no longer depends on probing the OS keychain, which behaves inconsistently
+  across machines and packaged runtimes. Installs left stuck on the hostname screen
+  by a previous build are also repaired.
 - **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
   right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
   a jlink-minimized runtime that was missing the `java.sql` module, so opening the
