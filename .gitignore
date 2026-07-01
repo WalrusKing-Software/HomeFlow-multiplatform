@@ -18,7 +18,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
-VERSION
+/VERSION
 
 # Claude Code conversation exports (/export) — may contain sensitive context; never commit.
 *-local-command-caveat*.txt
