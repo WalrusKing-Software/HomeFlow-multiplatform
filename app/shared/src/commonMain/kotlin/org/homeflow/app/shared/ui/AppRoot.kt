@@ -55,10 +55,16 @@ fun AppRoot(
         val modeStore = remember { createAppModeStore() }
         val localKeyStore = remember { createLocalKeyStore() }
         var mode by remember { mutableStateOf(modeStore.load()) }
-        // Pure UX flag (not correctness-critical, need not survive restart): true after the
-        // user cancels the host-entry gate back into an existing local install, so the app
-        // lands them on the Settings screen where they started.
-        var returnToSettings by remember { mutableStateOf(false) }
+        // True while the current SERVER host-entry flow was launched from an EXISTING local
+        // install (Settings → "Connect to a server"), as opposed to a first-run server user who
+        // picked "Connect to a server" in the mode chooser. This is an in-memory navigation
+        // signal set the moment the flow starts — reliable within a session and independent of
+        // any OS-keychain probe (java-keyring availability varies by machine/packaged runtime,
+        // so keychain reads must NOT drive routing). It decides where the gate's "Back" returns
+        // to and makes the returned-to local app land on Settings. Durable safety for the
+        // interrupted/restarted case comes from NOT persisting SERVER until a host is confirmed
+        // (see onServer / onConnectServer and the host != null branch).
+        var serverSetupFromLocal by remember { mutableStateOf(false) }
 
         when (mode) {
             null ->
@@ -68,10 +74,11 @@ fun AppRoot(
                         mode = AppMode.LOCAL_ONLY
                     },
                     onServer = {
-                        // Enter the SERVER flow in memory only. The mode is not persisted until a
-                        // host is actually confirmed (see the host != null branch), so a user who
-                        // backs out of / force-quits the host-entry gate is never left with a
-                        // durable "SERVER but no host" state that traps them on every launch.
+                        // First-run server user. Enter the SERVER flow in memory only; the mode is
+                        // not persisted until a host is confirmed (see the host != null branch),
+                        // so backing out / force-quitting the gate never leaves a durable
+                        // "SERVER but no host" state that would trap the app on every launch.
+                        serverSetupFromLocal = false
                         mode = AppMode.SERVER
                     },
                 )
@@ -90,14 +97,15 @@ fun AppRoot(
                     controller = controller,
                     onExport = { controller.exportData() },
                     onConnectServer = {
-                        // Switch to the SERVER flow without wiping the local DB — local data
-                        // stays and will be offered for upload after login (D-15.10). In memory
-                        // only: the durable mode stays LOCAL_ONLY until a host is confirmed, so
-                        // backing out returns cleanly to this local install (see the gate below).
-                        returnToSettings = false
+                        // Existing local install adopting a server. Switch to the SERVER flow in
+                        // memory only — the durable mode stays LOCAL_ONLY until a host is confirmed
+                        // — so backing out of the gate returns cleanly to this local install (data
+                        // intact) rather than the first-run chooser. Local data is offered for
+                        // upload after login (D-15.10).
+                        serverSetupFromLocal = true
                         mode = AppMode.SERVER
                     },
-                    startOnSettings = returnToSettings,
+                    startOnSettings = serverSetupFromLocal,
                 )
             }
 
@@ -112,15 +120,13 @@ fun AppRoot(
                     }
 
                 if (host == null) {
-                    // No stored host yet — collect it from the user. What "back" means is decided
-                    // by a DURABLE signal — whether a local install exists (a local DEK is present;
-                    // a pure server-first install never creates one) — rather than a transient
-                    // in-memory flag. This is correct across process restarts and self-heals a
-                    // config left stuck on SERVER-without-host by an older build:
-                    //  - local install present → cancel back INTO that install (Settings), and
-                    //    re-commit LOCAL_ONLY so the stale SERVER mode is repaired.
-                    //  - no local data → genuine first-run server user; escape to the mode chooser.
-                    val hasLocalInstall = remember { localKeyStore.loadDek() != null }
+                    // No stored host yet — collect it from the user. Where "Back" goes is driven
+                    // by the in-memory origin flag (see serverSetupFromLocal) — never by probing
+                    // the OS keychain, which is unreliable across machines/packaged runtimes:
+                    //  - launched from an existing local install → return INTO that install and
+                    //    re-commit LOCAL_ONLY (also repairs a stale SERVER mode from an old build).
+                    //  - otherwise (first-run server user, or a launch that landed directly on a
+                    //    legacy "SERVER but no host" state) → the mode chooser.
                     ServerConnectScreen(
                         onConnected = { newHost ->
                             serverConfigStore.saveHost(newHost)
@@ -130,8 +136,7 @@ fun AppRoot(
                         },
                         onBack = {
                             serverConfigStore.clear()
-                            if (hasLocalInstall) {
-                                returnToSettings = true
+                            if (serverSetupFromLocal) {
                                 modeStore.save(AppMode.LOCAL_ONLY)
                                 mode = AppMode.LOCAL_ONLY
                             } else {
@@ -139,7 +144,7 @@ fun AppRoot(
                                 mode = null
                             }
                         },
-                        backLabel = if (hasLocalInstall) "Back to settings" else "Back to setup",
+                        backLabel = if (serverSetupFromLocal) "Back to settings" else "Back to setup",
                         clientVersion = clientVersion,
                     )
                 } else {
