@@ -53,12 +53,12 @@ fun AppRoot(
 ) {
     MaterialTheme {
         val modeStore = remember { createAppModeStore() }
+        val localKeyStore = remember { createLocalKeyStore() }
         var mode by remember { mutableStateOf(modeStore.load()) }
-        // True when the SERVER flow was entered from Settings in an existing local install
-        // (via onConnectServer below). It changes what "back" means on the host-entry gate:
-        // an existing local user cancels back into the app (Settings), rather than being
-        // reset to the first-run mode chooser as a genuine first-run SERVER user would be.
-        var connectFromLocal by remember { mutableStateOf(false) }
+        // Pure UX flag (not correctness-critical, need not survive restart): true after the
+        // user cancels the host-entry gate back into an existing local install, so the app
+        // lands them on the Settings screen where they started.
+        var returnToSettings by remember { mutableStateOf(false) }
 
         when (mode) {
             null ->
@@ -68,7 +68,10 @@ fun AppRoot(
                         mode = AppMode.LOCAL_ONLY
                     },
                     onServer = {
-                        modeStore.save(AppMode.SERVER)
+                        // Enter the SERVER flow in memory only. The mode is not persisted until a
+                        // host is actually confirmed (see the host != null branch), so a user who
+                        // backs out of / force-quits the host-entry gate is never left with a
+                        // durable "SERVER but no host" state that traps them on every launch.
                         mode = AppMode.SERVER
                     },
                 )
@@ -87,13 +90,14 @@ fun AppRoot(
                     controller = controller,
                     onExport = { controller.exportData() },
                     onConnectServer = {
-                        // Switch to SERVER mode without wiping the local DB — local data
-                        // stays and will be offered for upload after login (D-15.10).
-                        connectFromLocal = true
-                        modeStore.save(AppMode.SERVER)
+                        // Switch to the SERVER flow without wiping the local DB — local data
+                        // stays and will be offered for upload after login (D-15.10). In memory
+                        // only: the durable mode stays LOCAL_ONLY until a host is confirmed, so
+                        // backing out returns cleanly to this local install (see the gate below).
+                        returnToSettings = false
                         mode = AppMode.SERVER
                     },
-                    startOnSettings = connectFromLocal,
+                    startOnSettings = returnToSettings,
                 )
             }
 
@@ -104,25 +108,30 @@ fun AppRoot(
                 var host by remember { mutableStateOf(serverConfigStore.loadHost() ?: serverHostOverride) }
                 val serverMigration =
                     remember {
-                        ServerMigration(createLocalKeyStore(), LocalDatabaseFactory(), serverConfigStore)
+                        ServerMigration(localKeyStore, LocalDatabaseFactory(), serverConfigStore)
                     }
 
                 if (host == null) {
-                    // No stored host yet — collect it from the user. "Back" means one of two
-                    // things depending on how we got here:
-                    //  - connectFromLocal: an existing local user tapped Settings → "Connect to a
-                    //    server". Cancelling returns them to LOCAL_ONLY (and lands on Settings),
-                    //    preserving their install — not the first-run chooser.
-                    //  - otherwise: a genuine first-run SERVER user who has no server; let them
-                    //    escape back to the mode chooser instead of being trapped here.
+                    // No stored host yet — collect it from the user. What "back" means is decided
+                    // by a DURABLE signal — whether a local install exists (a local DEK is present;
+                    // a pure server-first install never creates one) — rather than a transient
+                    // in-memory flag. This is correct across process restarts and self-heals a
+                    // config left stuck on SERVER-without-host by an older build:
+                    //  - local install present → cancel back INTO that install (Settings), and
+                    //    re-commit LOCAL_ONLY so the stale SERVER mode is repaired.
+                    //  - no local data → genuine first-run server user; escape to the mode chooser.
+                    val hasLocalInstall = remember { localKeyStore.loadDek() != null }
                     ServerConnectScreen(
                         onConnected = { newHost ->
                             serverConfigStore.saveHost(newHost)
+                            // Commit the mode only now that a host is actually configured.
+                            modeStore.save(AppMode.SERVER)
                             host = newHost
                         },
                         onBack = {
                             serverConfigStore.clear()
-                            if (connectFromLocal) {
+                            if (hasLocalInstall) {
+                                returnToSettings = true
                                 modeStore.save(AppMode.LOCAL_ONLY)
                                 mode = AppMode.LOCAL_ONLY
                             } else {
@@ -130,11 +139,15 @@ fun AppRoot(
                                 mode = null
                             }
                         },
-                        backLabel = if (connectFromLocal) "Back to settings" else "Back to setup",
+                        backLabel = if (hasLocalInstall) "Back to settings" else "Back to setup",
                         clientVersion = clientVersion,
                     )
                 } else {
-                    val localKeyStore = remember { createLocalKeyStore() }
+                    // We have a host, so this is a committed SERVER install: persist the mode.
+                    // This is the single point where SERVER becomes durable — covering onConnected,
+                    // a returning user with a stored host, and the Android-debug host override
+                    // (which skips the gate). Idempotent; a no-op once already saved.
+                    LaunchedEffect(host) { modeStore.save(AppMode.SERVER) }
                     val dbFactory = remember { LocalDatabaseFactory() }
                     // Mode C: open (or create) the local encrypted DB for offline-first storage.
                     // authController, syncEngine, and syncRepository are all created together so
