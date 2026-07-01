@@ -775,4 +775,59 @@ release.)
 - A pre-release tag (`-rc.N`) yields a GitHub *pre-release* and does **not** move
   `:latest`.
 - The Android APK is signed when the keystore secrets are present.
+
+---
+
+## 13. Per-component releases
+
+From v0.2.0 onward, each deliverable can be released independently using a
+component-scoped tag. This avoids rebuilding clients when only the server changes,
+and vice versa.
+
+### Tag formats
+
+| Tag | Workflow | GitHub Release | Assets |
+|---|---|---|---|
+| `vX.Y.Z` | `release.yml` | HomeFlow X.Y.Z | All 7 |
+| `server-vX.Y.Z` | `release-server.yml` | HomeFlow Server X.Y.Z | dist .zip + .tar.gz |
+| `desktop-vX.Y.Z` | `release-desktop.yml` | HomeFlow Desktop X.Y.Z | .msi + .dmg + .deb |
+| `android-vX.Y.Z` | `release-android.yml` | HomeFlow Android X.Y.Z | .apk + .aab |
+
+### Version sources
+
+Each workflow reads its component's key from `gradle.properties`:
+- `release-server.yml` → `version.server`
+- `release-desktop.yml` → `version.desktop`
+- `release-android.yml` → `version.android`
+- `release.yml` (lockstep) → all three must match; uses `version.server` as the
+  canonical fallback for `workflow_dispatch` without an explicit version input.
+
+### `make_latest: false`
+
+Component-only releases set `make_latest: false` on the GitHub Release. Only full
+lockstep `v*` releases move the repo-level "Latest release" pointer. This keeps the
+GitHub Releases page meaningful — the latest *combined* release is always prominent.
+
+### Compatibility
+
+When releasing a server update that changes the API in a backward-incompatible way,
+or that requires a newer client:
+
+1. Update `COMPATIBILITY.md` with the new row.
+2. Set `MIN_CLIENT_VERSION=X.Y.Z` in your homelab `.env` before deploying.
+3. The server's `GET /api/v1/version` endpoint (Phase 2) returns this value so
+   clients can enforce the check automatically.
+
+### Bumping versions before tagging
+
+```bash
+# Server hotfix only:
+sh scripts/bump-version.sh server
+git add gradle.properties && git commit -m "chore: bump server to 0.2.1"
+git tag server-v0.2.1 && git push origin server-v0.2.1
+
+# Full lockstep release:
+sh scripts/bump-version.sh all
+git add gradle.properties && git commit -m "chore: bump all to 0.3.0"
+git tag v0.3.0 && git push origin v0.3.0
 ```

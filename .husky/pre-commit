@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit: Kotlin format/lint, secret scan, version bump.
+# Pre-commit: Kotlin format/lint, secret scan.
 #
 # Activate without Node by pointing git at this directory:
 #   git config core.hooksPath .husky
@@ -18,12 +18,6 @@ fi
 echo "Scanning for secrets..."
 sh ./scripts/check-secrets.sh
 
-# Bump the patch version on every commit (writes gradle.properties).
-# Skip during a merge so a merge commit doesn't double-bump.
-if [ -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then
-  echo "Merge in progress — skipping version bump."
-elif [ -f ./gradle.properties ]; then
-  echo "Bumping version..."
-  sh ./scripts/bump-version.sh
-  git add gradle.properties
-fi
+# Version bumps are intentional manual operations before tagging a component or
+# full-suite release. Run `sh scripts/bump-version.sh <server|desktop|android|all>`
+# when you are ready to cut a release. See __docs/BRANCHING.md.

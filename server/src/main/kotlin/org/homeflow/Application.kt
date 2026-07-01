@@ -137,5 +137,7 @@ fun Application.module(deps: AppDependencies) {
         deps.preferencesService,
         deps.importExportService,
         deps.syncService,
+        deps.config.serverVersion,
+        deps.config.minClientVersion,
     )
 }

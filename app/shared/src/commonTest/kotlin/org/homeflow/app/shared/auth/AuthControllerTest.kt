@@ -20,8 +20,12 @@ class AuthControllerTest {
     private val meBody = """{"id":"user-1","createdAt":"2024-01-15T10:00:00Z"}"""
 
     private fun meEngine() =
-        MockEngine {
-            respond(content = meBody, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        MockEngine { request ->
+            if (request.url.encodedPath.endsWith("/version")) {
+                respond(content = "", status = HttpStatusCode.NotFound)
+            } else {
+                respond(content = meBody, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
         }
 
     private fun controller(

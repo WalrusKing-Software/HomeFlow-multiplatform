@@ -25,7 +25,8 @@ Without this, Claude Code will invent route shapes, and you'll get inconsistenci
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check — no auth |
+| `GET` | `/api/v1/version` | Server version + min client requirement — no auth |
 | `GET` | `/api/v1/users/me` | Get current user record |
 | `DELETE` | `/api/v1/users/me` | Delete account and all data |
 | `GET` | `/api/v1/cycles` | List all cycles |

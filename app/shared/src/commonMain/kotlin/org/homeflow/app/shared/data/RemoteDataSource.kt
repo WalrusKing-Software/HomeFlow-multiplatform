@@ -27,6 +27,7 @@ import org.homeflow.core.dto.SyncPushResponse
 import org.homeflow.core.dto.UpdateCycleRequest
 import org.homeflow.core.dto.UpdatePreferencesRequest
 import org.homeflow.core.dto.UserDto
+import org.homeflow.core.dto.VersionDto
 
 /**
  * Typed calls to the Ktor backend `/api/v1`, using the `:core` DTOs directly (no
@@ -44,6 +45,14 @@ class RemoteDataSource(
     private val client: HttpClient,
 ) : HomeFlowDataSource {
     override suspend fun getMe(): ApiResult<UserDto> = client.apiGet("users/me")
+
+    /**
+     * Unauthenticated check — called in [org.homeflow.app.shared.auth.AuthController.loadUser]
+     * before [getMe] to verify the server accepts this client version. A 404 means the server
+     * predates this endpoint; the caller treats that as compatible. Not on [HomeFlowDataSource]
+     * — [org.homeflow.app.shared.data.local.LocalDataSource] has no server to query.
+     */
+    suspend fun getServerVersion(): ApiResult<VersionDto> = client.apiGet("version")
 
     /**
      * Permanently delete the account: all health data + the Keycloak identity (server-side).

@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// Version sourced from gradle.properties `version.android`. versionName below reads
+// project.version; versionCode is supplied by the pipeline via -PversionCode.
+version = providers.gradleProperty("version.android").getOrElse("0.0.0")
+
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
@@ -83,6 +87,10 @@ android {
             isMinifyEnabled = false
             releaseSigning?.let { signingConfig = it }
         }
+    }
+    buildFeatures {
+        // Needed for BuildConfig.VERSION_NAME (passed as clientVersion to AppRoot).
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

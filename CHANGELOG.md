@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/). A changelog
 entry answers "what can I do now that I couldn't before?" — not "what files
 changed." See `CLAUDE.md` for the rules.
 
+<!-- Section header formats (used by the release pipeline awk extractor):
+     Combined release:  ## [X.Y.Z] - YYYY-MM-DD
+     Server only:       ## [Server X.Y.Z] - YYYY-MM-DD
+     Desktop only:      ## [Desktop X.Y.Z] - YYYY-MM-DD
+     Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
+-->
+
 ## [Unreleased] Version 0.1.0 — [Release-Date]
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted

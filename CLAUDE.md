@@ -88,6 +88,7 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/BACKUP.md` | Encrypted backup/restore (`pg_dump \| gpg`) | Any backup / disaster-recovery work |
 | `__docs/BRANCHING.md` | Branching model, release trains, CI gates | Any work on branches, PRs, CI |
 | `__docs/RELEASE-PIPELINE.md` | Release packaging & GitHub Actions pipeline | Any release, packaging, or CI artifact work |
+| `COMPATIBILITY.md` | Client–server version compatibility matrix; tag formats for per-component releases | Any release that changes the API contract or min client requirement |
 | `__docs/project-planning/features.md` | Feature requirements and UX notes | Any client UI work |
 | `__docs/project-planning/project-overview.md` | Product overview | Orienting on the product |
 | `CHANGELOG.md` | User-/developer-visible changes by version | After any behavior change |

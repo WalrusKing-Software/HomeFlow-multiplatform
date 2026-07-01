@@ -18,20 +18,32 @@ data class Config(
     val keycloak: KeycloakConfig,
     val rateLimit: RateLimitConfig,
     val encryptionKey: String,
+    /** Self-reported version served at `GET /api/v1/version`. From `SERVER_VERSION` env var. */
+    val serverVersion: String,
+    /**
+     * Oldest client version the server will accept. From `MIN_CLIENT_VERSION` env var;
+     * defaults to [serverVersion] if unset so operators who only set `SERVER_VERSION`
+     * get a sensible minimum automatically.
+     */
+    val minClientVersion: String,
 ) {
     companion object {
         private const val DEFAULT_API_PORT = 8080
         private const val DEFAULT_LOG_LEVEL = "info"
 
-        fun fromEnv(): Config =
-            Config(
+        fun fromEnv(): Config {
+            val serverVer = System.getenv("SERVER_VERSION")?.takeIf { it.isNotBlank() } ?: "unknown"
+            return Config(
                 apiPort = System.getenv("API_PORT")?.toIntOrNull() ?: DEFAULT_API_PORT,
                 logLevel = System.getenv("LOG_LEVEL")?.takeIf { it.isNotBlank() } ?: DEFAULT_LOG_LEVEL,
                 database = DatabaseConfig.fromEnv(),
                 keycloak = KeycloakConfig.fromEnv(),
                 rateLimit = RateLimitConfig.fromEnv(),
                 encryptionKey = requireEnv("APP_ENCRYPTION_KEY"),
+                serverVersion = serverVer,
+                minClientVersion = System.getenv("MIN_CLIENT_VERSION")?.takeIf { it.isNotBlank() } ?: serverVer,
             )
+        }
     }
 }
 

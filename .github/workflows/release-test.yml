@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          core="$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          core="$(grep -E '^version\.server=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
           sha7="${GITHUB_SHA::7}"
           version="${core}-test.${sha7}"
 
@@ -124,6 +124,7 @@ jobs:
           push: true
           # test-<sha> only — never moves :latest
           tags: ${{ needs.prepare.outputs.image }}:test-${{ needs.prepare.outputs.sha7 }}
+          build-args: SERVER_VERSION=${{ needs.prepare.outputs.version }}
           provenance: false
 
       - name: Print pull command

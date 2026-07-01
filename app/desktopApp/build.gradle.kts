@@ -6,6 +6,42 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// Version sourced from gradle.properties `version.desktop`. packageVersion inside
+// nativeDistributions still uses -PdesktopPackageVersion from the pipeline (jpackage
+// major >= 1 constraint); this project.version is the canonical release record.
+version = providers.gradleProperty("version.desktop").getOrElse("0.0.0")
+
+// Generate a build-time version constant for the desktop app, mirroring Android's
+// BuildConfig.VERSION_NAME. Resolved from gradle.properties at configuration time
+// and written into the build output directory; the Kotlin source set below picks it up.
+val generateDesktopBuildConfig by tasks.registering {
+    val outDir = layout.buildDirectory.dir("generated/kotlin/desktopBuildConfig")
+    // Resolve the provider to a plain String inside the task block so the config cache
+    // doesn't need to serialize an outer-scope Gradle script object reference.
+    val versionValue: String = providers.gradleProperty("version.desktop").getOrElse("unknown")
+    outputs.dir(outDir)
+    inputs.property("desktopVersion", versionValue)
+    doLast {
+        val dir = outDir.get().asFile
+        dir.mkdirs()
+        dir.resolve("DesktopBuildConfig.kt").writeText(
+            """
+            package org.homeflow
+
+            internal const val DESKTOP_VERSION = "$versionValue"
+            """.trimIndent(),
+        )
+    }
+}
+
+kotlin {
+    sourceSets {
+        main {
+            kotlin.srcDir(generateDesktopBuildConfig.map { it.outputs.files.singleFile })
+        }
+    }
+}
+
 dependencies {
     implementation(projects.app.shared)
 
