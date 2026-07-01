@@ -284,6 +284,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
+  right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
+  a jlink-minimized runtime that was missing the `java.sql` module, so opening the
+  encrypted local SQLite database (which loads a JDBC driver via
+  `java.sql.DriverManager`) blew up the first time you unlocked a local install.
+  The installer now bundles `java.sql`, so local-only mode works from a clean
+  install. (Ran fine under `./gradlew run` before because that uses the full JDK.)
 - **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
   to the same screen with no feedback when biometrics/device credential weren't
   enrolled, or when the biometric prompt errored — the gate still fails closed,

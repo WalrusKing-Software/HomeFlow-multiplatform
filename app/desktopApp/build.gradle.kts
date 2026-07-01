@@ -67,6 +67,16 @@ compose.desktop {
             // See __docs/RELEASE-PIPELINE.md §3.2.
             packageVersion = (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
 
+            // The bundled runtime is produced by jlink, which only keeps JDK modules it
+            // can detect statically. The local SQLite database is opened through
+            // JdbcSqliteDriver -> java.sql.DriverManager, which is loaded reflectively via
+            // ServiceLoader, so jlink cannot see the dependency and strips java.sql from the
+            // packaged JRE. Without this, the packaged app (MSI/DMG/DEB) crashes with
+            // NoClassDefFoundError: java/sql/DriverManager the moment it opens the local DB
+            // (it works under `./gradlew run` because that uses the full JDK). Force the
+            // module in. See LocalDatabaseFactory.jvm.kt.
+            modules("java.sql")
+
             // Best-effort screenshot protection on desktop is a runtime concern (the window
             // is not added to the OS screen-capture exclusion here); see the client security
             // checklist in __docs/ARCHITECTURE-client.md.
