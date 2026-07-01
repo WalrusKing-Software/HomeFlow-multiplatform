@@ -62,6 +62,7 @@ private enum class Tab(
  * - [onConnectServer]: non-null in Mode A — "Connect to a server".
  * - [onUploadToServer]: non-null in Mode B while unmigrated — "Upload local data to server".
  * - [connectedHost]: non-null in Mode B — displayed in the Server section.
+ * - [onSwitchToLocal]: non-null in Mode B — "Switch to local-only mode".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +74,7 @@ fun AppShell(
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
+    onSwitchToLocal: (() -> Unit)? = null,
     syncStatusFlow: StateFlow<SyncStatus>? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
@@ -117,6 +119,7 @@ fun AppShell(
                         onConnectServer = onConnectServer,
                         onUploadToServer = onUploadToServer,
                         connectedHost = connectedHost,
+                        onSwitchToLocal = onSwitchToLocal,
                     )
             }
         }

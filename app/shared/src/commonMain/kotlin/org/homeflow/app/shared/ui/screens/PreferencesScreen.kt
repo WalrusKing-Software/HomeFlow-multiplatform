@@ -59,6 +59,7 @@ fun PreferencesScreen(
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
+    onSwitchToLocal: (() -> Unit)? = null,
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     val state by produceState<Loadable<PreferencesEditor>>(Loadable.Loading, repository, reloadKey) {
@@ -95,6 +96,7 @@ fun PreferencesScreen(
             connectedHost = connectedHost,
             onConnectServer = onConnectServer,
             onUploadToServer = onUploadToServer,
+            onSwitchToLocal = onSwitchToLocal,
         )
         DangerZone(onDeleteAccount)
     }
@@ -211,7 +213,8 @@ private fun ExportSection(onExport: suspend () -> Unit) {
  * Server section: visible in both modes but with different content.
  * - Mode A ([onConnectServer] != null): "Connect to a server" button.
  * - Mode B ([connectedHost] != null): shows the host; if [onUploadToServer] != null,
- *   also shows "Upload local data to server" with a result summary.
+ *   also shows "Upload local data to server" with a result summary; if [onSwitchToLocal]
+ *   != null, offers a reversible "Switch to local-only mode".
  * - Neither set: nothing rendered.
  */
 @Composable
@@ -219,6 +222,7 @@ private fun ServerSection(
     connectedHost: String?,
     onConnectServer: (() -> Unit)?,
     onUploadToServer: (suspend () -> ImportResultDto?)?,
+    onSwitchToLocal: (() -> Unit)?,
 ) {
     if (connectedHost == null && onConnectServer == null) return
 
@@ -245,6 +249,53 @@ private fun ServerSection(
         if (onUploadToServer != null) {
             UploadToServerButton(onUploadToServer)
         }
+
+        if (onSwitchToLocal != null) {
+            SwitchToLocalButton(onSwitchToLocal)
+        }
+    }
+}
+
+/**
+ * Reversible mode switch (Mode B → Mode A). The local database keeps the synced data, so
+ * switching just stops syncing; the server connection is retained so the user can reconnect
+ * later from Settings. Guarded by a confirm dialog.
+ */
+@Composable
+private fun SwitchToLocalButton(onSwitchToLocal: () -> Unit) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Text(
+        "Use this device without a server. Your data stays on this device and stops syncing " +
+            "until you reconnect.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedButton(
+        onClick = { showDialog = true },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Switch to local-only mode") }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Switch to local-only mode?") },
+            text = {
+                Text(
+                    "Your data stays on this device and will stop syncing with the server. " +
+                        "You can reconnect later from Settings.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    onSwitchToLocal()
+                }) { Text("Switch") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

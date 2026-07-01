@@ -101,11 +101,20 @@ fun AppRoot(
                     }
 
                 if (host == null) {
-                    // No stored host yet — collect it from the user.
-                    ServerConnectScreen(onConnected = { newHost ->
-                        serverConfigStore.saveHost(newHost)
-                        host = newHost
-                    })
+                    // No stored host yet — collect it from the user. onBack lets a user who has no
+                    // server escape back to the mode chooser instead of being trapped here.
+                    ServerConnectScreen(
+                        onConnected = { newHost ->
+                            serverConfigStore.saveHost(newHost)
+                            host = newHost
+                        },
+                        onBack = {
+                            serverConfigStore.clear()
+                            modeStore.clear()
+                            mode = null
+                        },
+                        clientVersion = clientVersion,
+                    )
                 } else {
                     val localKeyStore = remember { createLocalKeyStore() }
                     val dbFactory = remember { LocalDatabaseFactory() }
@@ -155,6 +164,12 @@ fun AppRoot(
                         controller = authController,
                         connectedHost = host,
                         onUploadToServer = onUploadToServer,
+                        onSwitchToLocal = {
+                            // Reversible: keep the server config + local DB (which already holds the
+                            // synced data) so the user can reconnect later. Just flip the mode.
+                            modeStore.save(AppMode.LOCAL_ONLY)
+                            mode = AppMode.LOCAL_ONLY
+                        },
                         syncEngine = syncEngine,
                         syncRepository = syncRepository,
                     )
