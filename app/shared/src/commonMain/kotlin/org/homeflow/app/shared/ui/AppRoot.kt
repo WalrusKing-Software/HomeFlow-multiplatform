@@ -54,6 +54,11 @@ fun AppRoot(
     MaterialTheme {
         val modeStore = remember { createAppModeStore() }
         var mode by remember { mutableStateOf(modeStore.load()) }
+        // True when the SERVER flow was entered from Settings in an existing local install
+        // (via onConnectServer below). It changes what "back" means on the host-entry gate:
+        // an existing local user cancels back into the app (Settings), rather than being
+        // reset to the first-run mode chooser as a genuine first-run SERVER user would be.
+        var connectFromLocal by remember { mutableStateOf(false) }
 
         when (mode) {
             null ->
@@ -84,9 +89,11 @@ fun AppRoot(
                     onConnectServer = {
                         // Switch to SERVER mode without wiping the local DB — local data
                         // stays and will be offered for upload after login (D-15.10).
+                        connectFromLocal = true
                         modeStore.save(AppMode.SERVER)
                         mode = AppMode.SERVER
                     },
+                    startOnSettings = connectFromLocal,
                 )
             }
 
@@ -101,8 +108,13 @@ fun AppRoot(
                     }
 
                 if (host == null) {
-                    // No stored host yet — collect it from the user. onBack lets a user who has no
-                    // server escape back to the mode chooser instead of being trapped here.
+                    // No stored host yet — collect it from the user. "Back" means one of two
+                    // things depending on how we got here:
+                    //  - connectFromLocal: an existing local user tapped Settings → "Connect to a
+                    //    server". Cancelling returns them to LOCAL_ONLY (and lands on Settings),
+                    //    preserving their install — not the first-run chooser.
+                    //  - otherwise: a genuine first-run SERVER user who has no server; let them
+                    //    escape back to the mode chooser instead of being trapped here.
                     ServerConnectScreen(
                         onConnected = { newHost ->
                             serverConfigStore.saveHost(newHost)
@@ -110,9 +122,15 @@ fun AppRoot(
                         },
                         onBack = {
                             serverConfigStore.clear()
-                            modeStore.clear()
-                            mode = null
+                            if (connectFromLocal) {
+                                modeStore.save(AppMode.LOCAL_ONLY)
+                                mode = AppMode.LOCAL_ONLY
+                            } else {
+                                modeStore.clear()
+                                mode = null
+                            }
                         },
+                        backLabel = if (connectFromLocal) "Back to settings" else "Back to setup",
                         clientVersion = clientVersion,
                     )
                 } else {

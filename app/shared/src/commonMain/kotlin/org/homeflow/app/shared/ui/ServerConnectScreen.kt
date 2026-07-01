@@ -56,6 +56,7 @@ private sealed interface ConnectState {
 fun ServerConnectScreen(
     onConnected: (String) -> Unit,
     onBack: (() -> Unit)? = null,
+    backLabel: String = "Back to setup",
     clientVersion: String = "unknown",
 ) {
     var input by remember { mutableStateOf("") }
@@ -139,7 +140,7 @@ fun ServerConnectScreen(
 
             if (onBack != null) {
                 TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                    Text("Back to setup")
+                    Text(backLabel)
                 }
             }
         }
