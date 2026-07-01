@@ -285,13 +285,20 @@ Ktor server). Pre-implementation: documentation and specification only.
 
 ### Fixed
 - **"Back" from Settings → Connect to a server no longer dumps you at the first-run
-  welcome screen.** In an existing local-only install, choosing "Connect to a
-  server" in Settings and then backing out of the hostname screen used to send you
-  all the way back to the "Welcome to HomeFlow" local-vs-server chooser. It now
-  cancels back into the app on the Settings screen (and the button reads "Back to
-  settings"), leaving your local install untouched. The first-run escape hatch —
-  where a brand-new user who picked "Connect to a server" but has none can return
-  to the chooser — is unchanged.
+  welcome screen, and no longer traps you there across restarts.** In an existing
+  local-only install, choosing "Connect to a server" in Settings and then backing
+  out of the hostname screen used to send you all the way back to the "Welcome to
+  HomeFlow" local-vs-server chooser. Root cause: the app persisted "server mode" to
+  disk the moment you *entered* the connect flow — before a server was ever
+  configured — so an interrupted or cancelled connect left a durable "server, but no
+  host" state that reappeared on every launch (and reinstalling didn't clear it,
+  since that config lives in your home directory, not the install folder). Now the
+  mode is only committed once a host is actually confirmed, and the hostname
+  screen's "Back" decides where to go from durable state: an existing local install
+  returns to the app on the Settings screen (button reads "Back to settings") and
+  repairs any stale server-mode flag, while a genuine first-run server user returns
+  to the chooser ("Back to setup"). This also **self-heals** installs already stuck
+  on the hostname screen from a previous build.
 - **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
   right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
   a jlink-minimized runtime that was missing the `java.sql` module, so opening the
