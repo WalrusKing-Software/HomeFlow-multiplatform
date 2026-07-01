@@ -284,6 +284,14 @@ Ktor server). Pre-implementation: documentation and specification only.
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **"Back" from Settings → Connect to a server no longer dumps you at the first-run
+  welcome screen.** In an existing local-only install, choosing "Connect to a
+  server" in Settings and then backing out of the hostname screen used to send you
+  all the way back to the "Welcome to HomeFlow" local-vs-server chooser. It now
+  cancels back into the app on the Settings screen (and the button reads "Back to
+  settings"), leaving your local install untouched. The first-run escape hatch —
+  where a brand-new user who picked "Connect to a server" but has none can return
+  to the chooser — is unchanged.
 - **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
   right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
   a jlink-minimized runtime that was missing the `java.sql` module, so opening the
