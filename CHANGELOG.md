@@ -19,6 +19,23 @@ Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server). Pre-implementation: documentation and specification only.
 
 ### Added
+- **Recover from and switch between setup modes (onboarding hardening).** The
+  first-run and server-connection flows no longer dead-end:
+  - The "Connect to your server" screen now has a **Back to setup** button, so a
+    user who chose "Connect to a server" without actually having one can return to
+    the mode chooser instead of being stuck (previously the only escape was
+    manually deleting a config file).
+  - Entering a server hostname now runs an **advisory reachability check** against
+    the unauthenticated `GET /api/v1/version` endpoint before proceeding, showing
+    "Checking…", a reachable confirmation, an "app too old for that server"
+    message, or a "couldn't reach that server" warning with a **Connect anyway**
+    override for LAN/Tailscale hosts that block the probe.
+  - Settings gains **Switch to local-only mode** for server-connected installs — a
+    reversible switch that keeps your on-device data and server connection so you
+    can reconnect later. (The reverse, "Connect to a server" from a local install,
+    already existed.)
+  - Clearer mode-chooser copy: "Connect to a server" now states it requires a
+    running server, with a note that the choice can be changed later in Settings.
 - Project documentation ported and adapted from the HomeFlow web repo for the
   Kotlin-everywhere architecture (server, client, shared-module, testing,
   phases, Docker, deployment, branching).
