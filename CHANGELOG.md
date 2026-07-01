@@ -258,6 +258,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   for all three platforms (Windows `.msi`, macOS `.dmg`, Linux `.deb`), and a signed
   Android APK + AAB. Pre-release tags (`-alpha.N`, `-rc.N`) produce a GitHub
   pre-release and do not move the Docker `:latest` tag.
+- **Setup guides attached to every release.** Each GitHub Release now includes
+  Markdown setup guides alongside the downloadable artifacts: `SETUP-SERVER.md`
+  (step-by-step server deployment on a Raspberry Pi with Tailscale or LAN TLS),
+  `SETUP-DESKTOP.md` (install and connect the desktop app on Windows/macOS/Linux),
+  and `SETUP-ANDROID.md` (sideload and connect the Android APK). Component-only
+  releases (server/desktop/android tags) include only the relevant guide;
+  lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
 - **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
