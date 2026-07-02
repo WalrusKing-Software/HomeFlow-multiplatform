@@ -284,6 +284,21 @@ Ktor server).
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **Local-only mode now works on Android.** Choosing "Use this device only" previously
+  dead-ended on a "Something went wrong" screen. Three issues are fixed so first-run local
+  setup completes and reaches the app:
+  - On a device with **no screen lock enrolled** (no PIN/pattern/password or biometric),
+    the app-open lock no longer hard-fails (`code=11`); with no OS factor available to
+    prompt for, it proceeds without the extra lock. Your data is still encrypted at rest by
+    the hardware-backed Keystore. On devices that *do* have a screen lock, the biometric/
+    device-credential prompt still appears as before.
+  - The local **database encryption key is now created on first unlock** on Android (which
+    has no separate passphrase-enrollment step), instead of failing with "Secure storage is
+    unavailable." Desktop's fail-closed behavior (never mint a key over an existing database)
+    is unchanged.
+  - The **SQLCipher native library is now loaded** before the encrypted local database is
+    opened, fixing an "is the library loaded?" crash that blocked the local (and offline-
+    sync) database on Android.
 - **The first-run passphrase screen is now clearly a setup screen (desktop).** Creating
   your app passphrase for the first time looked almost identical to the unlock screen.
   It now has a distinct heading ("Create your app passphrase"), guidance on what the

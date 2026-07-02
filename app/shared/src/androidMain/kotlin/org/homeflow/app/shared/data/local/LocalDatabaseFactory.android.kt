@@ -22,5 +22,13 @@ actual class LocalDatabaseFactory actual constructor() {
 
     private companion object {
         const val DB_NAME = "homeflow_local.db"
+
+        init {
+            // net.zetetic:sqlcipher-android requires its native library to be explicitly loaded
+            // before SupportOpenHelperFactory is used; otherwise SQLiteConnection.nativeOpen has
+            // no registered JNI implementation ("No implementation found … is the library
+            // loaded?"). Runs once when the factory class is first initialized.
+            System.loadLibrary("sqlcipher")
+        }
     }
 }

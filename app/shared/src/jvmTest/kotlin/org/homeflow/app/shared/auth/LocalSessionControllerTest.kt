@@ -29,6 +29,17 @@ class LocalSessionControllerTest {
         override suspend fun authenticate(secret: String?): Boolean = true
     }
 
+    /** Mirrors the Android biometric gate: no passphrase, no enrollment step, always authenticates. */
+    private class BiometricGate(
+        override val usesPassphrase: Boolean = false,
+    ) : AppLockGate {
+        override fun needsEnrollment(): Boolean = false
+
+        override suspend fun enroll(secret: String) = Unit
+
+        override suspend fun authenticate(secret: String?): Boolean = true
+    }
+
     private class AlwaysFailGate : AppLockGate {
         override val usesPassphrase: Boolean = true
 
@@ -119,6 +130,19 @@ class LocalSessionControllerTest {
             c.start()
             c.unlock("any")
             assertIs<AuthState.Error>(c.state.value)
+        }
+
+    @Test
+    fun `biometric first-run unlock creates the DEK and reaches Authenticated`() =
+        runTest {
+            // Android: no passphrase gate, no enrollment step, and no DEK yet. The first unlock is
+            // first-run setup — it must create the DEK (not fail closed) and open the session.
+            val keyStore = InMemoryKeyStore(seeded = false)
+            val c = controller(gate = BiometricGate(), keyStore = keyStore)
+            c.start()
+            c.unlock(null)
+            assertIs<AuthState.Authenticated>(c.state.value)
+            assertNotNull(keyStore.loadDek())
         }
 
     @Test
