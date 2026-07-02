@@ -66,41 +66,77 @@ fun LockScreen(
     onLogout: () -> Unit,
 ) {
     CenteredColumn {
-        Text(
-            if (needsEnrollment) "Set an app passphrase" else "Unlock HomeFlow",
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        if (usesPassphrase) {
-            var passphrase by remember { mutableStateOf("") }
-            Text(
-                if (needsEnrollment) {
-                    "Protects your stored session on this device."
-                } else {
-                    "Enter your app passphrase to continue."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            OutlinedTextField(
-                value = passphrase,
-                onValueChange = { passphrase = it },
-                label = { Text("Passphrase") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
-            )
-            Button(
-                onClick = { onSubmitPassphrase(passphrase) },
-                enabled = passphrase.isNotBlank(),
-            ) { Text(if (needsEnrollment) "Set passphrase" else "Unlock") }
-        } else {
-            Text(
-                "Authenticate to access your data.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Button(onClick = onBiometric) { Text("Unlock") }
+        when {
+            // First run (desktop): the user is CREATING their passphrase, not entering an
+            // existing one. This screen is deliberately distinct from the unlock screen.
+            usesPassphrase && needsEnrollment -> PassphraseSetup(onSubmit = onSubmitPassphrase)
+            usesPassphrase -> PassphraseUnlock(onSubmit = onSubmitPassphrase)
+            else -> {
+                Text("Unlock HomeFlow", style = MaterialTheme.typography.headlineSmall)
+                Text("Authenticate to access your data.", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = onBiometric) { Text("Unlock") }
+            }
         }
         OutlinedButton(onClick = onLogout) { Text("Log out") }
     }
+}
+
+/** First-run passphrase creation: distinct heading, guidance, and a confirmation field. */
+@Composable
+private fun PassphraseSetup(onSubmit: (String) -> Unit) {
+    var passphrase by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    val mismatch = confirm.isNotEmpty() && passphrase != confirm
+    val valid = passphrase.isNotBlank() && passphrase == confirm
+
+    Text("Create your app passphrase", style = MaterialTheme.typography.headlineSmall)
+    Text(
+        "Set a passphrase to keep your data safe on this device. You'll enter it each time " +
+            "you open HomeFlow.",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Text(
+        "Keep it somewhere safe — it can't be reset, so choose something you'll remember.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    OutlinedTextField(
+        value = passphrase,
+        onValueChange = { passphrase = it },
+        label = { Text("New passphrase") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
+    )
+    OutlinedTextField(
+        value = confirm,
+        onValueChange = { confirm = it },
+        label = { Text("Confirm passphrase") },
+        singleLine = true,
+        isError = mismatch,
+        supportingText = if (mismatch) ({ Text("Passphrases don't match") }) else null,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
+    )
+    Button(onClick = { onSubmit(passphrase) }, enabled = valid) { Text("Create passphrase") }
+}
+
+/** Returning-user unlock: a single passphrase field. */
+@Composable
+private fun PassphraseUnlock(onSubmit: (String) -> Unit) {
+    var passphrase by remember { mutableStateOf("") }
+
+    Text("Unlock HomeFlow", style = MaterialTheme.typography.headlineSmall)
+    Text("Enter your app passphrase to continue.", style = MaterialTheme.typography.bodyMedium)
+    OutlinedTextField(
+        value = passphrase,
+        onValueChange = { passphrase = it },
+        label = { Text("Passphrase") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
+    )
+    Button(onClick = { onSubmit(passphrase) }, enabled = passphrase.isNotBlank()) { Text("Unlock") }
 }
 
 @Composable
