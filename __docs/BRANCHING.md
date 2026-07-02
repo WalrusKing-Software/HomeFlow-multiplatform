@@ -6,12 +6,10 @@ monorepo's two-train model. **This repo is one product with three deliverables**
 contract (`:core`) — so it starts as a **single release train**, not the web
 repo's split web/mobile trains.
 
-> **Open decision (single vs. split trains).** Because the clients and server share
-> `:core`, releasing them together keeps the contract coherent and is simplest
-> early on — this is the recommended default below. If desktop and android later
-> need to ship on independent cadences, split into per-component trains exactly like
-> the web repo did (`release/<component>-x.y.z`, `<component>-vX.Y.Z` tags). Revisit
-> at the first real release.
+> **Per-component vs. full-suite releases.** From v0.2.0 onward, the server and
+> clients can be released independently using component-scoped tags (`server-v*`,
+> `desktop-v*`, `android-v*`). A `v*` tag still builds and publishes all three
+> together (lockstep). See the Tags & versioning section below and `COMPATIBILITY.md`.
 
 ---
 
@@ -71,31 +69,37 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ## Tags & versioning
 
-| Tag format | Examples |
-|---|---|
-| `vX.Y.Z[-pre.N]` | `v0.1.0-alpha.1`, `v0.1.0-rc.1`, `v0.1.0` |
+| Tag format | Targets | Example |
+|---|---|---|
+| `vX.Y.Z[-pre.N]` | All three — full lockstep release | `v0.3.0`, `v0.3.0-rc.1` |
+| `server-vX.Y.Z[-pre.N]` | Server only | `server-v0.2.1` |
+| `desktop-vX.Y.Z[-pre.N]` | Desktop only | `desktop-v0.2.1` |
+| `android-vX.Y.Z[-pre.N]` | Android only | `android-v0.2.1` |
 
 Pre-release ordering (SemVer): `-alpha.N` < `-beta.N` < `-rc.N` < final — tags only.
 
-**Version source of truth:** a single `version` in the root Gradle build (or
-`gradle.properties`), consumed by all modules. For Android, `versionName` = the
-tag's `X.Y.Z` and **`versionCode`** (monotonic integer) bumps on every distributed
-build. Desktop installer version = the same `X.Y.Z`.
+**Version source of truth:** three per-component keys in `gradle.properties`
+(`version.server`, `version.desktop`, `version.android`). Each deliverable module
+reads its own key. `:core` and `:app:shared` are never released independently and
+carry no version. For Android, `versionName` = the tag's `X.Y.Z` and **`versionCode`**
+is a monotonic integer derived from it. Desktop installer version = same `X.Y.Z`.
 
-**Changelog:** one `CHANGELOG.md` at the repo root (Keep-a-Changelog; see
-`CLAUDE.md`). If trains split later, split the changelog per component then.
+**Compatibility:** see `COMPATIBILITY.md` for the client–server compatibility matrix.
+Update it whenever a release raises the minimum supported client version.
+
+**Changelog:** one `CHANGELOG.md` at the repo root (Keep-a-Changelog; see `CLAUDE.md`).
+Component-only releases use prefixed headers (`## [Server X.Y.Z]`, `## [Desktop X.Y.Z]`,
+`## [Android X.Y.Z]`); full-suite releases use `## [X.Y.Z]`.
 
 ---
 
-## Release artifacts (wire when nearing first release)
+## Release artifacts
 
-Tag-triggered workflows:
-- `v*` → `./gradlew :server:installDist` + build/push the backend image; deploy per
-  `DEPLOYMENT.md`.
-- `v*` → `./gradlew :app:androidApp:bundleRelease` (signed AAB) and
-  `:app:desktopApp:packageDistributionForCurrentOS` (desktop installers), attached to a
-  GitHub Release. Desktop installers are per-OS, so build the macOS/Windows/Linux
-  artifacts on their respective runners.
+The release pipeline is implemented. See `__docs/RELEASE-PIPELINE.md` for the full
+specification and the implementation checklist. In short: push a `vX.Y.Z` tag (or
+trigger `workflow_dispatch`) to build the server distribution + multi-arch Docker
+image, desktop installers for all three platforms, and a signed Android APK/AAB —
+all attached to a single GitHub Release.
 
 ---
 

@@ -17,11 +17,12 @@ plugins {
     alias(libs.plugins.detekt) apply false
 }
 
-// Single version + group for every module, sourced from gradle.properties
-// (`version=`). Configuration-cache friendly. See __docs/BRANCHING.md.
+// Group is shared across all modules. Versions are per-component — each deliverable
+// module (server, desktopApp, androidApp) reads its own version.* key from
+// gradle.properties. :core and :app:shared have no standalone release and are
+// intentionally left at Gradle's default ("unspecified"). See __docs/BRANCHING.md.
 allprojects {
     group = "org.homeflow"
-    version = providers.gradleProperty("version").getOrElse("0.0.0")
 }
 
 // Apply ktlint + detekt to every module so `./gradlew ktlintCheck` and

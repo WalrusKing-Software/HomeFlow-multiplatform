@@ -485,6 +485,8 @@ class SymptomsRefDataTest {
                     ),
                 rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
                 encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES) { 7 }),
+                serverVersion = "test",
+                minClientVersion = "0.0.0",
             )
 
         private fun localJwkProvider(): JwkProvider =

@@ -237,6 +237,8 @@ class AuthUsersTest {
                     ),
                 rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
                 encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES)),
+                serverVersion = "test",
+                minClientVersion = "0.0.0",
             )
 
         private fun localJwkProvider(): JwkProvider =

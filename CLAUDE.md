@@ -87,6 +87,11 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/DEPLOYMENT.md` | Pi deployment runbook; Tailscale + canonical hostname (§11) | Deploying to the homelab |
 | `__docs/BACKUP.md` | Encrypted backup/restore (`pg_dump \| gpg`) | Any backup / disaster-recovery work |
 | `__docs/BRANCHING.md` | Branching model, release trains, CI gates | Any work on branches, PRs, CI |
+| `__docs/RELEASE-PIPELINE.md` | Release packaging & GitHub Actions pipeline | Any release, packaging, or CI artifact work |
+| `__docs/SETUP-SERVER.md` | End-user server setup guide (Pi, Docker, Keycloak, Tailscale/LAN TLS) | Any change to server deployment or first-run experience |
+| `__docs/SETUP-DESKTOP.md` | End-user desktop install and server-connection guide | Any change to the desktop install or onboarding flow |
+| `__docs/SETUP-ANDROID.md` | End-user Android sideload and server-connection guide | Any change to the Android install or onboarding flow |
+| `COMPATIBILITY.md` | Client–server version compatibility matrix; tag formats for per-component releases | Any release that changes the API contract or min client requirement |
 | `__docs/project-planning/features.md` | Feature requirements and UX notes | Any client UI work |
 | `__docs/project-planning/project-overview.md` | Product overview | Orienting on the product |
 | `CHANGELOG.md` | User-/developer-visible changes by version | After any behavior change |

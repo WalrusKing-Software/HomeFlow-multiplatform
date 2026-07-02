@@ -1,0 +1,202 @@
+name: Release Server
+
+# Builds and publishes the HomeFlow server only — distribution archives and a
+# multi-arch GHCR image. Triggered by `server-vX.Y.Z` tags or workflow_dispatch.
+#
+# Use this when the server changes but the desktop and Android clients do not need
+# a new release. See COMPATIBILITY.md for the client–server compatibility matrix
+# and __docs/RELEASE-PIPELINE.md for the full pipeline design.
+
+on:
+  push:
+    tags: ['server-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version X.Y.Z[-pre.N] (defaults to gradle.properties version.server)'
+        required: false
+      prerelease:
+        description: 'Mark the GitHub Release as a pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # create the Release and upload assets
+  packages: write   # push the server image to GHCR
+
+concurrency:
+  group: release-server-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a release mid-flight
+
+jobs:
+  # ── Resolve version + derived values ────────────────────────────────────────
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      version_core: ${{ steps.v.outputs.version_core }}
+      is_prerelease: ${{ steps.v.outputs.is_prerelease }}
+      image: ${{ steps.v.outputs.image }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: v
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          # 1. Raw version string (strip `server-v` prefix from tag).
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            raw="${GITHUB_REF_NAME#server-v}"
+          elif [[ -n "${INPUT_VERSION}" ]]; then
+            raw="${INPUT_VERSION#v}"
+          else
+            raw="$(grep -E '^version\.server=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          fi
+          echo "Resolved raw version: $raw"
+
+          # 2. Validate semver core (+ optional pre-release suffix).
+          if [[ ! "$raw" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$raw' is not a valid X.Y.Z[-pre.N] version"; exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          pre="${BASH_REMATCH[4]}"
+          core="${major}.${minor}.${patch}"
+
+          # 3. On a tag build, validate tag core matches gradle.properties version.server.
+          gp="$(grep -E '^version\.server=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$core" != "$gp" ]]; then
+            echo "::error::tag core '$core' != gradle.properties version.server '$gp'"
+            echo "::error::Bump version.server or fix the tag."
+            exit 1
+          fi
+
+          # 4. Pre-release?
+          if [[ -n "$pre" || "${INPUT_PRERELEASE}" == "true" ]]; then ispre=true; else ispre=false; fi
+
+          # 5. GHCR image name must be lowercase.
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
+
+          {
+            echo "version=$raw"
+            echo "version_core=$core"
+            echo "is_prerelease=$ispre"
+            echo "image=$image"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "version=$raw core=$core prerelease=$ispre image=$image"
+
+  # ── Server: distribution archives + multi-arch GHCR image ───────────────────
+  server:
+    name: Server (dist + image)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Build server distribution
+        run: ./gradlew :server:installDist --no-daemon --no-configuration-cache
+
+      - name: Package distribution archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          mkdir -p dist-out
+          ( cd server/build/install && zip -qr "$GITHUB_WORKSPACE/dist-out/homeflow-server-${v}.zip" server )
+          tar -czf "dist-out/homeflow-server-${v}.tar.gz" -C server/build/install server
+          ls -l dist-out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: server-dist
+          path: dist-out/*
+          if-no-files-found: error
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Compute image tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          img="${{ needs.prepare.outputs.image }}"
+          v="${{ needs.prepare.outputs.version }}"
+          tags="${img}:${v}"
+          if [[ "${{ needs.prepare.outputs.is_prerelease }}" == "false" ]]; then
+            tags="${tags}"$'\n'"${img}:latest"
+          fi
+          { echo "tags<<EOF"; echo "$tags"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+      - name: Build & push server image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: server/build/install/server
+          file: server/Dockerfile.dist
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: SERVER_VERSION=${{ needs.prepare.outputs.version }}
+          provenance: false
+
+  # ── Publish GitHub Release (server assets only) ──────────────────────────────
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: assets
+          pattern: 'server-dist'
+          merge-multiple: true
+      - name: Extract release notes from CHANGELOG
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version_core }}"
+          awk -v ver="$v" '
+            $0 ~ ("^## \\[Server " ver "\\]") {flag=1; next}
+            flag && /^## \[/ {flag=0}
+            flag {print}
+          ' CHANGELOG.md > release-notes.md || true
+          if [[ ! -s release-notes.md ]]; then
+            echo "Server release ${{ needs.prepare.outputs.version }}." > release-notes.md
+          fi
+          echo "----- release notes -----"; cat release-notes.md
+      - name: Attach setup documentation
+        shell: bash
+        run: cp __docs/SETUP-SERVER.md assets/SETUP-SERVER.md
+      - name: List collected assets
+        shell: bash
+        run: ls -lR assets
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('server-v{0}', needs.prepare.outputs.version) }}
+          name: HomeFlow Server ${{ needs.prepare.outputs.version }}
+          body_path: release-notes.md
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          make_latest: false
+          files: assets/**
+          fail_on_unmatched_files: true

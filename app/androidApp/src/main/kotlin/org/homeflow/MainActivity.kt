@@ -70,7 +70,10 @@ class MainActivity : FragmentActivity() {
         val serverHostOverride = if (debuggable) "localhost:8443" else null
 
         setContent {
-            AppRoot(serverHostOverride = serverHostOverride)
+            AppRoot(
+                serverHostOverride = serverHostOverride,
+                clientVersion = BuildConfig.VERSION_NAME,
+            )
         }
     }
 
