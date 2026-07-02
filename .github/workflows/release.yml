@@ -34,6 +34,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       version_core: ${{ steps.v.outputs.version_core }}
       desktop_version: ${{ steps.v.outputs.desktop_version }}
+      desktop_version_mac: ${{ steps.v.outputs.desktop_version_mac }}
       android_version_code: ${{ steps.v.outputs.android_version_code }}
       is_prerelease: ${{ steps.v.outputs.is_prerelease }}
       image: ${{ steps.v.outputs.image }}
@@ -80,8 +81,13 @@ jobs:
             fi
           fi
 
-          # 4. Desktop installer version: jpackage/macOS need major >= 1.
-          if (( major < 1 )); then desktop="1.0.0"; else desktop="$core"; fi
+          # 4. Desktop installer version, per platform. Windows MSI / Linux DEB accept 0.x, so
+          #    they use the REAL version — pre-1.0 releases then upgrade in place
+          #    (0.1.0 < 0.1.1 < 0.2.0 < ... < 1.0.0). macOS dmg/pkg require major >= 1, so a
+          #    pre-1.0 build is forced to 1.0.0 there (identify pre-1.0 macOS builds by the
+          #    artifact filename); from 1.0.0 on, all platforms track the real version.
+          desktop="$core"
+          if (( major < 1 )); then desktop_mac="1.0.0"; else desktop_mac="$core"; fi
 
           # 5. Android versionCode: monotonic integer from the core.
           code=$(( major * 1000000 + minor * 1000 + patch ))
@@ -96,12 +102,13 @@ jobs:
             echo "version=$raw"
             echo "version_core=$core"
             echo "desktop_version=$desktop"
+            echo "desktop_version_mac=$desktop_mac"
             echo "android_version_code=$code"
             echo "is_prerelease=$ispre"
             echo "image=$image"
           } >> "$GITHUB_OUTPUT"
 
-          echo "version=$raw core=$core desktop=$desktop code=$code prerelease=$ispre image=$image"
+          echo "version=$raw core=$core desktop=$desktop desktop_mac=$desktop_mac code=$code prerelease=$ispre image=$image"
 
   # ── Server: distribution archives + multi-arch GHCR image ───────────────────
   server:
@@ -206,11 +213,25 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Resolve installer version for this OS
+        id: iv
+        shell: bash
+        run: |
+          set -euo pipefail
+          # macOS (dmg) needs major >= 1; Windows (msi) / Linux (deb) use the real version.
+          if [[ "${{ matrix.fmt }}" == "dmg" ]]; then
+            iv="${{ needs.prepare.outputs.desktop_version_mac }}"
+          else
+            iv="${{ needs.prepare.outputs.desktop_version }}"
+          fi
+          echo "installer_version=$iv" >> "$GITHUB_OUTPUT"
+          echo "installer_version=$iv (fmt=${{ matrix.fmt }})"
+
       - name: Package desktop distribution
         shell: bash
         run: >
           ./gradlew :app:desktopApp:packageDistributionForCurrentOS
-          -PdesktopPackageVersion=${{ needs.prepare.outputs.desktop_version }}
+          -PdesktopPackageVersion=${{ steps.iv.outputs.installer_version }}
           --no-daemon --no-configuration-cache
 
       - name: Collect installer

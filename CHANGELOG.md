@@ -284,6 +284,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **Pre-1.0 desktop installers now upgrade in place on Windows and Linux.** Releases
+  previously packaged every `0.x` build as installer version `1.0.0`, so reinstalling
+  a newer `.msi`/`.deb` over an older one was a silent no-op (Windows only upgrades
+  when the version increases) — you'd keep running the old app. The Windows/Linux
+  installers now carry the real `0.x` version, so upgrades apply correctly; macOS
+  `.dmg` still shows `1.0.0` for pre-1.0 (a jpackage constraint — tell builds apart
+  by the filename).
 - **Local mode never silently regenerates its database encryption key.** Unlocking a
   local install now *loads* the existing key and, if it can't be read from secure
   storage, fails closed with a clear error — instead of quietly minting a new key.

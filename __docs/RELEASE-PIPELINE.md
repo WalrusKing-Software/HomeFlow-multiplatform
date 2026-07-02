@@ -114,19 +114,35 @@ pipeline adds `server/Dockerfile.dist` alongside it; it does not modify it.
 ### 3.2 Desktop versioning: jpackage requires major ≥ 1
 
 `app/desktopApp/build.gradle.kts` hardcodes `packageVersion = "1.0.0"` with a
-comment: jpackage rejects a `0.x` major for macOS `dmg`/`pkg`. The release
-pipeline must feed the real version in **without** breaking `0.x` builds:
+comment: jpackage rejects a `0.x` major for macOS `dmg`/`pkg`. Only macOS has that
+constraint — Windows `msi` and Linux `deb` accept `0.x` fine. The pipeline uses
+this to make in-place upgrades work on Windows/Linux even before 1.0:
 
-- Make the build read an optional `-PdesktopPackageVersion` (default `"1.0.0"`).
-- The workflow computes `desktop_version`: the resolved `X.Y.Z` **if MAJOR ≥ 1**,
-  otherwise `"1.0.0"`.
+- The build reads an optional `-PdesktopPackageVersion` (default `"1.0.0"`).
+- `prepare` computes **two** installer versions and the desktop matrix job selects
+  per format:
+  - `desktop_version` (Windows `msi`, Linux `deb`) = the resolved `X.Y.Z`
+    verbatim, including `0.x`.
+  - `desktop_version_mac` (macOS `dmg`) = `X.Y.Z` **if MAJOR ≥ 1**, otherwise
+    `"1.0.0"`.
 
-**Known limitation (document it, don't fight it):** for pre-1.0 tags every desktop
-installer reports version `1.0.0` internally (jpackage constraint). Distinguish
-pre-1.0 builds by the **artifact filename**, which always carries the real tag
-(`HomeFlow-0.1.20.msi`). Once you ship `1.0.0`, installer versions track the
-release exactly and MSI in-place upgrades (the stable `upgradeUuid` already in the
-build) work normally. This is standard for pre-1.0 software.
+**Why per-OS matters — MSI upgrades require a *higher* version.** Windows Installer
+only replaces an existing install when the new `ProductVersion` is greater; equal
+versions are a silent no-op (old files kept). If every pre-1.0 build reported
+`1.0.0`, reinstalling would never update the app — a real trap that cost real
+debugging time. Using the true `0.x` version on Windows/Linux makes
+`0.1.0 < 0.1.1 < 0.2.0 < … < 1.0.0` upgrade cleanly, and it stays below the eventual
+`1.0.0` with no transition cliff. (`upgradeUuid` is already stable in the build.)
+
+**Remaining macOS limitation:** pre-1.0 macOS `dmg` installers still report `1.0.0`
+internally (the jpackage/macOS constraint is unavoidable). Distinguish pre-1.0
+macOS builds by the **artifact filename**, which always carries the real version
+(`HomeFlow-0.1.20.dmg`). From `1.0.0` on, all platforms track the real version.
+
+> The `release-test.yml` workflow is different on purpose: test builds reuse the
+> same source version every run, so it sets the installer version to
+> `1.0.<run_number>` (monotonic per CI run) so each test MSI supersedes the last.
+> The real version is still in the artifact filename.
 
 ### 3.3 Desktop uses `packageDistributionForCurrentOS` (not the `...Release...` variant)
 
