@@ -50,7 +50,11 @@ class LocalSessionController
             dbFactory: LocalDatabaseFactory,
         ) : this(gate, keyStore, modeStore, { dek -> dbFactory.create(dek) })
 
-        private val _state = MutableStateFlow<AuthState>(AuthState.LoggedOut)
+        // Mode A starts in the Locked state (never a LoggedOut flash — there is no remote login
+        // screen to show). needsEnrollment is resolved eagerly so the very first frame is the
+        // correct lock/enroll screen.
+        private val _state =
+            MutableStateFlow<AuthState>(AuthState.Locked(needsEnrollment = gate.needsEnrollment()))
         override val state: StateFlow<AuthState> = _state.asStateFlow()
         override val usesPassphraseGate: Boolean = gate.usesPassphrase
 
@@ -59,6 +63,9 @@ class LocalSessionController
         private var localDataSource: LocalDataSource? = null
 
         override fun start() {
+            // Preserve an already-authenticated session (defensive against a re-entrant start);
+            // only (re)assert the lock when not signed in.
+            if (_state.value is AuthState.Authenticated) return
             _state.value = AuthState.Locked(needsEnrollment = gate.needsEnrollment())
         }
 
@@ -68,27 +75,43 @@ class LocalSessionController
         override suspend fun enroll(secret: String) {
             runCatching {
                 gate.enroll(secret)
-                unlock(secret)
+                // First-time setup is the ONLY place a DEK is generated. Create + persist it now,
+                // before opening the DB, so [openSession] below simply loads it.
+                keyStore.loadOrCreateDek()
+                openSession(secret)
             }.onFailure { _state.value = AuthState.Error(it.message ?: "Enrollment failed") }
         }
 
         override suspend fun unlock(secret: String?) {
+            runCatching { openSession(secret) }
+                .onFailure { _state.value = AuthState.Error(it.message ?: "Unlock failed") }
+        }
+
+        /**
+         * Verifies the passphrase, loads the existing DEK, opens the DB, and reaches
+         * [AuthState.Authenticated]. This NEVER generates a DEK: on an enrolled install the key was
+         * created at [enroll] and must already exist. If it cannot be read we fail closed with an
+         * error rather than minting a new one — a fresh key could not decrypt the existing database
+         * and saving it would overwrite the real key in secure storage, permanently locking the
+         * user out of their data. See loadOrCreateDek (used only at enrollment).
+         */
+        private suspend fun openSession(secret: String?) {
             _state.value = AuthState.Authenticating
-            runCatching {
-                if (!gate.authenticate(secret)) {
-                    _state.value = AuthState.Locked(needsEnrollment = false)
-                    return
-                }
-                val dek = keyStore.loadOrCreateDek()
-                val db = openDb(dek)
-                LocalBootstrap.seed(db)
-                localDb = db
-                val ds = LocalDataSource(db)
-                localDataSource = ds
-                val user = (ds.getMe() as ApiResult.Success).value
-                val repository = HomeFlowRepository(ds)
-                _state.value = AuthState.Authenticated(user, repository)
-            }.onFailure { _state.value = AuthState.Error(it.message ?: "Unlock failed") }
+            if (!gate.authenticate(secret)) {
+                _state.value = AuthState.Locked(needsEnrollment = false)
+                return
+            }
+            val dek =
+                keyStore.loadDek()
+                    ?: error("Secure storage is unavailable: the local encryption key could not be read.")
+            val db = openDb(dek)
+            LocalBootstrap.seed(db)
+            localDb = db
+            val ds = LocalDataSource(db)
+            localDataSource = ds
+            val user = (ds.getMe() as ApiResult.Success).value
+            val repository = HomeFlowRepository(ds)
+            _state.value = AuthState.Authenticated(user, repository)
         }
 
         /** Re-locks without clearing the DEK (data remains; user can unlock again). */

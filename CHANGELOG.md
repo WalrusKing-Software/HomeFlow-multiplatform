@@ -284,6 +284,13 @@ Ktor server). Pre-implementation: documentation and specification only.
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **Local mode never silently regenerates its database encryption key.** Unlocking a
+  local install now *loads* the existing key and, if it can't be read from secure
+  storage, fails closed with a clear error — instead of quietly minting a new key.
+  Previously a transient secure-storage read failure could generate a fresh key that
+  couldn't decrypt your existing database and would overwrite the real key, locking
+  you out of your data permanently. The key is now generated only once, at initial
+  passphrase setup.
 - **Cancelling "Connect to a server" from Settings now returns you to Settings,
   unlocked — instead of the welcome screen or a passphrase re-prompt.** In an
   existing local-only install, choosing "Connect to a server" in Settings and then
