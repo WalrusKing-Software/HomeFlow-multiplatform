@@ -24,6 +24,7 @@ import org.homeflow.core.dto.ImportResultDto
  * - [onConnectServer]: non-null in Mode A — shows "Connect to a server".
  * - [onUploadToServer]: non-null in Mode B while the local data has not been migrated yet.
  * - [connectedHost]: non-null in Mode B — displayed in the Server section of Settings.
+ * - [onSwitchToLocal]: non-null in Mode B — "Switch to local-only mode" in Settings.
  * - [syncEngine] + [syncRepository]: non-null in Mode C — local-first repository with background sync.
  */
 @Composable
@@ -33,6 +34,7 @@ fun App(
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
+    onSwitchToLocal: (() -> Unit)? = null,
     syncEngine: SyncEngine? = null,
     syncRepository: HomeFlowRepository? = null,
 ) {
@@ -81,6 +83,7 @@ fun App(
                         onConnectServer = onConnectServer,
                         onUploadToServer = onUploadToServer,
                         connectedHost = connectedHost,
+                        onSwitchToLocal = onSwitchToLocal,
                         syncStatusFlow = syncEngine.status,
                     )
                 } else {
@@ -92,6 +95,7 @@ fun App(
                         onConnectServer = onConnectServer,
                         onUploadToServer = onUploadToServer,
                         connectedHost = connectedHost,
+                        onSwitchToLocal = onSwitchToLocal,
                     )
                 }
             }

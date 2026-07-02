@@ -89,6 +89,35 @@ fun validatePainLocations(locations: List<PainLocationDto>): ValidationResult {
 }
 
 /**
+ * Returns true if [version] is greater than or equal to [minimum].
+ * Both are `X.Y.Z` or `X.Y.Z-suffix` semver strings. Non-parseable inputs and
+ * a blank/unknown minimum always return true (do not block on bad data).
+ * Pre-release suffixes are ignored for the numeric comparison.
+ */
+fun semverAtLeast(
+    version: String,
+    minimum: String,
+): Boolean {
+    if (minimum.isBlank() || minimum == "unknown") return true
+
+    fun parse(v: String): Triple<Int, Int, Int>? {
+        val parts = v.substringBefore("-").split(".")
+        if (parts.size < 3) return null
+        return Triple(
+            parts[0].toIntOrNull() ?: return null,
+            parts[1].toIntOrNull() ?: return null,
+            parts[2].toIntOrNull() ?: return null,
+        )
+    }
+    val c = parse(version) ?: return true
+    val m = parse(minimum) ?: return true
+    // Triple doesn't implement Comparable — compare components explicitly.
+    return c.first > m.first ||
+        (c.first == m.first && c.second > m.second) ||
+        (c.first == m.first && c.second == m.second && c.third >= m.third)
+}
+
+/**
  * The dashboard category order must contain every known category slug exactly once —
  * no duplicates, no unknown slugs, no omissions.
  */

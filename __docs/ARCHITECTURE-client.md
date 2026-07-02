@@ -235,11 +235,29 @@ reads and writes go to the server.
 ```
 AppMode.SERVER
   ├─ serverConfigStore.loadHost() == null  → ServerConnectScreen (collect host)
+  │      ├─ onConnected(host) → serverConfigStore.saveHost(host)
+  │      └─ onBack → serverConfigStore.clear() + modeStore.clear() → back to ModeChooserScreen
   └─ host stored
        ├─ build AuthController (concrete, typed RemoteDataSource)
        ├─ On first Authenticated: if hasUnmigratedLocalData() → MigrationPromptDialog
-       └─ App(controller, connectedHost, onUploadToServer?)
+       └─ App(controller, connectedHost, onUploadToServer?, onSwitchToLocal)
 ```
+
+**Escape hatch (onboarding hardening).** The SERVER-branch gate always passes `onBack`
+to `ServerConnectScreen`, so a user who selected "Connect to a server" but has no server is
+not trapped — Back clears the persisted mode + host and returns to the first-run chooser.
+
+### Reachability probe — `ServerProbe`
+
+`ServerConnectScreen` runs an **advisory** reachability check before committing to a host.
+`probeServer(host, clientVersion)` (in `data/ServerProbe.kt`) builds a short-lived,
+**unauthenticated** Ktor client (via `platformHttpEngine()`, honoring the desktop dev-CA TLS
+trust) and calls the unauthenticated `GET /api/v1/version` endpoint. It maps to
+`ProbeResult.Reachable` / `Incompatible` (client older than `minClientVersion`, reusing
+`org.homeflow.core.validation.semverAtLeast`) / `Unreachable`. The mapping mirrors
+`AuthController.loadUser`'s leniency (a `404` = server predates `/version` = reachable).
+Reachability is advisory: an `Unreachable` host still offers "Connect anyway", because
+LAN/Tailscale hosts can block the probe while still serving OIDC/API traffic.
 
 `AppRoot` creates the concrete `AuthController` in the SERVER branch (not just a
 `SessionController` reference) so it can pass `authController::uploadLocalData` to
@@ -278,7 +296,12 @@ the JSON as a file part named `"file"`. **The JSON is health data — never log 
 | Mode | Content |
 |---|---|
 | Mode A | "Connect to a server" button → flips `AppMode=SERVER` (local DB stays) |
-| Mode B | Shows connected host; if not yet migrated: "Upload local data to server" |
+| Mode B | Shows connected host; if not yet migrated: "Upload local data to server"; "Switch to local-only mode" (reversible — flips `AppMode=LOCAL_ONLY`, keeps DB + server config) |
+
+`onSwitchToLocal` is threaded `AppRoot → App → AppShell → PreferencesScreen` exactly like
+`onConnectServer`. Switching B→A is reversible and non-destructive: the local SQLCipher DB
+(which already holds the synced data in Mode C) and the stored server host are both retained,
+so the user can reconnect from Settings later.
 
 ---
 

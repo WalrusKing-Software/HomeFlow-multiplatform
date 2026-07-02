@@ -1,0 +1,373 @@
+name: Release
+
+# Builds and publishes all three HomeFlow deliverables (server, desktop, Android)
+# for a single version and attaches them to a GitHub Release. Runs ONLY for
+# releases: a pushed `v*` tag, or a manual dispatch. See __docs/RELEASE-PIPELINE.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version X.Y.Z[-pre.N] (defaults to gradle.properties)'
+        required: false
+      prerelease:
+        description: 'Mark the GitHub Release as a pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # create the Release and upload assets
+  packages: write   # push the server image to GHCR
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a release mid-flight
+
+jobs:
+  # ── Resolve version + derived values once, share via outputs ────────────────
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      version_core: ${{ steps.v.outputs.version_core }}
+      desktop_version: ${{ steps.v.outputs.desktop_version }}
+      desktop_version_mac: ${{ steps.v.outputs.desktop_version_mac }}
+      android_version_code: ${{ steps.v.outputs.android_version_code }}
+      is_prerelease: ${{ steps.v.outputs.is_prerelease }}
+      image: ${{ steps.v.outputs.image }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: v
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          # 1. Raw version string.
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            raw="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${INPUT_VERSION}" ]]; then
+            raw="${INPUT_VERSION#v}"
+          else
+            raw="$(grep -E '^version\.server=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          fi
+          echo "Resolved raw version: $raw"
+
+          # 2. Validate semver core (+ optional pre-release suffix).
+          if [[ ! "$raw" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$raw' is not a valid X.Y.Z[-pre.N] version"; exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          pre="${BASH_REMATCH[4]}"
+          core="${major}.${minor}.${patch}"
+
+          # 3. On a tag build, ALL THREE component versions must equal the tag core.
+          # A full lockstep v* release requires them to be synchronized.
+          gp_s="$(grep -E '^version\.server='  gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          gp_d="$(grep -E '^version\.desktop=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          gp_a="$(grep -E '^version\.android=' gradle.properties | head -n1 | cut -d= -f2 | tr -d ' \t\r')"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "$core" != "$gp_s" || "$core" != "$gp_d" || "$core" != "$gp_a" ]]; then
+              echo "::error::Full release tag '$core' requires all three gradle.properties version.* keys to match."
+              echo "::error::  version.server=$gp_s  version.desktop=$gp_d  version.android=$gp_a"
+              exit 1
+            fi
+          fi
+
+          # 4. Desktop installer version, per platform. Windows MSI / Linux DEB accept 0.x, so
+          #    they use the REAL version — pre-1.0 releases then upgrade in place
+          #    (0.1.0 < 0.1.1 < 0.2.0 < ... < 1.0.0). macOS dmg/pkg require major >= 1, so a
+          #    pre-1.0 build is forced to 1.0.0 there (identify pre-1.0 macOS builds by the
+          #    artifact filename); from 1.0.0 on, all platforms track the real version.
+          desktop="$core"
+          if (( major < 1 )); then desktop_mac="1.0.0"; else desktop_mac="$core"; fi
+
+          # 5. Android versionCode: monotonic integer from the core.
+          code=$(( major * 1000000 + minor * 1000 + patch ))
+
+          # 6. Pre-release?
+          if [[ -n "$pre" || "${INPUT_PRERELEASE}" == "true" ]]; then ispre=true; else ispre=false; fi
+
+          # 7. GHCR image name must be lowercase.
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
+
+          {
+            echo "version=$raw"
+            echo "version_core=$core"
+            echo "desktop_version=$desktop"
+            echo "desktop_version_mac=$desktop_mac"
+            echo "android_version_code=$code"
+            echo "is_prerelease=$ispre"
+            echo "image=$image"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "version=$raw core=$core desktop=$desktop desktop_mac=$desktop_mac code=$code prerelease=$ispre image=$image"
+
+  # ── Server: distribution archives + multi-arch GHCR image ───────────────────
+  server:
+    name: Server (dist + image)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Android SDK
+        # :server depends on :core (a KMP module with an Android target); Gradle must
+        # configure the Android plugin even to build the JVM server. Same reason the
+        # original server/Dockerfile installs the SDK.
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Build server distribution
+        run: ./gradlew :server:installDist --no-daemon --no-configuration-cache
+
+      - name: Package distribution archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          mkdir -p dist-out
+          # The dist dir is server/build/install/server.
+          ( cd server/build/install && zip -qr "$GITHUB_WORKSPACE/dist-out/homeflow-server-${v}.zip" server )
+          tar -czf "dist-out/homeflow-server-${v}.tar.gz" -C server/build/install server
+          ls -l dist-out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: server-dist
+          path: dist-out/*
+          if-no-files-found: error
+
+      # Multi-arch image built FROM the prebuilt dist (see RELEASE-PIPELINE.md §3.1).
+      # Context is the dist directory so the repo .dockerignore (**/build/) does not hide it.
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Compute image tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          img="${{ needs.prepare.outputs.image }}"
+          v="${{ needs.prepare.outputs.version }}"
+          tags="${img}:${v}"
+          if [[ "${{ needs.prepare.outputs.is_prerelease }}" == "false" ]]; then
+            tags="${tags}"$'\n'"${img}:latest"
+          fi
+          { echo "tags<<EOF"; echo "$tags"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+      - name: Build & push server image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: server/build/install/server
+          file: server/Dockerfile.dist
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: SERVER_VERSION=${{ needs.prepare.outputs.version }}
+          provenance: false
+
+  # ── Desktop installers, one per OS ──────────────────────────────────────────
+  desktop:
+    name: Desktop (${{ matrix.fmt }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            fmt: msi
+          - os: macos-latest
+            fmt: dmg
+          - os: ubuntu-latest
+            fmt: deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Android SDK
+        # :app:desktopApp -> :app:shared (KMP with an Android target) -> :core.
+        # Gradle configures all targets, so the Android SDK must be present even to
+        # package the desktop (jvm) app.
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Resolve installer version for this OS
+        id: iv
+        shell: bash
+        run: |
+          set -euo pipefail
+          # macOS (dmg) needs major >= 1; Windows (msi) / Linux (deb) use the real version.
+          if [[ "${{ matrix.fmt }}" == "dmg" ]]; then
+            iv="${{ needs.prepare.outputs.desktop_version_mac }}"
+          else
+            iv="${{ needs.prepare.outputs.desktop_version }}"
+          fi
+          echo "installer_version=$iv" >> "$GITHUB_OUTPUT"
+          echo "installer_version=$iv (fmt=${{ matrix.fmt }})"
+
+      - name: Package desktop distribution
+        shell: bash
+        run: >
+          ./gradlew :app:desktopApp:packageDistributionForCurrentOS
+          -PdesktopPackageVersion=${{ steps.iv.outputs.installer_version }}
+          --no-daemon --no-configuration-cache
+
+      - name: Collect installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          fmt="${{ matrix.fmt }}"
+          src="$(ls app/desktopApp/build/compose/binaries/main/${fmt}/*.${fmt} | head -n1)"
+          mkdir -p out
+          case "$fmt" in
+            dmg) dst="out/HomeFlow-${v}.dmg" ;;
+            msi) dst="out/HomeFlow-${v}.msi" ;;
+            deb) dst="out/homeflow_${v}_amd64.deb" ;;
+          esac
+          cp "$src" "$dst"
+          echo "Collected $dst (from $src)"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-${{ matrix.fmt }}
+          path: out/*
+          if-no-files-found: error
+
+  # ── Android signed APK + AAB ────────────────────────────────────────────────
+  android:
+    name: Android (apk + aab)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Write signing keystore (if secrets present)
+        id: signing
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KS_B64}" ]]; then
+            echo "No keystore secret set — building an UNSIGNED release APK."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "${KS_B64}" | base64 -d > homeflow-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=homeflow-release.jks
+          storePassword=${KS_PW}
+          keyAlias=${KS_ALIAS}
+          keyPassword=${KS_KEY_PW}
+          EOF
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble release APK + AAB
+        shell: bash
+        run: >
+          ./gradlew :app:androidApp:assembleRelease :app:androidApp:bundleRelease
+          -PversionCode=${{ needs.prepare.outputs.android_version_code }}
+          --no-daemon --no-configuration-cache
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          mkdir -p out
+          apk="$(ls app/androidApp/build/outputs/apk/release/*.apk | head -n1)"
+          aab="$(ls app/androidApp/build/outputs/bundle/release/*.aab | head -n1)"
+          cp "$apk" "out/homeflow-android-${v}.apk"
+          cp "$aab" "out/homeflow-android-${v}.aab"
+          echo "Collected APK=$apk AAB=$aab (signed=${{ steps.signing.outputs.enabled }})"
+
+      - name: Clean up signing material
+        if: always()
+        shell: bash
+        run: rm -f homeflow-release.jks keystore.properties
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android
+          path: out/*
+          if-no-files-found: error
+
+  # ── Gather everything and publish one GitHub Release ────────────────────────
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, server, desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4   # needed for CHANGELOG.md
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: assets
+          # Explicit pattern so the docker/build-push-action BuildKit cache artifact
+          # (named like `owner~repo~xxxxxx.dockerbuild`) is not downloaded here.
+          pattern: '{server-dist,android,desktop-*}'
+          merge-multiple: true
+      - name: Extract release notes from CHANGELOG
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version_core }}"
+          # Pull the body of the "## [X.Y.Z]" section (up to the next "## [" heading).
+          awk -v ver="$v" '
+            $0 ~ ("^## \\[" ver "\\]") {flag=1; next}
+            flag && /^## \[/ {flag=0}
+            flag {print}
+          ' CHANGELOG.md > release-notes.md || true
+          if [[ ! -s release-notes.md ]]; then
+            echo "Release ${{ needs.prepare.outputs.version }}." > release-notes.md
+          fi
+          echo "----- release notes -----"; cat release-notes.md
+      - name: Attach setup documentation
+        shell: bash
+        run: cp __docs/SETUP-SERVER.md __docs/SETUP-DESKTOP.md __docs/SETUP-ANDROID.md assets/
+      - name: List collected assets
+        shell: bash
+        run: ls -lR assets
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.prepare.outputs.version) }}
+          name: HomeFlow ${{ needs.prepare.outputs.version }}
+          body_path: release-notes.md
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.is_prerelease == 'false' }}
+          files: assets/**
+          fail_on_unmatched_files: true

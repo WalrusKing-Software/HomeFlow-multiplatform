@@ -6,12 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/). A changelog
 entry answers "what can I do now that I couldn't before?" — not "what files
 changed." See `CLAUDE.md` for the rules.
 
+<!-- Section header formats (used by the release pipeline awk extractor):
+     Combined release:  ## [X.Y.Z] - YYYY-MM-DD
+     Server only:       ## [Server X.Y.Z] - YYYY-MM-DD
+     Desktop only:      ## [Desktop X.Y.Z] - YYYY-MM-DD
+     Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
+-->
+
 ## [Unreleased] Version 0.1.0 — [Release-Date]
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
-Ktor server). Pre-implementation: documentation and specification only.
+Ktor server).
 
 ### Added
+- **Recover from and switch between setup modes (onboarding hardening).** The
+  first-run and server-connection flows no longer dead-end:
+  - The "Connect to your server" screen now has a **Back to setup** button, so a
+    user who chose "Connect to a server" without actually having one can return to
+    the mode chooser instead of being stuck (previously the only escape was
+    manually deleting a config file).
+  - Entering a server hostname now runs an **advisory reachability check** against
+    the unauthenticated `GET /api/v1/version` endpoint before proceeding, showing
+    "Checking…", a reachable confirmation, an "app too old for that server"
+    message, or a "couldn't reach that server" warning with a **Connect anyway**
+    override for LAN/Tailscale hosts that block the probe.
+  - Settings gains **Switch to local-only mode** for server-connected installs — a
+    reversible switch that keeps your on-device data and server connection so you
+    can reconnect later. (The reverse, "Connect to a server" from a local install,
+    already existed.)
+  - Clearer mode-chooser copy: "Connect to a server" now states it requires a
+    running server, with a note that the choice can be changed later in Settings.
 - Project documentation ported and adapted from the HomeFlow web repo for the
   Kotlin-everywhere architecture (server, client, shared-module, testing,
   phases, Docker, deployment, branching).
@@ -244,7 +268,60 @@ Ktor server). Pre-implementation: documentation and specification only.
   duplicated or overwritten, and unrecognized values are skipped and reported back
   in a `warnings` list rather than failing the whole import.
 
+- **Release pipeline.** Pushing a `vX.Y.Z` tag (or running manually via
+  `workflow_dispatch`) now builds and publishes all three deliverables to a GitHub
+  Release in one automated pipeline: the server distribution (`.zip` + `.tar.gz`) and
+  a multi-arch (`amd64` + `arm64`) Docker image pushed to GHCR, desktop installers
+  for all three platforms (Windows `.msi`, macOS `.dmg`, Linux `.deb`), and a signed
+  Android APK + AAB. Pre-release tags (`-alpha.N`, `-rc.N`) produce a GitHub
+  pre-release and do not move the Docker `:latest` tag.
+- **Setup guides attached to every release.** Each GitHub Release now includes
+  Markdown setup guides alongside the downloadable artifacts: `SETUP-SERVER.md`
+  (step-by-step server deployment on a Raspberry Pi with Tailscale or LAN TLS),
+  `SETUP-DESKTOP.md` (install and connect the desktop app on Windows/macOS/Linux),
+  and `SETUP-ANDROID.md` (sideload and connect the Android APK). Component-only
+  releases (server/desktop/android tags) include only the relevant guide;
+  lockstep `vX.Y.Z` releases include all three.
+
 ### Fixed
+- **Pre-1.0 desktop installers now upgrade in place on Windows and Linux.** Releases
+  previously packaged every `0.x` build as installer version `1.0.0`, so reinstalling
+  a newer `.msi`/`.deb` over an older one was a silent no-op (Windows only upgrades
+  when the version increases) — you'd keep running the old app. The Windows/Linux
+  installers now carry the real `0.x` version, so upgrades apply correctly; macOS
+  `.dmg` still shows `1.0.0` for pre-1.0 (a jpackage constraint — tell builds apart
+  by the filename).
+- **Local mode never silently regenerates its database encryption key.** Unlocking a
+  local install now *loads* the existing key and, if it can't be read from secure
+  storage, fails closed with a clear error — instead of quietly minting a new key.
+  Previously a transient secure-storage read failure could generate a fresh key that
+  couldn't decrypt your existing database and would overwrite the real key, locking
+  you out of your data permanently. The key is now generated only once, at initial
+  passphrase setup.
+- **Cancelling "Connect to a server" from Settings now returns you to Settings,
+  unlocked — instead of the welcome screen or a passphrase re-prompt.** In an
+  existing local-only install, choosing "Connect to a server" in Settings and then
+  backing out used to send you back to the first-run "Welcome to HomeFlow" chooser
+  (and, once that was addressed, to a forced passphrase re-entry). Root causes:
+  (1) the app persisted "server mode" to disk the moment you *entered* the connect
+  flow — before a server was ever configured — so an interrupted/cancelled connect
+  left a durable "server, but no host" state that reappeared on every launch (and
+  reinstalling didn't clear it, since that config lives in your home directory, not
+  the install folder); and (2) starting the connect flow tore down the live,
+  unlocked local session entirely. Now "Connect to a server" opens the hostname
+  screen as a **modal over the running local app** — the local session stays alive,
+  the mode stays LOCAL_ONLY, and cancelling ("Back to settings") drops you straight
+  back onto Settings with no re-lock. The switch to server mode happens only once a
+  server is actually confirmed. A first-run server user (who picked "Connect to a
+  server" from the chooser) still gets a "Back to setup" escape to the chooser, and
+  installs left stuck on the hostname screen by a previous build are repaired.
+- **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
+  right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
+  a jlink-minimized runtime that was missing the `java.sql` module, so opening the
+  encrypted local SQLite database (which loads a JDBC driver via
+  `java.sql.DriverManager`) blew up the first time you unlocked a local install.
+  The installer now bundles `java.sql`, so local-only mode works from a clean
+  install. (Ran fine under `./gradlew run` before because that uses the full JDK.)
 - **Android unlock button.** Tapping "Unlock" on the lock screen silently returned
   to the same screen with no feedback when biometrics/device credential weren't
   enrolled, or when the biometric prompt errored — the gate still fails closed,

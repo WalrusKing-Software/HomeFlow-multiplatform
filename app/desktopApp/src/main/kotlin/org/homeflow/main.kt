@@ -10,6 +10,6 @@ fun main() =
             onCloseRequest = ::exitApplication,
             title = "HomeFlow",
         ) {
-            AppRoot()
+            AppRoot(clientVersion = DESKTOP_VERSION)
         }
     }

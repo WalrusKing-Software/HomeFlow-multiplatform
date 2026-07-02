@@ -64,7 +64,14 @@ fun ModeChooserScreen(
                 Text("Connect to a server")
             }
             Text(
-                "Sign in to your self-hosted HomeFlow server. Enables multi-device access.",
+                "Sign in to a HomeFlow server you're already running, for backup and multi-device " +
+                    "access. Requires a running server.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Text(
+                "You can change this later in Settings.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp),
