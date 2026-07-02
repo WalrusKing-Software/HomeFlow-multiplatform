@@ -284,23 +284,23 @@ Ktor server). Pre-implementation: documentation and specification only.
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
-- **"Back" from Settings → Connect to a server no longer dumps you at the first-run
-  welcome screen, and no longer traps you there across restarts.** In an existing
-  local-only install, choosing "Connect to a server" in Settings and then backing
-  out of the hostname screen used to send you all the way back to the "Welcome to
-  HomeFlow" local-vs-server chooser. Root cause: the app persisted "server mode" to
-  disk the moment you *entered* the connect flow — before a server was ever
-  configured — so an interrupted or cancelled connect left a durable "server, but no
-  host" state that reappeared on every launch (and reinstalling didn't clear it,
-  since that config lives in your home directory, not the install folder). Now the
-  mode is only committed once a host is actually confirmed, and the hostname
-  screen's "Back" returns to wherever the flow was started — tracked reliably in
-  memory from the moment you tap "Connect to a server": an existing local install
-  returns to the app on the Settings screen (button reads "Back to settings"),
-  while a genuine first-run server user returns to the chooser ("Back to setup").
-  Routing no longer depends on probing the OS keychain, which behaves inconsistently
-  across machines and packaged runtimes. Installs left stuck on the hostname screen
-  by a previous build are also repaired.
+- **Cancelling "Connect to a server" from Settings now returns you to Settings,
+  unlocked — instead of the welcome screen or a passphrase re-prompt.** In an
+  existing local-only install, choosing "Connect to a server" in Settings and then
+  backing out used to send you back to the first-run "Welcome to HomeFlow" chooser
+  (and, once that was addressed, to a forced passphrase re-entry). Root causes:
+  (1) the app persisted "server mode" to disk the moment you *entered* the connect
+  flow — before a server was ever configured — so an interrupted/cancelled connect
+  left a durable "server, but no host" state that reappeared on every launch (and
+  reinstalling didn't clear it, since that config lives in your home directory, not
+  the install folder); and (2) starting the connect flow tore down the live,
+  unlocked local session entirely. Now "Connect to a server" opens the hostname
+  screen as a **modal over the running local app** — the local session stays alive,
+  the mode stays LOCAL_ONLY, and cancelling ("Back to settings") drops you straight
+  back onto Settings with no re-lock. The switch to server mode happens only once a
+  server is actually confirmed. A first-run server user (who picked "Connect to a
+  server" from the chooser) still gets a "Back to setup" escape to the chooser, and
+  installs left stuck on the hostname screen by a previous build are repaired.
 - **Desktop local mode crashed with "Something went wrong java/sql/DriverManager"
   right after setting a passphrase.** The packaged desktop app (MSI/DMG/DEB) ships
   a jlink-minimized runtime that was missing the `java.sql` module, so opening the
