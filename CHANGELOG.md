@@ -13,6 +13,13 @@ changed." See `CLAUDE.md` for the rules.
      Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
 -->
 
+## [0.1.1] - 2026-07-01
+
+No functional changes. This release validates that pre-1.0 desktop installers
+upgrade in place on Windows and Linux (the per-OS installer versioning shipped in
+0.1.0): installing 0.1.1 over 0.1.0 updates the app without an uninstall and
+preserves local data.
+
 ## [0.1.0] - 2026-07-01
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
