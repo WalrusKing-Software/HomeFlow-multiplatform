@@ -284,6 +284,31 @@ Ktor server).
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **Local-only mode now works on Android.** Choosing "Use this device only" previously
+  dead-ended on a "Something went wrong" screen. Three issues are fixed so first-run local
+  setup completes and reaches the app:
+  - On a device with **no screen lock enrolled** (no PIN/pattern/password or biometric),
+    the app-open lock no longer hard-fails (`code=11`); with no OS factor available to
+    prompt for, it proceeds without the extra lock. Your data is still encrypted at rest by
+    the hardware-backed Keystore. On devices that *do* have a screen lock, the biometric/
+    device-credential prompt still appears as before.
+  - The local **database encryption key is now created on first unlock** on Android (which
+    has no separate passphrase-enrollment step), instead of failing with "Secure storage is
+    unavailable." Desktop's fail-closed behavior (never mint a key over an existing database)
+    is unchanged.
+  - The **SQLCipher native library is now loaded** before the encrypted local database is
+    opened, fixing an "is the library loaded?" crash that blocked the local (and offline-
+    sync) database on Android.
+- **The first-run passphrase screen is now clearly a setup screen (desktop).** Creating
+  your app passphrase for the first time looked almost identical to the unlock screen.
+  It now has a distinct heading ("Create your app passphrase"), guidance on what the
+  passphrase protects and that it can't be reset, and a **Confirm passphrase** field so a
+  typo can't lock you out. (#39)
+- **You can now log a day that has no entry yet.** The Day page's empty state showed
+  "Nothing logged on this day." with no way to start logging — the editor was only
+  reachable from an already-logged day. It now offers a **Log this day** button that
+  opens the logging form (or, if no cycle covers that date, explains you need to
+  start a cycle first). (#41)
 - **Pre-1.0 desktop installers now upgrade in place on Windows and Linux.** Releases
   previously packaged every `0.x` build as installer version `1.0.0`, so reinstalling
   a newer `.msi`/`.deb` over an older one was a silent no-op (Windows only upgrades
