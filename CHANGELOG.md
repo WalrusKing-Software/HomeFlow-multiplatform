@@ -284,6 +284,11 @@ Ktor server).
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **The first-run passphrase screen is now clearly a setup screen (desktop).** Creating
+  your app passphrase for the first time looked almost identical to the unlock screen.
+  It now has a distinct heading ("Create your app passphrase"), guidance on what the
+  passphrase protects and that it can't be reset, and a **Confirm passphrase** field so a
+  typo can't lock you out. (#39)
 - **You can now log a day that has no entry yet.** The Day page's empty state showed
   "Nothing logged on this day." with no way to start logging — the editor was only
   reachable from an already-logged day. It now offers a **Log this day** button that
