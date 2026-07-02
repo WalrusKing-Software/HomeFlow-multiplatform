@@ -56,7 +56,14 @@ jobs:
           minor="${BASH_REMATCH[2]}"
           patch="${BASH_REMATCH[3]}"
 
-          if (( major < 1 )); then desktop="1.0.0"; else desktop="$core"; fi
+          # Desktop installer version. jpackage/macOS require major >= 1. For TEST builds every
+          # run reuses the same source version (e.g. 0.1.0), which would produce an identical
+          # installer version every time — and Windows Installer only upgrades in place when the
+          # version INCREASES, so reinstalling a test MSI over a previous one would be a silent
+          # no-op (old app files kept). Make it monotonic per build using the workflow run number
+          # so each test MSI supersedes the last. The real version is still in the artifact
+          # filename (HomeFlow-<version>.msi). Real releases use the semantic version instead.
+          desktop="1.0.${GITHUB_RUN_NUMBER}"
           code=$(( major * 1000000 + minor * 1000 + patch ))
           image="ghcr.io/${GITHUB_REPOSITORY,,}-server"
 
