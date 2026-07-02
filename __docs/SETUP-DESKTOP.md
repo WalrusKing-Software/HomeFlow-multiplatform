@@ -26,6 +26,17 @@ Double-click the `.msi` file and follow the prompts.
 > **SmartScreen warning:** The installer is currently unsigned. If Windows shows a
 > "Windows protected your PC" dialog, click **More info → Run anyway** to proceed. You
 > only need to do this once.
+>
+> **To avoid the dialog entirely**, remove the "downloaded from the internet" mark before
+> running the installer — either right-click `HomeFlow-X.Y.Z.msi` → **Properties** → tick
+> **Unblock** → **OK**, or run this in PowerShell from the download folder:
+>
+> ```powershell
+> Unblock-File .\HomeFlow-X.Y.Z.msi
+> ```
+>
+> Then double-click the `.msi` as usual — SmartScreen won't prompt. (This works because
+> the warning is tied to the file's Mark-of-the-Web, which `Unblock-File` clears.)
 
 ### macOS (`HomeFlow-X.Y.Z.dmg`)
 

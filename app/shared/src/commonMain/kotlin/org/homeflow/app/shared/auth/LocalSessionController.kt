@@ -101,9 +101,20 @@ class LocalSessionController
                 _state.value = AuthState.Locked(needsEnrollment = false)
                 return
             }
+            // Load the DEK established during first-run setup. A passphrase gate (desktop) makes
+            // enrollment an explicit first-run step, so a null DEK here means an EXISTING install
+            // whose key is unreadable — we must fail closed rather than mint a new key that could
+            // not decrypt the existing database. A biometric gate (Android) has no separate
+            // enrollment step (the OS owns the factor, needsEnrollment is always false), so the
+            // first unlock IS first-run setup: create and persist the DEK now. The app-lock is a
+            // use-gate, not a passphrase-derived KEK. See ARCHITECTURE-client.md and D-14.4.
             val dek =
                 keyStore.loadDek()
-                    ?: error("Secure storage is unavailable: the local encryption key could not be read.")
+                    ?: if (gate.usesPassphrase) {
+                        error("Secure storage is unavailable: the local encryption key could not be read.")
+                    } else {
+                        keyStore.loadOrCreateDek()
+                    }
             val db = openDb(dek)
             LocalBootstrap.seed(db)
             localDb = db
