@@ -8,6 +8,7 @@ import org.homeflow.app.shared.data.local.TestDbHelper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** Contract tests for [LocalSessionController] using in-memory fakes. */
@@ -38,8 +39,10 @@ class LocalSessionControllerTest {
         override suspend fun authenticate(secret: String?): Boolean = false
     }
 
-    private class InMemoryKeyStore : LocalKeyStore {
-        private var dek: ByteArray? = null
+    private class InMemoryKeyStore(
+        seeded: Boolean = false,
+    ) : LocalKeyStore {
+        private var dek: ByteArray? = if (seeded) ByteArray(32) { 7 } else null
 
         override fun loadDek(): ByteArray? = dek
 
@@ -85,23 +88,37 @@ class LocalSessionControllerTest {
     }
 
     @Test
-    fun `start transitions to Locked with needsEnrollment false after enroll`() =
+    fun `enroll generates the DEK and reaches Authenticated`() =
         runTest {
             val gate = AlwaysPassGate()
-            val c = controller(gate = gate)
+            val keyStore = InMemoryKeyStore() // no DEK yet — enroll must create it
+            val c = controller(gate = gate, keyStore = keyStore)
             c.start()
             c.enroll("secret")
-            // enroll calls unlock internally; state is Authenticated
+            // enroll creates the DEK, then opens the session.
             assertIs<AuthState.Authenticated>(c.state.value)
+            assertNotNull(keyStore.loadDek())
         }
 
     @Test
     fun `unlock with correct passphrase reaches Authenticated`() =
         runTest {
-            val c = controller()
+            // A returning user: the DEK already exists (created at enrollment).
+            val c = controller(keyStore = InMemoryKeyStore(seeded = true))
             c.start()
             c.unlock("any")
             assertIs<AuthState.Authenticated>(c.state.value)
+        }
+
+    @Test
+    fun `unlock fails closed when the DEK cannot be read`() =
+        runTest {
+            // Passphrase verifies, but the encryption key is missing/unreadable. We must NOT mint
+            // a new key (which would corrupt the existing DB); fail closed with an error instead.
+            val c = controller(gate = AlwaysPassGate(), keyStore = InMemoryKeyStore(seeded = false))
+            c.start()
+            c.unlock("any")
+            assertIs<AuthState.Error>(c.state.value)
         }
 
     @Test
@@ -117,7 +134,7 @@ class LocalSessionControllerTest {
     fun `logout re-locks without clearing mode`() =
         runTest {
             val modeStore = InMemoryModeStore()
-            val c = controller(modeStore = modeStore)
+            val c = controller(keyStore = InMemoryKeyStore(seeded = true), modeStore = modeStore)
             c.start()
             c.unlock("any")
             assertIs<AuthState.Authenticated>(c.state.value)
@@ -139,7 +156,7 @@ class LocalSessionControllerTest {
     @Test
     fun `deleteAccount after unlock clears DEK and mode then reaches LoggedOut`() =
         runTest {
-            val keyStore = InMemoryKeyStore()
+            val keyStore = InMemoryKeyStore(seeded = true)
             val modeStore = InMemoryModeStore()
             val c = controller(keyStore = keyStore, modeStore = modeStore)
             c.start()
