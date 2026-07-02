@@ -29,11 +29,15 @@ class AndroidAppLockGate : AppLockGate {
         val allowed =
             BiometricManager.Authenticators.BIOMETRIC_STRONG or
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        // No biometric/credential enrolled on the device → can't gate; fail closed, but say so
-        // instead of silently bouncing back to the lock screen (looks like a dead button otherwise).
+        // If the device has no usable strong factor — no biometric enrolled AND no device
+        // credential (PIN/pattern/password) set — there is nothing to gate with. Rather than
+        // bricking local-only mode with a hard error, proceed without the app-open lock: the DEK
+        // stays encrypted at rest by the hardware-backed Keystore master key, and no OS factor
+        // exists to enforce a prompt on a device with no lock screen. See ARCHITECTURE-client.md
+        // (app-lock gate). BiometricPrompt is only shown when a factor is actually available.
         val canAuthenticate = BiometricManager.from(activity).canAuthenticate(allowed)
         if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-            error("Unlock unavailable (no biometric/device credential enrolled): code=$canAuthenticate")
+            return true
         }
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { cont ->
