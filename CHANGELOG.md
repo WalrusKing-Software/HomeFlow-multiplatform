@@ -284,6 +284,11 @@ Ktor server).
   lockstep `vX.Y.Z` releases include all three.
 
 ### Fixed
+- **You can now log a day that has no entry yet.** The Day page's empty state showed
+  "Nothing logged on this day." with no way to start logging — the editor was only
+  reachable from an already-logged day. It now offers a **Log this day** button that
+  opens the logging form (or, if no cycle covers that date, explains you need to
+  start a cycle first). (#41)
 - **Pre-1.0 desktop installers now upgrade in place on Windows and Linux.** Releases
   previously packaged every `0.x` build as installer version `1.0.0`, so reinstalling
   a newer `.msi`/`.deb` over an older one was a silent no-op (Windows only upgrades
