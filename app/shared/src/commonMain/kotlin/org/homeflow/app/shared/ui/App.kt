@@ -37,7 +37,6 @@ fun App(
     onSwitchToLocal: (() -> Unit)? = null,
     syncEngine: SyncEngine? = null,
     syncRepository: HomeFlowRepository? = null,
-    startOnSettings: Boolean = false,
 ) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
@@ -86,7 +85,6 @@ fun App(
                         connectedHost = connectedHost,
                         onSwitchToLocal = onSwitchToLocal,
                         syncStatusFlow = syncEngine.status,
-                        startOnSettings = startOnSettings,
                     )
                 } else {
                     AppShell(
@@ -98,7 +96,6 @@ fun App(
                         onUploadToServer = onUploadToServer,
                         connectedHost = connectedHost,
                         onSwitchToLocal = onSwitchToLocal,
-                        startOnSettings = startOnSettings,
                     )
                 }
             }

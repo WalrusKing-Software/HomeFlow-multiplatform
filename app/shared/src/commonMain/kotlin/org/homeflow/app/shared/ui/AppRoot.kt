@@ -1,8 +1,13 @@
 package org.homeflow.app.shared.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -13,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.LocalSessionController
@@ -54,17 +60,8 @@ fun AppRoot(
     MaterialTheme {
         val modeStore = remember { createAppModeStore() }
         val localKeyStore = remember { createLocalKeyStore() }
+        val serverConfigStore = remember { createServerConfigStore() }
         var mode by remember { mutableStateOf(modeStore.load()) }
-        // True while the current SERVER host-entry flow was launched from an EXISTING local
-        // install (Settings → "Connect to a server"), as opposed to a first-run server user who
-        // picked "Connect to a server" in the mode chooser. This is an in-memory navigation
-        // signal set the moment the flow starts — reliable within a session and independent of
-        // any OS-keychain probe (java-keyring availability varies by machine/packaged runtime,
-        // so keychain reads must NOT drive routing). It decides where the gate's "Back" returns
-        // to and makes the returned-to local app land on Settings. Durable safety for the
-        // interrupted/restarted case comes from NOT persisting SERVER until a host is confirmed
-        // (see onServer / onConnectServer and the host != null branch).
-        var serverSetupFromLocal by remember { mutableStateOf(false) }
 
         when (mode) {
             null ->
@@ -78,7 +75,6 @@ fun AppRoot(
                         // not persisted until a host is confirmed (see the host != null branch),
                         // so backing out / force-quitting the gate never leaves a durable
                         // "SERVER but no host" state that would trap the app on every launch.
-                        serverSetupFromLocal = false
                         mode = AppMode.SERVER
                     },
                 )
@@ -86,6 +82,14 @@ fun AppRoot(
             AppMode.LOCAL_ONLY -> {
                 val controller = remember { localSessionController(modeStore) }
                 val controllerState by controller.state.collectAsState()
+                // "Connect to a server" opens the host-entry screen as a MODAL over the live,
+                // still-authenticated local app — it is NOT a mode switch. Keeping the local
+                // session composed underneath means cancelling returns to exactly where the user
+                // was (Settings, unlocked) with no re-lock, and the app stays LOCAL_ONLY until a
+                // server is actually confirmed. The global switch to SERVER happens only in
+                // onConnected. Local data is left intact and offered for upload after login
+                // (D-15.10).
+                var showConnect by remember { mutableStateOf(false) }
                 // After deleteAccount(), the controller transitions to LoggedOut and
                 // modeStore is cleared; re-reading the store returns null → chooser.
                 LaunchedEffect(controllerState) {
@@ -93,24 +97,41 @@ fun AppRoot(
                         mode = null
                     }
                 }
-                App(
-                    controller = controller,
-                    onExport = { controller.exportData() },
-                    onConnectServer = {
-                        // Existing local install adopting a server. Switch to the SERVER flow in
-                        // memory only — the durable mode stays LOCAL_ONLY until a host is confirmed
-                        // — so backing out of the gate returns cleanly to this local install (data
-                        // intact) rather than the first-run chooser. Local data is offered for
-                        // upload after login (D-15.10).
-                        serverSetupFromLocal = true
-                        mode = AppMode.SERVER
-                    },
-                    startOnSettings = serverSetupFromLocal,
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    App(
+                        controller = controller,
+                        onExport = { controller.exportData() },
+                        onConnectServer = { showConnect = true },
+                    )
+                    if (showConnect) {
+                        // Opaque, input-blocking overlay so taps can't leak to the app beneath.
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {},
+                        ) {
+                            ServerConnectScreen(
+                                onConnected = { newHost ->
+                                    // Confirmed: commit the host and switch to SERVER for real.
+                                    serverConfigStore.saveHost(newHost)
+                                    modeStore.save(AppMode.SERVER)
+                                    showConnect = false
+                                    mode = AppMode.SERVER
+                                },
+                                onBack = { showConnect = false },
+                                backLabel = "Back to settings",
+                                clientVersion = clientVersion,
+                            )
+                        }
+                    }
+                }
             }
 
             AppMode.SERVER -> {
-                val serverConfigStore = remember { createServerConfigStore() }
                 // Stored host wins; otherwise use the platform override (Android debug =
                 // localhost:8443) so dev builds skip the gate. null → show the host gate.
                 var host by remember { mutableStateOf(serverConfigStore.loadHost() ?: serverHostOverride) }
@@ -120,13 +141,13 @@ fun AppRoot(
                     }
 
                 if (host == null) {
-                    // No stored host yet — collect it from the user. Where "Back" goes is driven
-                    // by the in-memory origin flag (see serverSetupFromLocal) — never by probing
-                    // the OS keychain, which is unreliable across machines/packaged runtimes:
-                    //  - launched from an existing local install → return INTO that install and
-                    //    re-commit LOCAL_ONLY (also repairs a stale SERVER mode from an old build).
-                    //  - otherwise (first-run server user, or a launch that landed directly on a
-                    //    legacy "SERVER but no host" state) → the mode chooser.
+                    // This branch is only reached by a FIRST-RUN server user (picked "Connect to a
+                    // server" in the mode chooser), or by a launch that landed on a legacy
+                    // "SERVER but no host" state from an older build. An existing local install
+                    // that adopts a server never gets here — it uses the modal in the LOCAL_ONLY
+                    // branch and only switches to SERVER once a host is confirmed. So "Back" here
+                    // always returns to the mode chooser (and clears the stale/pending SERVER mode
+                    // so a restart won't drop straight back onto this gate).
                     ServerConnectScreen(
                         onConnected = { newHost ->
                             serverConfigStore.saveHost(newHost)
@@ -136,15 +157,10 @@ fun AppRoot(
                         },
                         onBack = {
                             serverConfigStore.clear()
-                            if (serverSetupFromLocal) {
-                                modeStore.save(AppMode.LOCAL_ONLY)
-                                mode = AppMode.LOCAL_ONLY
-                            } else {
-                                modeStore.clear()
-                                mode = null
-                            }
+                            modeStore.clear()
+                            mode = null
                         },
-                        backLabel = if (serverSetupFromLocal) "Back to settings" else "Back to setup",
+                        backLabel = "Back to setup",
                         clientVersion = clientVersion,
                     )
                 } else {

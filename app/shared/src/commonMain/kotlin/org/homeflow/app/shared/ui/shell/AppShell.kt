@@ -76,9 +76,8 @@ fun AppShell(
     connectedHost: String? = null,
     onSwitchToLocal: (() -> Unit)? = null,
     syncStatusFlow: StateFlow<SyncStatus>? = null,
-    startOnSettings: Boolean = false,
 ) {
-    var tab by rememberSaveable { mutableStateOf(if (startOnSettings) Tab.SETTINGS else Tab.DASHBOARD) }
+    var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
     val syncStatus by syncStatusFlow?.collectAsState()
         ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
 
