@@ -98,6 +98,10 @@ fun DayScreen(repository: HomeFlowRepository) {
         Loadable(state, onRetry = { reloadKey++ }) { content: DayContent? ->
             if (content == null) {
                 EmptyHint("Nothing logged on this day.")
+                // Entry point to log a day that has no entry yet (e.g. right after starting a
+                // cycle). The editor resolves whether a cycle covers this date and either shows
+                // the logging form or a "no cycle covers this date" message.
+                Button(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) { Text("Log this day") }
             } else {
                 Button(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) { Text("Edit this day") }
                 OutlinedButton(
