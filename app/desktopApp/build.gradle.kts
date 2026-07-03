@@ -68,14 +68,17 @@ compose.desktop {
             packageVersion = (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
 
             // The bundled runtime is produced by jlink, which only keeps JDK modules it
-            // can detect statically. The local SQLite database is opened through
-            // JdbcSqliteDriver -> java.sql.DriverManager, which is loaded reflectively via
-            // ServiceLoader, so jlink cannot see the dependency and strips java.sql from the
-            // packaged JRE. Without this, the packaged app (MSI/DMG/DEB) crashes with
-            // NoClassDefFoundError: java/sql/DriverManager the moment it opens the local DB
-            // (it works under `./gradlew run` because that uses the full JDK). Force the
-            // module in. See LocalDatabaseFactory.jvm.kt.
-            modules("java.sql")
+            // can detect statically. Two modules must be forced in or the packaged app
+            // (MSI/DMG/DEB) crashes at runtime with NoClassDefFoundError — both work under
+            // `./gradlew run` because that uses the full JDK:
+            //   - java.sql: the local SQLite DB is opened through JdbcSqliteDriver ->
+            //     java.sql.DriverManager, loaded reflectively via ServiceLoader, so jlink
+            //     can't see the dependency and strips java.sql. See LocalDatabaseFactory.jvm.kt.
+            //   - jdk.httpserver: the desktop OIDC login runs a loopback redirect listener
+            //     on 127.0.0.1 using com.sun.net.httpserver.HttpServer; jlink's jdeps scan
+            //     doesn't pull jdk.httpserver in, so connecting to a server crashes with
+            //     NoClassDefFoundError: com/sun/net/httpserver/HttpServer. See OidcClient.jvm.kt.
+            modules("java.sql", "jdk.httpserver")
 
             // Best-effort screenshot protection on desktop is a runtime concern (the window
             // is not added to the OS screen-capture exclusion here); see the client security
