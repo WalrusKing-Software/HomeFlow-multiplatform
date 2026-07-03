@@ -8,7 +8,7 @@ PROD_COMPOSE := docker compose
 .PHONY: dev-start dev-build dev-rebuild dev-reset dev-stop dev-logs \
         prod-start prod-build prod-rebuild prod-reset prod-stop prod-logs \
         dev prod build down logs \
-        migrate seed-dev smoke-phase4 smoke-phase6
+        migrate seed-dev
 
 # --- Dev stack (docker-compose.yml + docker-compose.dev.yml: debug ports, bind mounts) ---
 
@@ -74,9 +74,3 @@ migrate: ## Run Flyway migrations (DB must be reachable; see DEPLOYMENT.md for p
 
 seed-dev: ## Seed the dev stack with repeatable demo data for the read MVP (creates the login user; see script header)
 	bash scripts/seed-dev.sh
-
-smoke-phase4: ## Smoke-test Phase 4 against the running dev stack (needs SMOKE_PASSWORD; see script header)
-	bash scripts/smoke-phase4.sh
-
-smoke-phase6: ## Smoke-test the full API (phases 4–6) against the dev stack (needs SMOKE_PASSWORD; see script header)
-	bash scripts/smoke-phase6.sh

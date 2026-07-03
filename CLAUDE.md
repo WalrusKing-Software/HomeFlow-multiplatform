@@ -85,6 +85,7 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/IMPLEMENTATION-PHASES-modular-offline.md` | Decoupled deployment + offline sync plan (phases 11–16): local-only, server-connected, and offline-sync modes | Any work on modular deployment, local persistence, or sync |
 | `__docs/DOCKER.md` | Containers, Caddy config, env vars, startup order | Any infra work |
 | `__docs/DEPLOYMENT.md` | Pi deployment runbook; Tailscale + canonical hostname (§11) | Deploying to the homelab |
+| `__docs/HOMELAB-TESTING.md` | Proxmox end-to-end runbook: server stack + desktop install + Mode A→B transition | End-to-end testing on the homelab |
 | `__docs/BACKUP.md` | Encrypted backup/restore (`pg_dump \| gpg`) | Any backup / disaster-recovery work |
 | `__docs/BRANCHING.md` | Branching model, release trains, CI gates | Any work on branches, PRs, CI |
 | `__docs/RELEASE-PIPELINE.md` | Release packaging & GitHub Actions pipeline | Any release, packaging, or CI artifact work |
@@ -131,9 +132,11 @@ These are fixed. Do not deviate without explicit instruction from the user.
 - **Client token storage:** refresh token only in platform secure storage
   (Android Keystore-backed encrypted prefs; desktop OS keychain). **Access token
   in memory only.** Never in plaintext files, logs, or shared prefs.
-- **No health data at rest on clients** (current phase). Online-only; in-memory
-  caches only. On-device offline cache (with its own client-side encryption) is a
-  later phase.
+- **No plaintext health data at rest on clients.** In server-connected (remote-only)
+  mode, reads/writes go to the server and clients hold in-memory caches only. In
+  local-only and offline modes, health data is persisted on-device in a SQLDelight
+  store with whole-DB SQLCipher encryption (key derived from the user's passphrase).
+  Health data is never written to plaintext files, logs, or unencrypted prefs.
 - **`FLAG_SECURE`** on Android; best-effort screenshot/recents protection on desktop.
 
 ### Auth
@@ -213,7 +216,7 @@ for pure refactors, dependency bumps, or tooling changes with no behavior change
 | Keycloak realm | `homeflow` |
 | Backend Keycloak client | `homeflow-backend` (confidential) |
 | Android Keycloak client | `homeflow-android` (public) |
-| Desktop Keycloak client | `homeflow-desktop` (public) *(to create)* |
+| Desktop Keycloak client | `homeflow-desktop` (public) |
 | App database name | `period_tracker` |
 | Test database name | `period_tracker_test` |
 | Keycloak database name | `keycloak` |
@@ -223,7 +226,7 @@ for pure refactors, dependency bumps, or tooling changes with no behavior change
 | JWT signing algorithm | RS256 (only — reject all others) |
 | PKCE method | S256 |
 | Android redirect URI | `org.homeflow.mobile:/oauth2redirect` |
-| Desktop redirect URI | loopback `http://127.0.0.1:<port>/oauth2redirect` *(to finalize)* |
+| Desktop redirect URI | loopback `http://127.0.0.1:<port>/oauth2redirect` |
 
 ---
 
