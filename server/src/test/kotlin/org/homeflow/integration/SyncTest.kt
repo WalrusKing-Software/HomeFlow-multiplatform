@@ -124,6 +124,40 @@ class SyncTest {
         }
 
     @Test
+    fun `pushing a new day for a date that has a tombstone does not collide`() =
+        withApp { client ->
+            val cycle = client.createCycle(SUB, "2024-02-01")
+            client.createDay(SUB, "2024-02-10", cycle.id)
+            val original = client.pull(SUB, 0).days.single { it.date == "2024-02-10" }
+
+            // Tombstone the day (as an explicit delete or a cycle-delete cascade does).
+            assertEquals(
+                HttpStatusCode.NoContent,
+                client.delete("/api/v1/daily-logs/2024-02-10") { bearer(SUB) }.status,
+            )
+
+            // An offline client legitimately pushes a FRESH day (new id) for the same date.
+            // Before the V4 partial-unique fix this aborted the whole push with
+            // `duplicate key value violates unique constraint daily_logs_user_id_log_date_key`,
+            // which stalled cross-device sync (the cursor never advanced).
+            val replacement = original.copy(id = REPLACEMENT_DAY_ID, updatedAt = FUTURE)
+            val pushed =
+                client.post("/api/v1/sync/changes") {
+                    bearer(SUB)
+                    contentType(ContentType.Application.Json)
+                    setBody(SyncPushRequest(days = listOf(replacement)))
+                }
+            assertEquals(HttpStatusCode.OK, pushed.status, "the push must not collide with the tombstone")
+
+            // The new day is live and readable, and it surfaces in the change feed.
+            assertEquals(
+                HttpStatusCode.OK,
+                client.get("/api/v1/daily-logs/2024-02-10") { bearer(SUB) }.status,
+            )
+            assertTrue(client.pull(SUB, 0).days.any { it.id == REPLACEMENT_DAY_ID && !it.deleted })
+        }
+
+    @Test
     fun `GET sync changes since a cursor returns only newer changes`() =
         withApp { client ->
             client.anchorOn(SUB, "2024-01-20")
@@ -261,6 +295,7 @@ class SyncTest {
         private const val KID = "test-key"
         private const val SUB = "11111111-1111-1111-1111-111111111111"
         private const val OTHER_SUB = "22222222-2222-2222-2222-222222222222"
+        private const val REPLACEMENT_DAY_ID = "33333333-3333-3333-3333-333333333333"
         private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
         private const val AUDIENCE = "homeflow-backend"
         private const val RSA_KEY_SIZE = 2048

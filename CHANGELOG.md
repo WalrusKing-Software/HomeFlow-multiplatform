@@ -32,6 +32,14 @@ Ktor server).
   `CONFIGURE_TOTP` as the first-login required action.
 
 ### Fixed
+- **Cross-device sync no longer stalls after a day is deleted.** A soft-deleted daily-log
+  tombstone still occupied the `(user_id, log_date)` unique constraint, so when a device
+  pushed a new day for that same date (e.g. after a cycle delete cascaded day tombstones)
+  the sync push aborted with a duplicate-key violation. The whole push rolled back and the
+  server sequence cursor never advanced, so **other devices pulled nothing** — changes made
+  on one client never reached the others. The uniqueness is now a partial index scoped to
+  live rows (`V4__daily_log_live_unique.sql`): at most one non-deleted day per date, while
+  tombstones may coexist. Pushes for a previously-deleted date now succeed and propagate.
 - **An expired or revoked stored session now returns you to the login screen instead of
   crashing.** When the desktop app unlocked and its stored refresh token was rejected by
   Keycloak (expired, revoked, or the realm/Keycloak was recreated), the OAuth error body
