@@ -94,6 +94,21 @@ steps:
 The hostname is saved automatically. You won't need to re-enter it unless you change
 servers.
 
+### Server with a private/self-signed certificate (LAN setups)
+
+If your server uses a private certificate — for example a LAN `homeflow.lan` install behind
+Caddy's internal CA — the connection check will fail with "Couldn't reach that server"
+because the desktop app (a JVM app) doesn't use the operating system's trust store.
+
+On the **Connect to your server** screen, click **"My server uses a private certificate…"**,
+then select your server's CA file (the `caddy-root.crt` your server admin exported in
+`SETUP-SERVER.md` Step 7). The app validates it, remembers it, and retries the connection.
+You only do this once per server.
+
+> The login step opens your system browser, which *does* use the OS trust store — so for
+> the passkey prompt to work you should also install `caddy-root.crt` as a trusted root
+> certificate in your OS. See `SETUP-SERVER.md` Step 7.
+
 ---
 
 ## Uploading local data when switching to server-connected mode (Mode A → B)
@@ -116,7 +131,7 @@ preserved; duplicate entries are skipped.
 | Symptom | Fix |
 |---|---|
 | Can't reach the server | Confirm the server is running (`docker compose ps` on the Pi); if using Tailscale, confirm both devices are enrolled and MagicDNS is enabled |
-| "Connection refused" or TLS error | The server hostname or TLS certificate is not trusted — verify `APP_HOSTNAME` matches what you're typing; for LAN setups, install the Caddy root CA on this machine (see `SETUP-SERVER.md` Step 7) |
+| "Couldn't reach that server" / TLS error | For a private/self-signed cert, use **"My server uses a private certificate…"** on the connect screen to select the CA (see above). Otherwise verify `APP_HOSTNAME` matches what you're typing |
 | Login opens a browser but immediately shows an error | Hostname mismatch between what you entered and the server's `APP_HOSTNAME` — copy-paste the hostname rather than retyping |
 | "Invalid credential" on passkey | The server hostname changed since you registered the passkey — re-register via the Keycloak admin on the Pi |
 | Every API request fails with an auth error after login | The server's `PUBLIC_KEYCLOAK_URL` is misconfigured — check Step 3 of `SETUP-SERVER.md` |
