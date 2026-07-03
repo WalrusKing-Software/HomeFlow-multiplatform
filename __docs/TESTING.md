@@ -87,9 +87,9 @@ narrow — exhaustive UI testing isn't worth it for a single-user app.
 ### End-to-end
 
 Ktor `testApplication` exercises a route through real auth validation against a
-test token, and a representative data round-trip. The full Keycloak passkey flow is
-verified manually (real WebAuthn gestures can't be automated); for automated E2E
-use a password-only test user in the **dev realm only**, never production.
+test token, and a representative data round-trip. The full Keycloak password + TOTP
+flow is verified manually on first login; for automated E2E use a password-only test
+user (no OTP configured) in the **dev realm only**, never production.
 
 ---
 

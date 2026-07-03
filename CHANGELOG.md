@@ -18,11 +18,24 @@ changed." See `CLAUDE.md` for the rules.
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
 
+### Changed
+- **Two-factor auth is now TOTP (authenticator-app codes) instead of a WebAuthn
+  passkey.** On first login Keycloak shows a QR code to enroll an authenticator
+  (Bitwarden, Aegis, Google Authenticator, 1Password, …); every login after that asks
+  for the current 6-digit code. This replaces the passkey second factor, which could
+  not work on Android: a passkey's Relying Party ID must be a real public domain, and
+  Android's Credential Manager refuses to offer any passkey provider for a private LAN
+  hostname like `homeflow.lan`, so the passkey prompt appeared but no provider (Bitwarden
+  included) was ever offered — across every browser. TOTP has no domain/RP-ID binding, so
+  it works identically on desktop and Android and needs no re-enrollment if the server
+  hostname changes (LAN ↔ Tailscale). The realm now binds `browser-with-otp` with
+  `CONFIGURE_TOTP` as the first-login required action.
+
 ### Fixed
-- **Passkey registration/login now works through the Caddy reverse proxy.** Keycloak
-  serves its login-theme JavaScript (including `webauthnRegister.js`) under `/resources`,
-  which the Caddyfile did not proxy — so the WebAuthn scripts 404'd with an empty MIME
-  type and the "Register passkey" button did nothing. Added a `/resources/*` route.
+- **Keycloak login-theme assets now load through the Caddy reverse proxy.** Keycloak
+  serves its login-theme JavaScript/CSS under `/resources`, which the Caddyfile did not
+  proxy — so those scripts 404'd with an empty MIME type and login-page features that
+  depend on them broke. Added a `/resources/*` route.
 
 ### Added
 - **Trust a self-hosted server's private certificate on desktop.** The "Connect to
@@ -98,10 +111,11 @@ Ktor server).
   - Fail-fast configuration (`config/Config.kt`, `config/KeycloakConfig.kt`)
     validates the environment on startup, errors are returned through a single
     typed-error handler, and a coarse global request rate limit is applied.
-  - The Keycloak realm now enforces **password + WebAuthn-passkey 2FA**: the
-    `browser-with-passkey` flow is bound as the browser flow and new users are
-    prompted to register a passkey on first login (`webauthn-register` default
-    action).
+  - The Keycloak realm enforces **password + TOTP 2FA**: the `browser-with-otp`
+    flow is bound as the browser flow and new users are prompted to enroll an
+    authenticator on first login (`CONFIGURE_TOTP` default action). (See the
+    Changed note above — this was originally a WebAuthn passkey flow, replaced by
+    TOTP because passkeys can't use a private LAN RP-ID on Android.)
 - **Server cycles & daily-log anchor (Phase 4).** The server can now record and
   read cycles and the per-day log anchor:
   - Full cycle lifecycle over `/api/v1/cycles`: list (newest first), start a new
@@ -156,7 +170,7 @@ Ktor server).
   sign you in and reach the server:
   - Log in through Keycloak with Authorization Code + PKCE (S256) in the system
     browser (desktop, via a loopback redirect listener) or a Chrome Custom Tab
-    (Android, via AppAuth) — reusing the existing password + passkey 2FA — then
+    (Android, via AppAuth) — reusing the existing password + TOTP 2FA — then
     load your account with `GET /api/v1/users/me`.
   - The long-lived offline refresh token is stored only in OS-secure storage
     (Android Keystore-backed encrypted prefs; desktop OS keychain), the access

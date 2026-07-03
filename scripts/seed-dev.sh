@@ -8,14 +8,14 @@
 # What it does, end to end, against a LIVE `make dev` stack:
 #   1. Ensures a Keycloak login user exists (creates it + sets the password).
 #   2. Temporarily enables `Direct access grants` on the token client so it can
-#      mint a token to drive the API (the realm's real flow is password+passkey,
+#      mint a token to drive the API (the realm's real flow is password+TOTP,
 #      which can't be scripted). It is REVERTED automatically on exit.
 #   3. Wipes + seeds: two closed historical cycles (for Cycles + Analytics) and one
 #      OPEN cycle starting 5 days ago with a rich log for today (for the Dashboard
 #      "current cycle / today" path and the Day view).
 #
 # After it runs, log into the desktop/Android app as the seed user (the normal
-# browser flow, incl. first-login passkey) to see the data. See the chat / README
+# browser flow, incl. first-login TOTP enrollment) to see the data. See the chat / README
 # for the per-platform run + TLS-trust steps.
 #
 #   bash scripts/seed-dev.sh                 # run from the repo root
