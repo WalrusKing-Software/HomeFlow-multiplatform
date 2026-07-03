@@ -20,6 +20,13 @@
 		reverse_proxy keycloak:8080
 	}
 
+	# Keycloak login-theme static assets (JS/CSS) live under /resources, not /realms.
+	# Required for the WebAuthn passkey flow — webauthnRegister.js is an ES module and
+	# without this it 404s with an empty MIME type, so the passkey button does nothing.
+	handle /resources/* {
+		reverse_proxy keycloak:8080
+	}
+
 	header {
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff

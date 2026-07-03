@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base network security config (applies to release; debug overrides this file — see
+  src/debug/res/xml/network_security_config.xml).
+
+  Default: trust only the system CAs (strict).
+
+  homeflow.lan: additionally trust a user-installed CA, so a self-hosted LAN server behind
+  Caddy's internal root can be reached once the user imports caddy-root.crt on the device.
+  Scoped to the canonical LAN hostname on purpose — Tailscale / public deployments use
+  publicly-trusted certs and stay system-only.
+
+  This governs the app's OWN TLS (OkHttp probe/API + AppAuth token exchange, both of which
+  target the server host). The login page runs in a Chrome Custom Tab (Chrome's own trust)
+  and is unaffected by this file — Chrome honors the user-installed CA independently.
+
+  Backlog: make the trusted host user-configurable and support Tailscale hostnames.
+  See __docs/BACKLOG.md.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config>
+        <domain includeSubdomains="true">homeflow.lan</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

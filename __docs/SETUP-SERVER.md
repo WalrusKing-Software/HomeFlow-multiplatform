@@ -257,15 +257,25 @@ monthly and reload Caddy: `docker compose exec caddy caddy reload --config /etc/
 Add a static DNS record on your router: `homeflow.lan → <Pi IP>`. Add a DHCP reservation
 so the Pi's IP doesn't change.
 
-Install Caddy's internal CA certificate on each device that will run the app (WebAuthn
-requires a trusted HTTPS context):
+Export Caddy's internal CA certificate — each device that runs the app must trust it
+(WebAuthn requires a trusted HTTPS context):
 
 ```bash
 docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
 ```
 
-Then install `caddy-root.crt` on each device as a trusted root certificate. The exact
-steps depend on the OS.
+Copy `caddy-root.crt` to each device, then trust it. **How you trust it differs by client:**
+
+- **Desktop app:** the app runs on the JVM, which does **not** use the OS trust store. In
+  the app's **"Connect to your server"** screen, click **"My server uses a private
+  certificate…"** and select `caddy-root.crt`. The app validates and remembers it. (The
+  system browser used for login still needs the CA in the OS trust store for the passkey
+  step — install it there too, see below.)
+- **Android app:** install `caddy-root.crt` via **Settings → Security → Encryption &
+  credentials → Install a certificate → CA certificate**.
+- **Desktop OS / login browser:** install `caddy-root.crt` as a trusted root CA
+  (Windows: *Trusted Root Certification Authorities* in the Local Machine store; macOS:
+  add to the System keychain and mark *Always Trust*; Linux: `update-ca-certificates`).
 
 ---
 

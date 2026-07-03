@@ -18,7 +18,27 @@ changed." See `CLAUDE.md` for the rules.
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
 
+### Fixed
+- **Passkey registration/login now works through the Caddy reverse proxy.** Keycloak
+  serves its login-theme JavaScript (including `webauthnRegister.js`) under `/resources`,
+  which the Caddyfile did not proxy — so the WebAuthn scripts 404'd with an empty MIME
+  type and the "Register passkey" button did nothing. Added a `/resources/*` route.
+
 ### Added
+- **Trust a self-hosted server's private certificate on desktop.** The "Connect to
+  your server" screen now offers **"My server uses a private certificate…"**, which
+  opens a file picker to select your server's CA certificate (e.g. Caddy's
+  `caddy-root.crt` for a LAN `homeflow.lan` install). The certificate is validated,
+  stored, and trusted for the reachability check and login — so an installed desktop
+  app can reach a self-signed / internal-CA LAN server without setting environment
+  variables or editing the launcher config. (Android continues to use the OS trust
+  store.)
+- **Android connects to a LAN self-hosted server behind a private CA.** The release
+  Android build now trusts a user-installed CA certificate for `homeflow.lan` (a scoped
+  network-security config). After importing your server's `caddy-root.crt` on the device,
+  the app can reach and log in to a self-signed LAN server. Other hostnames stay strict
+  system-CA-only, so Tailscale/public deployments are unaffected. (Making the trusted host
+  user-configurable and supporting Tailscale is tracked in `__docs/BACKLOG.md`.)
 - **Recover from and switch between setup modes (onboarding hardening).** The
   first-run and server-connection flows no longer dead-end:
   - The "Connect to your server" screen now has a **Back to setup** button, so a

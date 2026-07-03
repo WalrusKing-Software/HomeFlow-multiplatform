@@ -24,6 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.homeflow.app.shared.config.ServerCertificateResult
+import org.homeflow.app.shared.config.chooseCustomServerCertificate
+import org.homeflow.app.shared.config.customServerCertificateName
+import org.homeflow.app.shared.config.supportsCustomServerCertificate
 import org.homeflow.app.shared.data.ProbeResult
 import org.homeflow.app.shared.data.probeServer
 
@@ -62,6 +66,8 @@ fun ServerConnectScreen(
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var state by remember { mutableStateOf<ConnectState>(ConnectState.Idle) }
+    var certName by remember { mutableStateOf(customServerCertificateName()) }
+    var certError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     fun connect() {
@@ -135,6 +141,53 @@ fun ServerConnectScreen(
                     ) {
                         Text("Connect anyway")
                     }
+                }
+            }
+
+            // Desktop only: trust a self-hosted server's private/self-signed CA. The JVM does
+            // not use the OS trust store, so a LAN server behind Caddy's internal CA is
+            // unreachable until its certificate is added here.
+            if (supportsCustomServerCertificate) {
+                if (certName != null) {
+                    Text(
+                        "Trusting certificate: $certName",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        certError = null
+                        scope.launch {
+                            when (chooseCustomServerCertificate()) {
+                                ServerCertificateResult.SELECTED -> {
+                                    certName = customServerCertificateName()
+                                    // Re-probe now that the CA is trusted.
+                                    if (input.isNotBlank()) connect()
+                                }
+                                ServerCertificateResult.INVALID ->
+                                    certError = "That file isn't a valid certificate (.crt or .pem)."
+                                ServerCertificateResult.CANCELLED -> Unit
+                            }
+                        }
+                    },
+                    enabled = state !is ConnectState.Checking,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (certName == null) {
+                            "My server uses a private certificate…"
+                        } else {
+                            "Change certificate…"
+                        },
+                    )
+                }
+                certError?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
 
