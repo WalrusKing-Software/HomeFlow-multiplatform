@@ -21,8 +21,8 @@
 	}
 
 	# Keycloak login-theme static assets (JS/CSS) live under /resources, not /realms.
-	# Required for the WebAuthn passkey flow — webauthnRegister.js is an ES module and
-	# without this it 404s with an empty MIME type, so the passkey button does nothing.
+	# Required so the login and TOTP-enrollment pages render — their theme scripts are
+	# ES modules that otherwise 404 with an empty MIME type and break the page.
 	handle /resources/* {
 		reverse_proxy keycloak:8080
 	}

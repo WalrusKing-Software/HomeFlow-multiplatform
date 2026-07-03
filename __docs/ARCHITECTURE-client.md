@@ -111,12 +111,12 @@ A single configured Ktor `HttpClient` in `commonMain`:
 ## Auth flow (platform-specific OIDC, shared orchestration)
 
 Realm-side config (clients, PKCE, audience mapper, `offline_access`, session
-lifetimes, WebAuthn RP-ID) is in `KEYCLOAK.md`. `AuthController` in `commonMain`
+lifetimes, TOTP 2FA) is in `KEYCLOAK.md`. `AuthController` in `commonMain`
 owns the sequence; `OidcClient`/`TokenStore`/`AppLockGate` are `expect`/`actual`.
 
 1. **One-time login.** Fetch the realm OIDC discovery doc (endpoints never
    hard-coded), then run Authorization Code + PKCE(S256) in the system browser. The
-   existing password + passkey 2FA happens there. Scopes: `openid offline_access`.
+   existing password + TOTP 2FA happens there. Scopes: `openid offline_access`.
    - **Android:** AppAuth + Chrome Custom Tab; redirect `org.homeflow.mobile:/oauth2redirect`.
    - **Desktop:** open the system browser to a **loopback** redirect
      (`http://127.0.0.1:<ephemeral-port>/oauth2redirect`) served by a tiny local

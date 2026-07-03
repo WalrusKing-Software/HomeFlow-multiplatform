@@ -72,18 +72,20 @@ Edit `.env` and replace every `replace-with-*` placeholder:
 
 ---
 
-## Step 3 — Set the WebAuthn Relying Party ID
+## Step 3 — Second factor (TOTP) — nothing to configure
 
-Open `infra/keycloak/realm-export.json` and find:
+The second factor is **TOTP** (a 6-digit authenticator-app code), configured in
+`infra/keycloak/realm-export.json` and imported automatically. Unlike a WebAuthn passkey,
+TOTP has **no Relying Party ID and no hostname binding**, so there is nothing to edit here
+for your `APP_HOSTNAME` — the same realm works whether you reach the server via `homeflow.lan`,
+a Tailscale `*.ts.net` name, or anything else, with no re-enrollment if the hostname changes.
 
-```json
-"webAuthnPolicyRpId": "homeflow.lan",
-"webAuthnPolicyPasswordlessRpId": "homeflow.lan",
-```
+> TOTP replaced passkeys because a passkey's RP-ID must be a public domain: Android's
+> Credential Manager refuses to offer any passkey provider for a private LAN hostname like
+> `homeflow.lan`, so passkeys could never complete on the phone. See `KEYCLOAK.md`.
 
-Change both values to your `APP_HOSTNAME` exactly (e.g. `homeflow.<tailnet>.ts.net` for
-Tailscale). The passkey registered on first login is permanently bound to this hostname —
-choose the canonical hostname you'll use permanently.
+You'll enroll TOTP on first login (Step 8) — Keycloak shows a QR code you scan into
+Bitwarden or any authenticator app.
 
 ---
 
@@ -258,7 +260,7 @@ Add a static DNS record on your router: `homeflow.lan → <Pi IP>`. Add a DHCP r
 so the Pi's IP doesn't change.
 
 Export Caddy's internal CA certificate — each device that runs the app must trust it
-(WebAuthn requires a trusted HTTPS context):
+(the app and the login browser both need a trusted HTTPS context):
 
 ```bash
 docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
@@ -269,8 +271,8 @@ Copy `caddy-root.crt` to each device, then trust it. **How you trust it differs 
 - **Desktop app:** the app runs on the JVM, which does **not** use the OS trust store. In
   the app's **"Connect to your server"** screen, click **"My server uses a private
   certificate…"** and select `caddy-root.crt`. The app validates and remembers it. (The
-  system browser used for login still needs the CA in the OS trust store for the passkey
-  step — install it there too, see below.)
+  system browser used for login still needs the CA in the OS trust store — install it
+  there too, see below.)
 - **Android app:** install `caddy-root.crt` via **Settings → Security → Encryption &
   credentials → Install a certificate → CA certificate**.
 - **Desktop OS / login browser:** install `caddy-root.crt` as a trusted root CA
@@ -295,8 +297,9 @@ curl -sk -o /dev/null -w '%{http_code}\n' "https://<APP_HOSTNAME>/health"
 ```
 
 Now open a client app, enter your server hostname, and log in. **On first login** Keycloak
-prompts you to register a passkey — save it to a password manager that supports passkeys
-(e.g. Bitwarden).
+shows a QR code to enroll TOTP — scan it into Bitwarden (edit the login item → Authenticator
+key → scan QR) or any authenticator app, then enter the 6-digit code to confirm. Every login
+after that asks for the current code.
 
 ---
 
@@ -337,11 +340,11 @@ Volumes persist across `docker compose down` (without `-v`). Back up before upgr
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Every API call returns 401 after login | `iss` mismatch — `PUBLIC_KEYCLOAK_URL` ≠ `APP_HOSTNAME` | Align them in `.env`; compare the live `iss` from Step 8 |
-| WebAuthn passkey prompt never appears | RP ID ≠ hostname, or TLS not trusted by browser | Check RP ID (Step 3); trust the CA or use Tailscale cert (Step 7) |
-| "Invalid credential" on passkey | Hostname changed since passkey was registered | Update RP ID to new hostname, re-register passkey |
+| TOTP code is rejected | Clock skew between server and the code-generating device | Sync time (NTP) on the Pi and the phone/desktop; the realm allows ±30s |
+| First login shows a passkey/security-key prompt, not a code field | Keycloak is still running the old passkey flow (stale realm) | Re-import the realm, or switch the browser-flow binding to `browser-with-otp` and make `CONFIGURE_TOTP` the default required action |
+| Lost the authenticator | TOTP secret only existed on the lost device | Keycloak Console → Users → Credentials → delete the OTP credential; it re-enrolls on next login |
 | Migration fails | Ran inside the runtime image (no Flyway there) | Use the build-stage migration runner (Step 5) |
 | Account deletion returns 403 | `manage-users` role missing | Re-assign the role (Step 6b) |
 | Backend client auth fails after re-deploy | Secret in Keycloak ≠ `.env` | Re-run Step 6a |
 | `*.ts.net` hostname won't resolve on a device | MagicDNS off, or device not enrolled in tailnet | Enable MagicDNS; check Tailscale status on the device |
-| Passkey worked on LAN but fails over Tailscale | Passkey is bound to the old hostname | Set RP ID to the `*.ts.net` name (Step 3) and re-register |
 | Postgres or Keycloak port reachable from LAN | Dev overlay was accidentally applied | Restart with `make prod` or plain `docker compose up -d` |

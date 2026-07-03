@@ -87,8 +87,9 @@ steps:
 3. Tap **Connect**
 4. Your system browser opens the Keycloak login page
 5. Enter your username and password
-6. **First login only:** Keycloak prompts you to register a passkey — save it to a
-   password manager that supports passkeys (Bitwarden works well)
+6. **First login only:** Keycloak shows a QR code to set up two-factor auth — scan it
+   into Bitwarden (edit the login item → Authenticator key → scan QR) or any authenticator
+   app, then enter the 6-digit code to confirm. Every later login asks for the current code.
 7. After login the browser closes and the app switches to server-connected mode
 
 The hostname is saved automatically. You won't need to re-enter it unless you change
@@ -105,9 +106,10 @@ then select your server's CA file (the `caddy-root.crt` your server admin export
 `SETUP-SERVER.md` Step 7). The app validates it, remembers it, and retries the connection.
 You only do this once per server.
 
-> The login step opens your system browser, which *does* use the OS trust store — so for
-> the passkey prompt to work you should also install `caddy-root.crt` as a trusted root
-> certificate in your OS. See `SETUP-SERVER.md` Step 7.
+> The login step opens your system browser, which *does* use the OS trust store — so the
+> login page loads without a TLS warning you should also install `caddy-root.crt` as a
+> trusted root certificate in your OS. See `SETUP-SERVER.md` Step 7. (Two-factor is a TOTP
+> code, so there's no browser passkey/RP-ID dependency.)
 
 ---
 
@@ -117,7 +119,7 @@ If you've accumulated data in local-only mode and now want to move it to your se
 
 1. Go to **Settings → Server → Connect to a server**
 2. Enter your server hostname and tap **Connect**
-3. Log in via the browser (or passkey if already registered)
+3. Log in via the browser (password + your TOTP code)
 4. The app detects your local data and shows an **Upload** prompt — tap **Upload**
 5. A summary shows how many cycles and days were transferred
 
@@ -133,7 +135,7 @@ preserved; duplicate entries are skipped.
 | Can't reach the server | Confirm the server is running (`docker compose ps` on the Pi); if using Tailscale, confirm both devices are enrolled and MagicDNS is enabled |
 | "Couldn't reach that server" / TLS error | For a private/self-signed cert, use **"My server uses a private certificate…"** on the connect screen to select the CA (see above). Otherwise verify `APP_HOSTNAME` matches what you're typing |
 | Login opens a browser but immediately shows an error | Hostname mismatch between what you entered and the server's `APP_HOSTNAME` — copy-paste the hostname rather than retyping |
-| "Invalid credential" on passkey | The server hostname changed since you registered the passkey — re-register via the Keycloak admin on the Pi |
+| "Invalid authenticator code" on the 2FA step | Clock skew — make sure your computer's time is accurate (TOTP is time-based). If you lost your authenticator, an admin can reset the OTP credential in the Keycloak Console on the Pi |
 | Every API request fails with an auth error after login | The server's `PUBLIC_KEYCLOAK_URL` is misconfigured — check Step 3 of `SETUP-SERVER.md` |
 | "App version incompatible with server" | Update the desktop app or the server to compatible versions; check the compatibility table in the release notes |
 | macOS: app won't open at all, even after right-click Open | Run `xattr -d com.apple.quarantine /Applications/HomeFlow.app` in Terminal |

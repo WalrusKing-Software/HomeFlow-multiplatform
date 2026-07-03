@@ -61,19 +61,19 @@ e.g. `homeflow-mp_postgres_data`). Adjust later commands if yours differs.
 
 ---
 
-## Step 2 — Set the WebAuthn RP ID for the production hostname
+## Step 2 — Second factor (TOTP) — no hostname config needed
 
-Passkeys are bound to the RP ID. Before first boot, edit
-`infra/keycloak/realm-export.json`:
+The second factor is **TOTP** (an authenticator-app code), defined in
+`infra/keycloak/realm-export.json` and imported on first boot. Unlike a WebAuthn passkey,
+TOTP has **no Relying Party ID** — it is not bound to the hostname — so there is nothing to
+edit here for either the LAN (`homeflow.lan`) or the Tailscale (`*.ts.net`) hostname, and no
+re-enrollment when you move between them.
 
-```jsonc
-"webAuthnPolicyRpId": "homeflow.lan",
-"webAuthnPolicyPasswordlessRpId": "homeflow.lan",
-```
-
-(For the Tailscale deploy use the `*.ts.net` name here instead — see §11c.) If the
-realm was already imported, editing the export has no effect; change it via `kcadm`
-or recreate the Keycloak volume.
+> Passkeys were the original second factor but were dropped: a passkey's RP-ID must be a
+> public domain, and Android's Credential Manager will not offer any passkey provider for a
+> private hostname. See `KEYCLOAK.md`. If a realm was imported before this change, switch the
+> browser-flow binding to `browser-with-otp` and make `CONFIGURE_TOTP` the default required
+> action via `kcadm`/the Admin Console, or recreate the Keycloak volume to re-import.
 
 ---
 
@@ -187,7 +187,7 @@ $KC create users -r homeflow -s username=<you> -s email=<you@example.com> \
   -s emailVerified=true -s enabled=true
 $KC set-password -r homeflow --username <you> --new-password '<strong>'
 ```
-The `webauthn-register` action fires on first login.
+The `CONFIGURE_TOTP` action fires on first login (Keycloak shows a QR to enroll an authenticator).
 
 > **Confirm the `homeflow-android` and `homeflow-desktop` public clients exist**
 > (PKCE S256 required, correct redirect URIs, the `homeflow-backend` audience
@@ -200,8 +200,8 @@ The `webauthn-register` action fires on first login.
 - **Resolve `homeflow.lan` to the Pi.** `.lan` has no mDNS fallback — add a static
   DNS record on the router (`homeflow.lan → <Pi IP>`) and a DHCP reservation so the
   Pi's IP is stable. Clients must use the router as DNS (VPNs / `1.1.1.1` bypass it).
-- **Install Caddy's root CA** on each device (WebAuthn needs a trusted secure
-  context):
+- **Install Caddy's root CA** on each device (the app and login browser need a trusted
+  secure context):
   ```bash
   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
   ```
@@ -221,7 +221,7 @@ curl -ks https://homeflow.lan/realms/homeflow/.well-known/openid-configuration \
 curl -ks -o /dev/null -w '%{http_code}\n' https://homeflow.lan/health
 ```
 
-Then launch a client: login Custom Tab / system browser → password + passkey →
+Then launch a client: login Custom Tab / system browser → password + TOTP code →
 `GET /api/v1/users/me` returns the user.
 
 ---
@@ -252,13 +252,13 @@ Volumes persist across `docker compose down` (without `-v`). Back up first.
 
 Tailscale gives the Pi a **stable hostname reachable from anywhere** (incl.
 cellular), a **publicly-trusted TLS cert** (no CA to install), and a **single
-canonical hostname** for tokens + passkeys — opening no inbound ports.
+canonical hostname** for tokens — opening no inbound ports.
 
 > **Core constraint:** Keycloak stamps a fixed `iss` per hostname and the backend
-> validates it strictly; the passkey is bound to one RP-ID; redirect URIs are
-> exact. Pick **one canonical hostname** and use it everywhere. Don't run one
-> client on `homeflow.lan` and another on the `*.ts.net` name against the same
-> realm — the passkey works on only one and tokens won't cross.
+> validates it strictly; redirect URIs are exact. Pick **one canonical hostname** and
+> use it everywhere. Don't run one client on `homeflow.lan` and another on the `*.ts.net`
+> name against the same realm — tokens won't cross. (TOTP itself is hostname-independent,
+> so the second factor keeps working across hostnames; only `iss`/redirects are bound.)
 
 **11a — install Tailscale** on the Pi (`curl -fsSL https://tailscale.com/install.sh | sh; sudo tailscale up`)
 and on each client device; sign all into the same tailnet. Enable **MagicDNS** and
@@ -273,9 +273,9 @@ Mount `/opt/homeflow/tlscerts:/tlscerts:ro` into `caddy`, and in the Caddyfile
 replace `tls internal` with `tls /tlscerts/{$APP_HOSTNAME}.crt /tlscerts/{$APP_HOSTNAME}.key`.
 
 **11c — make the tailnet name canonical:** set `APP_HOSTNAME` and
-`PUBLIC_KEYCLOAK_URL` to `https://homeflow.<tailnet>.ts.net` (they must match);
-set the WebAuthn RP-ID to that name; **re-register the passkey**; recreate
-`keycloak caddy backend`.
+`PUBLIC_KEYCLOAK_URL` to `https://homeflow.<tailnet>.ts.net` (they must match); recreate
+`keycloak caddy backend`. TOTP has no hostname binding, so the second factor needs no
+change and no re-enrollment when you switch to the tailnet name.
 
 **11d — point the apps at the host:** launch the app, choose "Connect to a server" from
 the mode chooser (or from Settings if already in Mode A), and enter the bare hostname
@@ -306,7 +306,7 @@ to move that data to your newly-standing server:
 1. **Ensure the server is running and reachable** at `homeflow.<tailnet>.ts.net` (Step 11).
 2. **Open Settings on the desktop app** → "Server" section → tap **"Connect to a server"**.
 3. **Enter the hostname** (`homeflow.<tailnet>.ts.net`) and tap Connect.
-4. **Log in** via Keycloak (password + passkey).
+4. **Log in** via Keycloak (password + TOTP code).
 5. **Confirm the upload prompt**: the app detects your local data and offers to upload it.
    Tap **Upload**. The export JSON is sent to `POST /api/v1/import?source=homeflow`;
    the result shows how many cycles and days were created.
@@ -317,9 +317,9 @@ to move that data to your newly-standing server:
 server are reused; days that already exist are skipped (`dailyLogsSkipped` count).
 
 **Hostname ↔ Keycloak constraint:** the host you enter must match what Keycloak stamps
-in the `iss` claim and what the WebAuthn RP ID is configured to. If the canonical
-hostname doesn't match, login will 401 and the passkey won't work. See `KEYCLOAK.md`
-for the common-gotchas checklist.
+in the `iss` claim. If the canonical hostname doesn't match, login will 401. (TOTP has no
+hostname binding, so only `iss`/redirects are affected.) See `KEYCLOAK.md` for the
+common-gotchas checklist.
 
 ---
 
@@ -336,10 +336,10 @@ rate limits, and brute-force settings first.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Login OK but every request 401s | `iss` mismatch (`PUBLIC_KEYCLOAK_URL`/port ≠ `KC_HOSTNAME`) | align them (Step 3); compare live issuer (Step 8) |
-| WebAuthn never prompts / "invalid credential" | RP-ID ≠ hostname, or CA not trusted | set RP-ID (Step 2/11c); trust Caddy CA (Step 7) / use tailnet cert |
+| TOTP code rejected ("invalid authenticator code") | server/device clock skew | sync NTP on the Pi and the code-generating device (±30s window) |
 | Migrate fails / no Flyway | ran inside the runtime image | use the build-stage one-off (Step 5) |
 | Account deletion → 403 | `manage-users` role missing after import | re-assign (Step 6b) |
 | Backend client auth fails after import | secret in Keycloak ≠ `.env` | set explicitly (Step 6a) |
 | Postgres/Keycloak reachable from LAN | dev overlay was applied | restart with `make prod` |
 | `*.ts.net` won't resolve | MagicDNS off / device not on tailnet | enable MagicDNS; re-check enrollment (11a) |
-| Passkey worked on `.lan` but fails over Tailscale | RP-ID bound to old host | set RP-ID to `*.ts.net` and re-register (11c) |
+| First login shows a passkey/security-key prompt, not a code field | realm still on the old `browser-with-passkey` flow | re-import realm, or bind `browser-with-otp` + make `CONFIGURE_TOTP` default (Step 2) |

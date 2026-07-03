@@ -7,7 +7,7 @@
     A development convenience for poking the API by hand before the desktop/Android
     clients (Phase 7) exist. It uses Keycloak's Resource Owner Password Credentials
     grant, which REQUIRES "Direct Access Grants" enabled on the `homeflow-desktop`
-    client and BYPASSES the password + passkey 2FA browser flow.
+    client and BYPASSES the password + TOTP 2FA browser flow.
 
     NEVER enable ROPC in production. The project's mandated flow is Authorization
     Code + PKCE (S256). To return the dev realm to PKCE-only when you're done:

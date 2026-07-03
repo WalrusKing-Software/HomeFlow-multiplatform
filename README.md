@@ -25,7 +25,7 @@ authoritative spec), and reimplements the server and clients in Kotlin.
           ▼       ▼   OIDC + Authorization: Bearer JWT  (over Tailscale)
         [ Caddy ]  ── TLS edge ──►  [ Ktor server ]  ──►  [ PostgreSQL ]
                                           │
-                                          └──►  [ Keycloak ]  (OIDC + WebAuthn 2FA)
+                                          └──►  [ Keycloak ]  (OIDC + TOTP 2FA)
 
          shared contract + domain math:  :core  (DTOs, cycle/analytics logic)
 ```
@@ -36,7 +36,7 @@ authoritative spec), and reimplements the server and clients in Kotlin.
   JWTs; AES-256-GCM column encryption.
 - **`:app:shared` / `:app:androidApp` / `:app:desktopApp`** — Compose Multiplatform
   desktop + Android clients (shared UI in `:app:shared`, thin entry points in the apps).
-- **Infra (unchanged from the web app):** PostgreSQL, Keycloak (OIDC + passkey
+- **Infra (unchanged from the web app):** PostgreSQL, Keycloak (OIDC + TOTP
   2FA), Caddy.
 
 ---
@@ -49,7 +49,7 @@ authoritative spec), and reimplements the server and clients in Kotlin.
 | Clients | Compose Multiplatform, Material 3, Ktor client |
 | Server | Ktor (Netty), Exposed, HikariCP, Flyway |
 | Database | PostgreSQL 16 |
-| Auth | Keycloak 26 — OIDC Authorization Code + PKCE (S256), WebAuthn passkey 2FA |
+| Auth | Keycloak 26 — OIDC Authorization Code + PKCE (S256), TOTP 2FA |
 | Reverse proxy | Caddy 2 (internal-CA TLS on LAN; real cert via Tailscale) |
 | Build | Gradle (Kotlin DSL), version catalog |
 | Containers | Docker Compose |
@@ -67,7 +67,7 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/ARCHITECTURE-client.md` | Compose Multiplatform structure, OIDC, token storage, `expect`/`actual` |
 | `__docs/data-model.md` (+ sex addendum) | full schema |
 | `__docs/API.md` | every route's contract |
-| `__docs/KEYCLOAK.md` | realm, clients, audience mapper, WebAuthn, JWT validation |
+| `__docs/KEYCLOAK.md` | realm, clients, audience mapper, TOTP 2FA, JWT validation |
 | `__docs/threat-model.md` | threats + mitigations |
 | `__docs/IMPLEMENTATION-PHASES.md` | build order with done-when checklists |
 | `__docs/DOCKER.md` / `__docs/DEPLOYMENT.md` | containers / Pi + Tailscale runbook |
