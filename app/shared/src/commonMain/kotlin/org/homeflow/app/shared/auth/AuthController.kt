@@ -129,7 +129,22 @@ class AuthController(
                 _state.value = AuthState.LoggedOut
                 return
             }
-            val tokens = oidc.refresh(refresh)
+            val tokens =
+                try {
+                    oidc.refresh(refresh)
+                } catch (e: OidcException) {
+                    if (e.isGrantRejected) {
+                        // The stored session is no longer valid (expired, revoked, or the realm/
+                        // Keycloak was recreated). Drop the dead token and send the user to a fresh
+                        // login instead of surfacing a raw token-parse error.
+                        authDebugLog("unlock: stored refresh rejected (${e.statusCode}/${e.oauthError}); re-login")
+                        tokenStore.clear()
+                        tokenHolder.clear()
+                        _state.value = AuthState.LoggedOut
+                        return
+                    }
+                    throw e
+                }
             tokens.refreshToken?.let { tokenStore.saveRefreshToken(it) }
             tokenHolder.set(tokens)
             loadUser()

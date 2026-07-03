@@ -32,6 +32,13 @@ Ktor server).
   `CONFIGURE_TOTP` as the first-login required action.
 
 ### Fixed
+- **An expired or revoked stored session now returns you to the login screen instead of
+  crashing.** When the desktop app unlocked and its stored refresh token was rejected by
+  Keycloak (expired, revoked, or the realm/Keycloak was recreated), the OAuth error body
+  was mis-parsed as a successful token response and surfaced as a cryptic
+  `field 'access_token' is required … was missing` message. Token-endpoint errors are now
+  parsed as OAuth errors (`OidcException`); a rejected grant clears the dead token and drops
+  to a fresh login, while transient network errors keep the session intact.
 - **The installed desktop app can now connect to a server.** The desktop OIDC login
   runs a loopback redirect listener on `127.0.0.1` using
   `com.sun.net.httpserver.HttpServer`, whose `jdk.httpserver` module was being stripped
