@@ -32,6 +32,13 @@ Ktor server).
   `CONFIGURE_TOTP` as the first-login required action.
 
 ### Fixed
+- **The installed desktop app can now connect to a server.** The desktop OIDC login
+  runs a loopback redirect listener on `127.0.0.1` using
+  `com.sun.net.httpserver.HttpServer`, whose `jdk.httpserver` module was being stripped
+  from the jlink-trimmed runtime in the packaged MSI/DMG/DEB — so clicking **Connect**
+  crashed with `NoClassDefFoundError: com/sun/net/httpserver/HttpServer` (it worked only
+  under `./gradlew run`, which uses the full JDK). `jdk.httpserver` is now forced into the
+  packaged runtime alongside `java.sql`.
 - **Keycloak login-theme assets now load through the Caddy reverse proxy.** Keycloak
   serves its login-theme JavaScript/CSS under `/resources`, which the Caddyfile did not
   proxy — so those scripts 404'd with an empty MIME type and login-page features that
