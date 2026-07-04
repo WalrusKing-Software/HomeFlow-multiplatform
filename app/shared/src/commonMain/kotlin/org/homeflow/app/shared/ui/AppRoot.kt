@@ -173,8 +173,16 @@ fun AppRoot(
                     // Mode C: open (or create) the local encrypted DB for offline-first storage.
                     // authController, syncEngine, and syncRepository are all created together so
                     // the engine shares the same authenticated HttpClient as the controller.
+                    // Mode C: allow an offline unlock so the local store is viewable when the
+                    // server is unreachable (the app-lock gate still guards local access).
                     val authController =
-                        remember(host) { buildAuthController(authConfigForHost(host!!), clientVersion) }
+                        remember(host) {
+                            buildAuthController(
+                                authConfigForHost(host!!),
+                                clientVersion,
+                                allowOfflineUnlock = true,
+                            )
+                        }
                     val (syncEngine, syncRepository) =
                         remember(host) {
                             val dek = localKeyStore.loadOrCreateDek()

@@ -32,7 +32,8 @@ class OidcException(
     /** The stored/presented grant was rejected — the session is gone; force a fresh login. */
     val isGrantRejected: Boolean
         get() =
-            statusCode == 400 || statusCode == 401 ||
+            statusCode == 400 ||
+                statusCode == 401 ||
                 oauthError in setOf("invalid_grant", "invalid_token", "unauthorized_client")
 }
 
