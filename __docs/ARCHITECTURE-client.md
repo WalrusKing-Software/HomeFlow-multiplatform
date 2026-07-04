@@ -128,6 +128,23 @@ owns the sequence; `OidcClient`/`TokenStore`/`AppLockGate` are `expect`/`actual`
    refresh token is used: BiometricPrompt (Android, device-credential fallback);
    OS credential prompt or app passphrase (desktop).
 
+### Offline unlock (Mode C / server-connected)
+
+A server-connected install is offline-first (Mode C): every read/write is served from
+the on-device encrypted store, and the server is a background sync peer. So the auth
+gate must not require the network. `AuthController` takes an `allowOfflineUnlock` flag
+(set true only for the Mode-C composition in `AppRoot`). When it is set and the token
+refresh — or the follow-up `GET /users/me` — fails because the server is **unreachable**
+(a transient/network error; `ApiResult.Failure.httpStatus == 0`), `unlock()` still
+reaches `AuthState.Authenticated` off the local store instead of `AuthState.Error`. It
+seeds the refresh token into `TokenHolder` (`setRefreshToken`) so the Ktor bearer
+provider can mint a fresh access token — and `SyncEngine` resume — the moment
+connectivity returns, with no re-unlock. The app-lock gate is still mandatory. A
+**rejected grant** (`OidcException.isGrantRejected`, a definitive answer from a reachable
+server) is never treated as offline: it clears the dead token and drops to a fresh
+login. The very first login still requires connectivity (interactive OIDC cannot run
+offline).
+
 ---
 
 ## Local store (Phase 13)
