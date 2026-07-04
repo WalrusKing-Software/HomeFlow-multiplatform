@@ -1,14 +1,5 @@
 # Changelog
 
-## [Unreleased] Version x.x.x - [release date]
-
-
-### Added
-
-
-### Changed
-
-
 All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/). A changelog
@@ -21,6 +12,34 @@ changed." See `CLAUDE.md` for the rules.
      Desktop only:      ## [Desktop X.Y.Z] - YYYY-MM-DD
      Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
 -->
+
+
+## [Unreleased] Version x.x.x - [release date]
+
+
+### Added
+
+
+### Changed
+- **Pain logging is now organized into collapsible body-region rows.** In the day
+  editor, pain locations are grouped under expandable headers (Head & Neck, Back,
+  Abdomen, …) that show a count badge for how many locations are selected. Tapping a
+  location opens an inline 1–10 severity slider with a "None" (unrated) option; a
+  selected location shows its severity and can be removed with a "✕". This replaces
+  the previous flat chip list with separate +/- severity steppers.
+- **Save errors in the day editor now show as a tonal error banner** instead of a
+  line of red text, making a failed save easier to notice.
+- **Section cards have a refreshed, consistent look** across the dashboard,
+  analytics, cycles, preferences, and day screens — a divider now separates each
+  card's title from its content, on a flatter tonal card.
+- **On wide windows (desktop and tablets) navigation now uses a side rail** with an
+  icon per destination, instead of the top tab row. Narrow windows (phones) keep the
+  top tabs. The rail and tabs switch automatically at a 600dp width breakpoint.
+- **Saving a day now shows a "Saving…" overlay** over the editor, making it clear the
+  save is in progress.
+- **The Settings "Danger zone" is now collapsed by default** — tap to expand it before
+  the permanent account-deletion action is shown, so it's harder to hit by accident.
+
 
 ## Version 0.1.0 - Alpha-1 — 07-04-2026
 
