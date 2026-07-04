@@ -82,16 +82,17 @@ data class AccordionColors(
     val neutralContent: Color,
 )
 
-fun defaultAccordionColors() = AccordionColors(
-    base100 = Color(0xFFFFFFFF),
-    base300 = Color(0xFFE0E0E0),
-    baseContent = Color(0xFF1A1A1A),
-    muted = Color(0xFF8A8A8A),
-    primary = Color(0xFF3B6FD6),
-    primaryContent = Color(0xFFFFFFFF),
-    neutral = Color(0xFF4A4A4A),
-    neutralContent = Color(0xFFFFFFFF),
-)
+fun defaultAccordionColors() =
+    AccordionColors(
+        base100 = Color(0xFFFFFFFF),
+        base300 = Color(0xFFE0E0E0),
+        baseContent = Color(0xFF1A1A1A),
+        muted = Color(0xFF8A8A8A),
+        primary = Color(0xFF3B6FD6),
+        primaryContent = Color(0xFFFFFFFF),
+        neutral = Color(0xFF4A4A4A),
+        neutralContent = Color(0xFFFFFFFF),
+    )
 
 /** AccordionColors mapped from the active [MaterialTheme] color scheme. */
 @Composable
@@ -129,7 +130,9 @@ fun PainRegionAccordion(
     modifier: Modifier = Modifier,
 ) {
     fun isSelected(locationId: String) = selected.any { it.locationId == locationId }
+
     fun countFor(region: PainRegion) = region.locations.count { isSelected(it.id) }
+
     fun isEditing(locationId: String) = editing?.locationId == locationId
 
     // Open/closed state per region, seeded open for any region that already
@@ -139,11 +142,12 @@ fun PainRegionAccordion(
     }
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(width = 1.dp, color = colors.base300, shape = RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
-            .background(colors.base100),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .border(width = 1.dp, color = colors.base300, shape = RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.base100),
     ) {
         regions.forEachIndexed { index, region ->
             val isOpen = openRegions.contains(region.id)
@@ -198,10 +202,11 @@ private fun RegionRow(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(horizontal = 14.dp, vertical = 11.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -218,9 +223,10 @@ private fun RegionRow(
             )
             if (count > 0) {
                 Box(
-                    modifier = Modifier
-                        .padding(start = 0.dp)
-                        .wrapContentWidth(),
+                    modifier =
+                        Modifier
+                            .padding(start = 0.dp)
+                            .wrapContentWidth(),
                 ) {
                     CountBadge(count = count, colors = colors)
                 }
@@ -239,23 +245,29 @@ private fun RegionRow(
 
         if (showDivider) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.base300)
-                    .padding(top = 1.dp), // 1px hairline
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(colors.base300)
+                        .padding(top = 1.dp),
+                // 1px hairline
             )
         }
     }
 }
 
 @Composable
-private fun CountBadge(count: Int, colors: AccordionColors) {
+private fun CountBadge(
+    count: Int,
+    colors: AccordionColors,
+) {
     Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(colors.primary)
-            .widthIn(min = 22.dp)
-            .padding(horizontal = 6.dp, vertical = 3.dp),
+        modifier =
+            Modifier
+                .clip(CircleShape)
+                .background(colors.primary)
+                .widthIn(min = 22.dp)
+                .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = count.toString(), color = colors.primaryContent, fontSize = 12.sp)
@@ -332,23 +344,25 @@ private fun LocationChip(
     val content = if (selected) colors.primaryContent else colors.baseContent
 
     Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .border(width = 1.dp, color = border, shape = RoundedCornerShape(999.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(width = 1.dp, color = border, shape = RoundedCornerShape(999.dp))
+                .background(bg)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(text = location.label, color = content, fontSize = 14.sp)
         if (selected) {
             Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(colors.primaryContent)
-                    .widthIn(min = 22.dp)
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                modifier =
+                    Modifier
+                        .clip(CircleShape)
+                        .background(colors.primaryContent)
+                        .widthIn(min = 22.dp)
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -361,10 +375,11 @@ private fun LocationChip(
             // Trailing remove affordance. Its own clickable consumes the tap so
             // the chip body's onClick (open editor) does not also fire.
             Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable(onClick = onRemove)
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                modifier =
+                    Modifier
+                        .clip(CircleShape)
+                        .clickable(onClick = onRemove)
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "✕", color = colors.primaryContent, fontSize = 12.sp)
@@ -393,11 +408,12 @@ private fun InlineEditor(
     val sliderValue = (draftSeverity ?: 5).toFloat()
 
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .border(width = 1.dp, color = colors.primary, shape = RoundedCornerShape(999.dp))
-            .background(colors.base100)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(width = 1.dp, color = colors.primary, shape = RoundedCornerShape(999.dp))
+                .background(colors.base100)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -413,9 +429,10 @@ private fun InlineEditor(
             onValueChange = { onSetDraftSeverity(it.toInt()) },
             valueRange = 1f..10f,
             steps = 8, // 8 intermediate steps -> 10 discrete positions (1..10)
-            modifier = Modifier
-                .widthIn(min = 64.dp)
-                .weight(1f),
+            modifier =
+                Modifier
+                    .widthIn(min = 64.dp)
+                    .weight(1f),
         )
 
         NoneToggle(
@@ -444,25 +461,33 @@ private fun InlineEditor(
 }
 
 @Composable
-private fun NoneToggle(isNone: Boolean, colors: AccordionColors, onClick: () -> Unit) {
+private fun NoneToggle(
+    isNone: Boolean,
+    colors: AccordionColors,
+    onClick: () -> Unit,
+) {
     val bg = if (isNone) colors.neutral else colors.base100
     val border = if (isNone) colors.neutral else colors.base300
     val content = if (isNone) colors.neutralContent else colors.muted
 
     Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .border(width = 1.dp, color = border, shape = RoundedCornerShape(999.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(width = 1.dp, color = border, shape = RoundedCornerShape(999.dp))
+                .background(bg)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Text(text = "None", color = content, fontSize = 12.sp)
     }
 }
 
 @Composable
-private fun Readout(value: Int?, colors: AccordionColors) {
+private fun Readout(
+    value: Int?,
+    colors: AccordionColors,
+) {
     val color = if (value == null) colors.muted else colors.primary
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
@@ -484,12 +509,13 @@ private fun CircleButton(
     onClick: () -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .border(width = 1.dp, color = border, shape = CircleShape)
-            .background(background)
-            .clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .border(width = 1.dp, color = border, shape = CircleShape)
+                .background(background)
+                .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = symbol, color = content, fontSize = 14.sp)

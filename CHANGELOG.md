@@ -18,6 +18,12 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **Dark mode, with a theme setting.** Settings now has an "Appearance" section to
+  choose **System**, **Light**, **Dark**, or **Classic Dark** — "System" follows your
+  device's light/dark setting, "Dark" is the HomeFlow-branded coral/crimson dark theme,
+  and "Classic Dark" is a plain, neutral dark theme. The choice is remembered across
+  restarts and applies everywhere, including the login and lock screens. On desktop
+  there's also a quick light/dark toggle in the top bar.
 
 
 ### Changed
