@@ -61,7 +61,7 @@ import kotlin.test.assertTrue
 
 /**
  * Phase 16a done-when verification for the server sync foundation
- * (`__docs/IMPLEMENTATION-PHASES-modular-offline.md` Phase 16a). Same in-process RS256 /
+ * (the `GET/POST /api/v1/sync/changes` protocol; see `__docs/API.md`). Same in-process RS256 /
  * Testcontainers harness as the other integration tests. Covers: change stamping on
  * writes; `DELETE` routes producing tombstones (+ cascade for cycles); the
  * `GET/POST /api/v1/sync/changes` protocol with a cursor, last-write-wins conflict
