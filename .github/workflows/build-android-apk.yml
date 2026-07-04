@@ -1,0 +1,154 @@
+name: Build Android Test APK
+
+# On-demand Android APK build for sideloading onto a test phone.
+#
+# Manually triggered (workflow_dispatch) against any branch you name. Builds a
+# release APK (signed with the ANDROID_KEYSTORE_* secrets, if present) and a
+# debug APK (always installable, auto-signed with the Android debug key), then
+# uploads both as workflow artifacts.
+#
+# The APKs are NOT published as a GitHub Release and are NOT committed — they are
+# temporary build outputs downloadable from the run's "Artifacts" section for 14
+# days, to copy onto the test phone (e.g. `adb install -r homeflow-<branch>-<sha>.apk`).
+#
+# Notes:
+#   - The debug build is debuggable and (see MainActivity) points SERVER mode at
+#     localhost:8443 — good for local-only / visual testing, not a real LAN server.
+#     Use the release APK for testing against your server.
+#   - A release APK is installable only if the signing secrets are configured;
+#     without them it is built UNSIGNED and named `*-unsigned.apk` (not installable).
+#   - This workflow only appears under Actions → "Run workflow" once it exists on
+#     the repository's default branch. Until then, trigger it with
+#     `gh workflow run build-android-apk.yml -f branch=<branch>`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch (or ref) to build the APK from'
+        required: true
+        default: 'develop'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-apk-${{ github.event.inputs.branch }}
+  cancel-in-progress: true   # a newer request for the same branch supersedes
+
+jobs:
+  apk:
+    name: Build APK (${{ github.event.inputs.branch }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the requested branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Resolve build identifiers
+        id: meta
+        shell: bash
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          set -euo pipefail
+          sha7="$(git rev-parse --short=7 HEAD)"
+          # Filesystem-safe branch label (feature/foo -> feature-foo).
+          bref="${BRANCH//\//-}"
+          # Monotonic versionCode with a high base so a test APK always installs
+          # over any prior install (release codes are far lower). Max is 2100000000.
+          code=$(( 2000000000 + GITHUB_RUN_NUMBER ))
+          {
+            echo "sha7=$sha7"
+            echo "bref=$bref"
+            echo "version_code=$code"
+          } >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH sha7=$sha7 versionCode=$code"
+
+      - name: Write signing keystore (if secrets present)
+        id: signing
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KS_B64}" ]]; then
+            echo "No keystore secret — the release APK will be UNSIGNED (not installable)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "${KS_B64}" | base64 -d > homeflow-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=homeflow-release.jks
+          storePassword=${KS_PW}
+          keyAlias=${KS_ALIAS}
+          keyPassword=${KS_KEY_PW}
+          EOF
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble release + debug APKs
+        shell: bash
+        run: >
+          ./gradlew :app:androidApp:assembleRelease :app:androidApp:assembleDebug
+          -PversionCode=${{ steps.meta.outputs.version_code }}
+          --no-daemon --no-configuration-cache
+
+      - name: Collect APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          bref="${{ steps.meta.outputs.bref }}"
+          sha7="${{ steps.meta.outputs.sha7 }}"
+          mkdir -p out
+
+          # Release APK — named `-unsigned` when built without signing secrets so it
+          # is obvious it will not install.
+          rel="$(ls app/androidApp/build/outputs/apk/release/*.apk | head -n1)"
+          if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
+            cp "$rel" "out/homeflow-${bref}-${sha7}.apk"
+          else
+            cp "$rel" "out/homeflow-${bref}-${sha7}-unsigned.apk"
+          fi
+
+          # Debug APK — always debug-signed and installable.
+          dbg="$(ls app/androidApp/build/outputs/apk/debug/*.apk | head -n1)"
+          cp "$dbg" "out/homeflow-${bref}-${sha7}-debug.apk"
+
+          echo "Collected (release signed=${{ steps.signing.outputs.enabled }}):"
+          ls -l out
+
+      - name: Clean up signing material
+        if: always()
+        shell: bash
+        run: rm -f homeflow-release.jks keystore.properties
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: homeflow-apk-${{ steps.meta.outputs.bref }}-${{ steps.meta.outputs.sha7 }}
+          path: out/*
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Print install instructions
+        shell: bash
+        run: |
+          echo "::notice::APKs built from branch '${{ github.event.inputs.branch }}' @ ${{ steps.meta.outputs.sha7 }} (versionCode ${{ steps.meta.outputs.version_code }})."
+          echo "::notice::Download them from this run's Artifacts section, then sideload:"
+          echo "::notice::  adb install -r homeflow-${{ steps.meta.outputs.bref }}-${{ steps.meta.outputs.sha7 }}.apk"
+          if [[ "${{ steps.signing.outputs.enabled }}" != "true" ]]; then
+            echo "::warning::Release APK is UNSIGNED (no signing secrets) — use the -debug.apk, or configure the ANDROID_KEYSTORE_* secrets."
+          fi
