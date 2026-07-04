@@ -1,9 +1,17 @@
 package org.homeflow.app.shared.ui.shell
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
@@ -19,17 +27,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.sync.SyncStatus
+import org.homeflow.app.shared.ui.components.kmp.navigation.SideNavRail
 import org.homeflow.app.shared.ui.screens.AnalyticsScreen
 import org.homeflow.app.shared.ui.screens.CyclesScreen
 import org.homeflow.app.shared.ui.screens.DashboardScreen
 import org.homeflow.app.shared.ui.screens.DayScreen
 import org.homeflow.app.shared.ui.screens.PreferencesScreen
 import org.homeflow.core.dto.ImportResultDto
+
+/** Below this window width the shell uses a top tab row; at or above it, a side rail. */
+private val RAIL_BREAKPOINT = 600.dp
 
 /** Small sync-status label for the top bar; only shown in Mode C. */
 @Composable
@@ -44,20 +58,22 @@ private fun SyncStatusChip(status: SyncStatus) {
     Text(label, fontSize = 12.sp, color = color)
 }
 
-/** The destinations of the signed-in shell, in tab order. */
+/** The destinations of the signed-in shell, in order, each with its rail icon. */
 private enum class Tab(
     val label: String,
+    val icon: ImageVector,
 ) {
-    DASHBOARD("Dashboard"),
-    DAY("Day"),
-    CYCLES("Cycles"),
-    ANALYTICS("Analytics"),
-    SETTINGS("Settings"),
+    DASHBOARD("Dashboard", Icons.Filled.Home),
+    DAY("Day", Icons.Filled.Today),
+    CYCLES("Cycles", Icons.Filled.Autorenew),
+    ANALYTICS("Analytics", Icons.Filled.Analytics),
+    SETTINGS("Settings", Icons.Filled.Settings),
 }
 
 /**
- * The signed-in shell: a top bar with logout, a tab row over the read/write screens, and
- * the selected screen below. Optional callbacks thread through to the Settings tab:
+ * The signed-in shell. On narrow windows (phones) the destinations sit in a top tab row;
+ * on wide windows (desktop, tablets) they move to a [SideNavRail] alongside the content.
+ * Optional callbacks thread through to the Settings tab:
  * - [onExport]: non-null in Mode A — "Export my data".
  * - [onConnectServer]: non-null in Mode A — "Connect to a server".
  * - [onUploadToServer]: non-null in Mode B while unmigrated — "Upload local data to server".
@@ -81,46 +97,71 @@ fun AppShell(
     val syncStatus by syncStatusFlow?.collectAsState()
         ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("HomeFlow") },
-                    actions = {
-                        if (syncStatusFlow != null) {
-                            SyncStatusChip(syncStatus)
-                        }
-                        TextButton(onClick = onLogout) { Text("Log out") }
-                    },
+    val topBar: @Composable () -> Unit = {
+        TopAppBar(
+            title = { Text("HomeFlow") },
+            actions = {
+                if (syncStatusFlow != null) {
+                    SyncStatusChip(syncStatus)
+                }
+                TextButton(onClick = onLogout) { Text("Log out") }
+            },
+        )
+    }
+
+    val screen: @Composable () -> Unit = {
+        when (tab) {
+            Tab.DASHBOARD -> DashboardScreen(repository)
+            Tab.DAY -> DayScreen(repository)
+            Tab.CYCLES -> CyclesScreen(repository)
+            Tab.ANALYTICS -> AnalyticsScreen(repository)
+            Tab.SETTINGS ->
+                PreferencesScreen(
+                    repository = repository,
+                    onDeleteAccount = onDeleteAccount,
+                    onExport = onExport,
+                    onConnectServer = onConnectServer,
+                    onUploadToServer = onUploadToServer,
+                    connectedHost = connectedHost,
+                    onSwitchToLocal = onSwitchToLocal,
                 )
-                PrimaryTabRow(selectedTabIndex = tab.ordinal) {
-                    Tab.entries.forEach { entry ->
-                        Tab(
-                            selected = entry == tab,
-                            onClick = { tab = entry },
-                            text = { Text(entry.label) },
-                        )
-                    }
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth >= RAIL_BREAKPOINT) {
+            // Wide: side navigation rail beside the content.
+            Scaffold(topBar = topBar) { padding ->
+                Row(Modifier.fillMaxSize().padding(padding)) {
+                    SideNavRail(
+                        items = Tab.entries,
+                        selectedIndex = tab.ordinal,
+                        onItemSelected = { tab = Tab.entries[it] },
+                        icon = { it.icon },
+                        label = { it.label },
+                    )
+                    Box(Modifier.weight(1f).fillMaxSize()) { screen() }
                 }
             }
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                Tab.DASHBOARD -> DashboardScreen(repository)
-                Tab.DAY -> DayScreen(repository)
-                Tab.CYCLES -> CyclesScreen(repository)
-                Tab.ANALYTICS -> AnalyticsScreen(repository)
-                Tab.SETTINGS ->
-                    PreferencesScreen(
-                        repository = repository,
-                        onDeleteAccount = onDeleteAccount,
-                        onExport = onExport,
-                        onConnectServer = onConnectServer,
-                        onUploadToServer = onUploadToServer,
-                        connectedHost = connectedHost,
-                        onSwitchToLocal = onSwitchToLocal,
-                    )
+        } else {
+            // Narrow: top tab row under the app bar.
+            Scaffold(
+                topBar = {
+                    Column {
+                        topBar()
+                        PrimaryTabRow(selectedTabIndex = tab.ordinal) {
+                            Tab.entries.forEach { entry ->
+                                Tab(
+                                    selected = entry == tab,
+                                    onClick = { tab = entry },
+                                    text = { Text(entry.label) },
+                                )
+                            }
+                        }
+                    }
+                },
+            ) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding)) { screen() }
             }
         }
     }

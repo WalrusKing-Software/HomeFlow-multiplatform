@@ -11,7 +11,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +29,7 @@ import org.homeflow.app.shared.config.customServerCertificateName
 import org.homeflow.app.shared.config.supportsCustomServerCertificate
 import org.homeflow.app.shared.data.ProbeResult
 import org.homeflow.app.shared.data.probeServer
+import org.homeflow.app.shared.ui.components.kmp.input.LabeledTextField
 
 /** The transient state of the host-entry + reachability step. */
 private sealed interface ConnectState {
@@ -103,18 +103,16 @@ fun ServerConnectScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedTextField(
+            LabeledTextField(
+                label = "Server hostname",
                 value = input,
                 onValueChange = {
                     input = it
                     error = null
                     state = ConnectState.Idle
                 },
-                label = { Text("Server hostname") },
-                placeholder = { Text("myhost.ts.net") },
-                singleLine = true,
-                isError = error != null,
-                supportingText = error?.let { { Text(it) } },
+                placeholder = "myhost.ts.net",
+                error = error,
                 enabled = state !is ConnectState.Checking,
                 modifier = Modifier.fillMaxWidth(),
             )
