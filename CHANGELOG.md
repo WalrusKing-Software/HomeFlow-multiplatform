@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] Version x.x.x - [release date]
+
+
+### Added
+
+
+### Changed
+
+
 All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/). A changelog
