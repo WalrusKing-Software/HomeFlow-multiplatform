@@ -39,6 +39,8 @@ import org.homeflow.app.shared.data.userFacingMessage
 import org.homeflow.app.shared.data.userMessage
 import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
+import org.homeflow.app.shared.ui.components.kmp.feedback.ConfirmDialog
+import org.homeflow.app.shared.ui.components.kmp.layout.ExpandableCard
 import org.homeflow.app.shared.ui.components.toLoadable
 import org.homeflow.core.dto.ImportResultDto
 
@@ -276,27 +278,18 @@ private fun SwitchToLocalButton(onSwitchToLocal: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Switch to local-only mode") }
 
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Switch to local-only mode?") },
-            text = {
-                Text(
-                    "Your data stays on this device and will stop syncing with the server. " +
-                        "You can reconnect later from Settings.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDialog = false
-                    onSwitchToLocal()
-                }) { Text("Switch") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
-            },
-        )
-    }
+    ConfirmDialog(
+        visible = showDialog,
+        title = "Switch to local-only mode?",
+        body = "Your data stays on this device and will stop syncing with the server. " +
+            "You can reconnect later from Settings.",
+        confirmLabel = "Switch",
+        onConfirm = {
+            showDialog = false
+            onSwitchToLocal()
+        },
+        onDismiss = { showDialog = false },
+    )
 }
 
 @Composable
@@ -356,7 +349,7 @@ private fun DangerZone(onDeleteAccount: suspend () -> ApiResult<Unit>) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    SectionCard("Danger zone") {
+    ExpandableCard(title = "Danger zone") {
         Text(
             "Permanently delete your account and all tracked data. This cannot be undone.",
             style = MaterialTheme.typography.bodyMedium,

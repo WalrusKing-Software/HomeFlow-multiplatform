@@ -1,9 +1,8 @@
 package org.homeflow.app.shared.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,7 +25,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
@@ -40,11 +37,18 @@ import org.homeflow.app.shared.data.SelectionType
 import org.homeflow.app.shared.ui.components.EmptyHint
 import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
+import org.homeflow.app.shared.ui.components.kmp.accordion.EditingState
+import org.homeflow.app.shared.ui.components.kmp.accordion.PainLocation
+import org.homeflow.app.shared.ui.components.kmp.accordion.PainLocationRating
+import org.homeflow.app.shared.ui.components.kmp.accordion.PainRegion
+import org.homeflow.app.shared.ui.components.kmp.accordion.PainRegionAccordion
+import org.homeflow.app.shared.ui.components.kmp.feedback.BannerStatus
+import org.homeflow.app.shared.ui.components.kmp.feedback.LoadingOverlay
+import org.homeflow.app.shared.ui.components.kmp.feedback.StatusBanner
+import org.homeflow.app.shared.ui.components.kmp.input.ToggleChipGroup
 import org.homeflow.app.shared.ui.components.toLoadable
 import org.homeflow.core.dto.PainLocationDto
 import org.homeflow.core.dto.PainRegionDto
-import org.homeflow.core.validation.MAX_SEVERITY
-import org.homeflow.core.validation.MIN_SEVERITY
 
 /**
  * The day-logging editor: editable cards for every symptom category (multi/single-select
@@ -97,51 +101,54 @@ private fun EditorForm(
     val everyday = editor.categories.filter { it.phase != "menstruation" }
     val menstruation = editor.categories.filter { it.phase == "menstruation" }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        everyday.forEach { category ->
-            CategoryEditor(category, selections[category.slug].orEmpty()) {
-                selections = selections + (category.slug to it)
-            }
-        }
-        if (menstruation.isNotEmpty()) {
-            Text("During menstruation", style = MaterialTheme.typography.titleSmall)
-            menstruation.forEach { category ->
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            everyday.forEach { category ->
                 CategoryEditor(category, selections[category.slug].orEmpty()) {
                     selections = selections + (category.slug to it)
                 }
             }
-        }
-        PainEditor(editor.painRegions, pain) { pain = it }
-        SectionCard("Notes") {
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Anything worth remembering about today") },
-            )
-        }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-        SaveBar(
-            saving = saving,
-            onCancel = onCancel,
-            onSave = {
-                scope.launch {
-                    saving = true
-                    error = null
-                    val edits = DayEdits(selections, notes, pain)
-                    when (val result = repository.saveDay(date, editor, edits)) {
-                        is ApiResult.Success -> onSaved()
-                        is ApiResult.Failure -> {
-                            error = result.message
-                            saving = false
-                        }
+            if (menstruation.isNotEmpty()) {
+                Text("During menstruation", style = MaterialTheme.typography.titleSmall)
+                menstruation.forEach { category ->
+                    CategoryEditor(category, selections[category.slug].orEmpty()) {
+                        selections = selections + (category.slug to it)
                     }
                 }
-            },
-        )
+            }
+            PainEditor(editor.painRegions, pain) { pain = it }
+            SectionCard("Notes") {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Anything worth remembering about today") },
+                )
+            }
+            error?.let { StatusBanner(status = BannerStatus.Error, message = it) }
+            SaveBar(
+                saving = saving,
+                onCancel = onCancel,
+                onSave = {
+                    scope.launch {
+                        saving = true
+                        error = null
+                        val edits = DayEdits(selections, notes, pain)
+                        when (val result = repository.saveDay(date, editor, edits)) {
+                            is ApiResult.Success -> onSaved()
+                            is ApiResult.Failure -> {
+                                error = result.message
+                                saving = false
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        LoadingOverlay(visible = saving, message = "Saving…")
     }
 }
 
@@ -162,7 +169,6 @@ private fun SaveBar(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryEditor(
     category: EditableCategory,
@@ -170,107 +176,77 @@ private fun CategoryEditor(
     onChange: (List<String>) -> Unit,
 ) {
     SectionCard(category.label) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            category.options.forEach { option ->
-                val isSelected = option.id in selected
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onChange(toggleSelection(category.selectionType, selected, option.id)) },
-                    label = { Text(option.label) },
-                )
-            }
-        }
+        ToggleChipGroup(
+            options = category.options,
+            selected = category.options.filter { it.id in selected }.toSet(),
+            onSelectionChange = { chosen ->
+                // Emit ids in the category's display order, not selection order.
+                onChange(category.options.filter { it in chosen }.map { it.id })
+            },
+            label = { it.label },
+            multiSelect = category.selectionType == SelectionType.MULTI,
+        )
     }
 }
 
-/** Toggle [optionId]: multi-select adds/removes; single-select picks it (or clears if re-tapped). */
-private fun toggleSelection(
-    type: SelectionType,
-    selected: List<String>,
-    optionId: String,
-): List<String> =
-    when {
-        type == SelectionType.SINGLE -> if (optionId in selected) emptyList() else listOf(optionId)
-        optionId in selected -> selected - optionId
-        else -> selected + optionId
-    }
-
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Pain tracking: collapsible region rows (Head & Neck, Back, Abdomen, …), each
+ * expanding to multi-select location chips with an inline 1–10 severity editor.
+ * See [PainRegionAccordion]. [editing] holds the transient open-editor draft;
+ * only committed selections land in [pain] via [onChange].
+ */
 @Composable
 private fun PainEditor(
     regions: List<PainRegionDto>,
     pain: List<PainLocationDto>,
     onChange: (List<PainLocationDto>) -> Unit,
 ) {
-    SectionCard("Pain") {
-        regions.forEach { region ->
-            Text(
-                region.label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    var editing by remember { mutableStateOf<EditingState?>(null) }
+
+    val accordionRegions = remember(regions) {
+        regions.map { region ->
+            PainRegion(
+                id = region.id,
+                label = region.label,
+                locations = region.locations.map { PainLocation(it.id, it.label) },
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                region.locations.forEach { location ->
-                    val current = pain.firstOrNull { it.locationId == location.id }
-                    FilterChip(
-                        selected = current != null,
-                        onClick = { onChange(togglePain(pain, location.id)) },
-                        label = { Text(location.label) },
-                    )
-                }
-            }
-            region.locations.forEach { location ->
-                val current = pain.firstOrNull { it.locationId == location.id } ?: return@forEach
-                SeverityRow(location.label, current.severity) { severity ->
-                    onChange(pain.map { if (it.locationId == location.id) it.copy(severity = severity) else it })
-                }
-            }
         }
+    }
+    val selected = pain.map { PainLocationRating(it.locationId, it.severity) }
+
+    SectionCard("Pain") {
+        PainRegionAccordion(
+            regions = accordionRegions,
+            selected = selected,
+            editing = editing,
+            severityOf = { id -> pain.firstOrNull { it.locationId == id }?.severity },
+            onOpenEditor = { id ->
+                editing = EditingState(id, pain.firstOrNull { it.locationId == id }?.severity)
+            },
+            onSetDraftSeverity = { severity -> editing = editing?.copy(severity = severity) },
+            onCommit = {
+                editing?.let { draft ->
+                    onChange(upsertPain(pain, draft.locationId, draft.severity))
+                }
+                editing = null
+            },
+            onCancel = { editing = null },
+            onRemove = { id ->
+                onChange(pain.filterNot { it.locationId == id })
+                if (editing?.locationId == id) editing = null
+            },
+        )
     }
 }
 
-private fun togglePain(
+/** Add [locationId] with [severity], or update its severity if already present. */
+private fun upsertPain(
     pain: List<PainLocationDto>,
     locationId: String,
+    severity: Int?,
 ): List<PainLocationDto> =
     if (pain.any { it.locationId == locationId }) {
-        pain.filterNot { it.locationId == locationId }
+        pain.map { if (it.locationId == locationId) it.copy(severity = severity) else it }
     } else {
-        pain + PainLocationDto(locationId, null)
-    }
-
-@Composable
-private fun SeverityRow(
-    label: String,
-    severity: Int?,
-    onChange: (Int?) -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onChange(decrementSeverity(severity)) }) { Text("−") }
-            Text(severity?.let { "$it/$MAX_SEVERITY" } ?: "Unrated", style = MaterialTheme.typography.bodyLarge)
-            OutlinedButton(onClick = { onChange(incrementSeverity(severity)) }) { Text("+") }
-        }
-    }
-}
-
-/** Stepping down past the minimum lands on "unrated" (null). */
-private fun decrementSeverity(severity: Int?): Int? =
-    when {
-        severity == null -> null
-        severity <= MIN_SEVERITY -> null
-        else -> severity - 1
-    }
-
-/** Stepping up from "unrated" (null) starts at the minimum severity. */
-private fun incrementSeverity(severity: Int?): Int =
-    when {
-        severity == null -> MIN_SEVERITY
-        severity >= MAX_SEVERITY -> MAX_SEVERITY
-        else -> severity + 1
+        pain + PainLocationDto(locationId, severity)
     }
