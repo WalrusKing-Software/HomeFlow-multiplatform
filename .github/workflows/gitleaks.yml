@@ -10,11 +10,13 @@ on:
     branches:
       - main
       - 'release/*'
+      - develop
       - 'develop-*'
   push:
     branches:
       - main
       - 'release/*'
+      - develop
       - 'develop-*'
 
 permissions:
