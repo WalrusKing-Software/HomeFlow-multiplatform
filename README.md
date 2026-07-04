@@ -156,45 +156,37 @@ Releases are cut per component (server / desktop / android); see
 
 Licensed under **AGPL-3.0** (see `LICENSE`). Security disclosures: see `SECURITY.md`.
 
-
-
-
-## Kotlin Multiplatform Readme Documentation
-This is a Kotlin Multiplatform project targeting Android, Desktop (JVM), Server.
-
-* [/app/shared](./app/shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./app/shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./app/shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./app/shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
-
-* [/core](./core/src) is for the code that will be shared between all targets in the project.
-  The most important subfolder is [commonMain](./core/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
-
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
-
-### Running the apps
-
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
-
-- Android app: `./gradlew :app:androidApp:assembleDebug`
-- Desktop app:
-  - Hot reload: `./gradlew :app:desktopApp:hotRun --auto`
-  - Standard run: `./gradlew :app:desktopApp:run`
-- Server: `./gradlew :server:run`
-
-### Running tests
-
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
-
-- Android tests: `./gradlew :app:shared:testAndroidHostTest`
-- Desktop tests: `./gradlew :app:shared:jvmTest`
-- Server tests: `./gradlew :server:test`
-
 ---
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+## Project layout
+
+Kotlin Multiplatform, one repository, five Gradle modules:
+
+| Module | Path | Role |
+|---|---|---|
+| `:core` | `core/` | shared DTOs, cycle/analytics domain math, validation, error codes |
+| `:server` | `server/` | Ktor (JVM) backend — auth, persistence, encryption |
+| `:app:shared` | `app/shared/` | shared Compose UI + repository + auth (`androidMain`/`jvmMain` actuals) |
+| `:app:androidApp` | `app/androidApp/` | Android entry point |
+| `:app:desktopApp` | `app/desktopApp/` | desktop entry point + packaging |
+
+The module boundaries (what belongs in `:core` vs server-only vs platform-specific)
+are described in `CLAUDE.md` and `__docs/SHARED-MODULE.md`.
+
+## Build & test
+
+```bash
+# Run
+./gradlew :server:run                       # Ktor server
+./gradlew :app:desktopApp:run               # desktop client
+./gradlew :app:desktopApp:hotRun --auto     # desktop client, hot reload
+./gradlew :app:androidApp:assembleDebug     # Android APK (debug)
+
+# Quality gate + tests
+./gradlew check                             # ktlint + detekt + all tests
+./gradlew :server:test                      # server (Testcontainers PostgreSQL)
+./gradlew :app:shared:jvmTest               # shared, desktop host
+./gradlew :app:shared:testAndroidHostTest   # shared, Android host
+```
+
+Contributions follow the branching model and CI gates in `__docs/BRANCHING.md`.
