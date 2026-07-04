@@ -86,4 +86,43 @@ class ServerConfigStoreTest {
         assertEquals("myhost.ts.net", store.loadHost())
         assertTrue(store.isMigrated())
     }
+
+    @Test
+    fun `CA cert path and name default to null`() {
+        val desktop = DesktopServerConfigStore(tmpDir)
+        assertNull(desktop.loadCaCertPath())
+        assertNull(desktop.loadCaCertName())
+    }
+
+    @Test
+    fun `saveCaCert then load round-trips path and name`() {
+        val desktop = DesktopServerConfigStore(tmpDir)
+        desktop.saveCaCert("/home/user/.homeflow/server-ca.pem", "caddy-root.crt")
+        assertEquals("/home/user/.homeflow/server-ca.pem", desktop.loadCaCertPath())
+        assertEquals("caddy-root.crt", desktop.loadCaCertName())
+    }
+
+    @Test
+    fun `clearCaCert removes CA but keeps host and migrated`() {
+        val desktop = DesktopServerConfigStore(tmpDir)
+        desktop.saveHost("myhost.ts.net")
+        desktop.setMigrated()
+        desktop.saveCaCert("/tmp/server-ca.pem", "caddy-root.crt")
+
+        desktop.clearCaCert()
+
+        assertNull(desktop.loadCaCertPath())
+        assertNull(desktop.loadCaCertName())
+        assertEquals("myhost.ts.net", desktop.loadHost())
+        assertTrue(desktop.isMigrated())
+    }
+
+    @Test
+    fun `clear wipes the CA cert too`() {
+        val desktop = DesktopServerConfigStore(tmpDir)
+        desktop.saveCaCert("/tmp/server-ca.pem", "caddy-root.crt")
+        desktop.clear()
+        assertNull(desktop.loadCaCertPath())
+        assertNull(desktop.loadCaCertName())
+    }
 }

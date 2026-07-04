@@ -1,6 +1,7 @@
 package org.homeflow.app.shared.data
 
 import io.ktor.client.engine.cio.CIOEngineConfig
+import org.homeflow.app.shared.config.DesktopServerConfigStore
 import java.io.File
 import java.security.KeyStore
 import java.security.cert.CertificateException
@@ -10,44 +11,73 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 /**
- * Dev-only TLS escape hatch for reaching a stack fronted by Caddy's **internal CA**
- * (e.g. `https://localhost` under `make dev`), whose root the JVM truststore does not
- * know — causing "unable to find valid certification path to requested target" on the
- * token exchange.
+ * TLS trust for reaching a self-hosted stack fronted by Caddy's **internal CA** (a LAN
+ * `homeflow.lan`, or `https://localhost` under `make dev`), whose root the JVM truststore
+ * does not know — otherwise the probe/token exchange fails with "unable to find valid
+ * certification path to requested target".
  *
- * **Secure by default:** the extra CA is trusted *only* when `HOMEFLOW_DEV_CA_CERT`
- * (env) or `-Dhomeflow.dev.ca` (system property) points to a PEM file. With neither
- * set, the system truststore is used unchanged (production behaviour). Export Caddy's
- * root with:
+ * The extra CA is resolved, in order, from:
+ * 1. `HOMEFLOW_DEV_CA_CERT` (env) — dev/scripted use,
+ * 2. `-Dhomeflow.dev.ca` (system property) — dev/scripted use,
+ * 3. the CA the user selected in-app (persisted by [DesktopServerConfigStore]) — the
+ *    supported path for end users on a private-CA LAN server.
  *
- * ```
- * docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
- * export HOMEFLOW_DEV_CA_CERT="$PWD/caddy-root.crt"
- * ```
+ * With none set, the system truststore is used unchanged (production/public-cert behaviour).
+ * The resolved CA is added *alongside* the system roots, so publicly-trusted servers keep
+ * working. [invalidate] forces a rebuild after the user changes their selection.
  */
 object DesktopTls {
-    private val extraTrustManager: X509TrustManager? by lazy { buildTrustManager() }
+    private var loaded = false
+    private var cachedPath: String? = null
+    private var cachedTrust: X509TrustManager? = null
 
-    /** Applies the combined (system + dev CA) trust manager to a CIO engine, if configured. */
+    /** Applies the combined (system + selected CA) trust manager to a CIO engine, if configured. */
     fun applyTo(config: CIOEngineConfig) {
-        val trust = extraTrustManager ?: return
+        val trust = currentTrustManager() ?: return
         config.https { trustManager = trust }
     }
 
+    /**
+     * Forget the cached trust manager so the next client rebuilds from the current CA source.
+     * Call after the user selects or clears a certificate — the persisted path may be unchanged
+     * (same target file) while its contents differ, so path comparison alone is insufficient.
+     */
+    @Synchronized
+    fun invalidate() {
+        loaded = false
+        cachedPath = null
+        cachedTrust = null
+    }
+
+    @Synchronized
+    private fun currentTrustManager(): X509TrustManager? {
+        val path = caPath()
+        if (!loaded || path != cachedPath) {
+            cachedPath = path
+            cachedTrust = path?.let(::buildTrustManager)
+            loaded = true
+        }
+        return cachedTrust
+    }
+
     private fun caPath(): String? =
-        (System.getenv("HOMEFLOW_DEV_CA_CERT") ?: System.getProperty("homeflow.dev.ca"))
+        (
+            System.getenv("HOMEFLOW_DEV_CA_CERT")
+                ?: System.getProperty("homeflow.dev.ca")
+                ?: DesktopServerConfigStore().loadCaCertPath()
+        )
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
-    private fun buildTrustManager(): X509TrustManager? {
-        val file = caPath()?.let(::File)?.takeIf { it.isFile } ?: return null
+    private fun buildTrustManager(path: String): X509TrustManager? {
+        val file = File(path).takeIf { it.isFile } ?: return null
         val certificate =
             file.inputStream().use { CertificateFactory.getInstance("X.509").generateCertificate(it) }
 
         val devKeyStore =
             KeyStore.getInstance(KeyStore.getDefaultType()).apply {
                 load(null, null)
-                setCertificateEntry("homeflow-dev-ca", certificate)
+                setCertificateEntry("homeflow-server-ca", certificate)
             }
 
         val managers =
@@ -66,7 +96,7 @@ object DesktopTls {
             .toList()
 }
 
-/** Trusts a server if **any** delegate trusts it (system CAs OR the extra dev CA). */
+/** Trusts a server if **any** delegate trusts it (system CAs OR the extra selected CA). */
 private class CombinedX509TrustManager(
     private val delegates: List<X509TrustManager>,
 ) : X509TrustManager {

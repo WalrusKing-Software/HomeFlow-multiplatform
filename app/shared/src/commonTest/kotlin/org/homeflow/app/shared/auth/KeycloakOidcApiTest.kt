@@ -5,23 +5,29 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.test.runTest
 import org.homeflow.app.shared.config.AuthConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class KeycloakOidcApiTest {
     private val config = AuthConfig(host = "example.test")
 
-    private fun jsonClient(body: String): HttpClient =
+    private fun jsonClient(
+        body: String,
+        status: HttpStatusCode = HttpStatusCode.OK,
+    ): HttpClient =
         HttpClient(
             MockEngine {
                 respond(
                     content = body,
+                    status = status,
                     headers = headersOf(HttpHeaders.ContentType, "application/json"),
                 )
             },
@@ -72,5 +78,24 @@ class KeycloakOidcApiTest {
 
             assertEquals("AT2", tokens.accessToken)
             assertEquals("RT2", tokens.refreshToken)
+        }
+
+    @Test
+    fun refresh_throws_oidc_exception_on_rejected_grant() =
+        runTest {
+            val api =
+                KeycloakOidcApi(
+                    config,
+                    jsonClient(
+                        body = """{"error":"invalid_grant","error_description":"Token is not active"}""",
+                        status = HttpStatusCode.BadRequest,
+                    ),
+                )
+
+            val ex = assertFailsWith<OidcException> { api.refresh("homeflow-desktop", "dead-refresh") }
+
+            assertEquals(HttpStatusCode.BadRequest.value, ex.statusCode)
+            assertEquals("invalid_grant", ex.oauthError)
+            assertTrue(ex.isGrantRejected, "invalid_grant must be treated as a rejected grant")
         }
 }

@@ -21,14 +21,13 @@
   "maxFailureWaitSeconds": 900,
   "maxDeltaTimeSeconds": 43200,
 
-  "webAuthnPolicyRpEntityName": "Period Tracker",
-  "webAuthnPolicySignatureAlgorithms": ["ES256"],
-  "webAuthnPolicyAttestationConveyancePreference": "none",
-  "webAuthnPolicyAuthenticatorAttachment": "cross-platform",
-  "webAuthnPolicyRequireResidentKey": "No",
-  "webAuthnPolicyUserVerificationRequirement": "preferred",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
 
-  "browserFlow": "browser-with-passkey",
+  "browserFlow": "browser-with-otp",
 
   "clients": [
     {
@@ -110,8 +109,8 @@
 
   "authenticationFlows": [
     {
-      "alias": "browser-with-passkey",
-      "description": "Browser flow: username+password, then a WebAuthn passkey as 2FA (see __docs/KEYCLOAK.md).",
+      "alias": "browser-with-otp",
+      "description": "Browser flow: username+password, then a TOTP code as 2FA (see __docs/KEYCLOAK.md). TOTP replaces WebAuthn because passkeys cannot use the private .lan RP-ID on Android.",
       "providerId": "basic-flow",
       "topLevel": true,
       "builtIn": false,
@@ -141,14 +140,14 @@
           "authenticatorFlow": true,
           "requirement": "ALTERNATIVE",
           "priority": 30,
-          "flowAlias": "browser-with-passkey forms",
+          "flowAlias": "browser-with-otp forms",
           "userSetupAllowed": false
         }
       ]
     },
     {
-      "alias": "browser-with-passkey forms",
-      "description": "Username/password form, then a conditional WebAuthn passkey challenge.",
+      "alias": "browser-with-otp forms",
+      "description": "Username/password form, then a conditional TOTP challenge.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
@@ -164,14 +163,14 @@
           "authenticatorFlow": true,
           "requirement": "CONDITIONAL",
           "priority": 20,
-          "flowAlias": "browser-with-passkey Browser - Conditional WebAuthn",
+          "flowAlias": "browser-with-otp Browser - Conditional OTP",
           "userSetupAllowed": false
         }
       ]
     },
     {
-      "alias": "browser-with-passkey Browser - Conditional WebAuthn",
-      "description": "Challenge for the WebAuthn passkey only if the user has one registered.",
+      "alias": "browser-with-otp Browser - Conditional OTP",
+      "description": "Challenge for the TOTP code only if the user has one configured.",
       "providerId": "basic-flow",
       "topLevel": false,
       "builtIn": false,
@@ -184,7 +183,7 @@
           "userSetupAllowed": false
         },
         {
-          "authenticator": "webauthn-authenticator",
+          "authenticator": "auth-otp-form",
           "authenticatorFlow": false,
           "requirement": "REQUIRED",
           "priority": 20,
@@ -200,7 +199,7 @@
       "name": "Configure OTP",
       "providerId": "CONFIGURE_TOTP",
       "enabled": true,
-      "defaultAction": false,
+      "defaultAction": true,
       "priority": 10,
       "config": {}
     },
@@ -253,8 +252,8 @@
       "alias": "webauthn-register",
       "name": "Webauthn Register",
       "providerId": "webauthn-register",
-      "enabled": true,
-      "defaultAction": true,
+      "enabled": false,
+      "defaultAction": false,
       "priority": 70,
       "config": {}
     },

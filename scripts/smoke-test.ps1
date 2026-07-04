@@ -10,7 +10,7 @@
       - The backend answers /health through Caddy (and internally)
       - Unauthenticated / bad-token API calls are rejected 401 in the ApiError shape
 
-    It does NOT need a real user token (that needs the OIDC + passkey flow, which
+    It does NOT need a real user token (that needs the OIDC + TOTP flow, which
     arrives with the client apps in Phase 7). It only reads non-secret values from
     .env (APP_HOSTNAME, DB/role names) and never writes anything.
 

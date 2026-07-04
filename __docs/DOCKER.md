@@ -192,6 +192,7 @@ the backend. It is never auto-merged.
     handle /api/*   { reverse_proxy backend:8080 }
     handle /health  { reverse_proxy backend:8080 }
     handle /realms/* { reverse_proxy keycloak:8080 }   # OIDC for the native clients
+    handle /resources/* { reverse_proxy keycloak:8080 } # Keycloak login-theme JS/CSS (login/OTP pages)
     header {
         X-Frame-Options DENY
         X-Content-Type-Options nosniff

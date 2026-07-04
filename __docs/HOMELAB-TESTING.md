@@ -110,14 +110,11 @@ chmod 600 .env
 > safe (password manager). Rotating it makes all encrypted notes and sex-tracking
 > data unreadable.
 
-### 2.3 — Set the WebAuthn RP ID
+### 2.3 — Second factor (TOTP) — nothing to set
 
-Follow **DEPLOYMENT.md Step 2** — edit `infra/keycloak/realm-export.json`:
-
-```json
-"webAuthnPolicyRpId": "homeflow.<tailnet>.ts.net",
-"webAuthnPolicyPasswordlessRpId": "homeflow.<tailnet>.ts.net",
-```
+The second factor is TOTP, which has no hostname/RP-ID binding — there is nothing to edit
+in `infra/keycloak/realm-export.json` for your hostname. See **DEPLOYMENT.md Step 2**. You'll
+enroll TOTP on first login (§2.x below).
 
 ### 2.4 — Configure Caddy for the Tailscale cert
 
@@ -254,8 +251,8 @@ This is the "adopt a server" flow (`DEPLOYMENT.md Step 12`).
 2. Tap **"Connect to a server"** in the Server section.
 3. Enter the bare hostname: `homeflow.<tailnet>.ts.net` (no `https://`).
 4. The app opens a browser for Keycloak login — sign in with your username and
-   password. On first login Keycloak will prompt you to **register a passkey**
-   (WebAuthn) — follow the browser prompt to register one.
+   password. On first login Keycloak shows a **QR code to enroll TOTP** — scan it into
+   Bitwarden or any authenticator app and enter the 6-digit code to confirm.
 5. After login, the app detects your local Mode A data and shows an **upload prompt**.
 6. Tap **Upload**. The app POSTs your full history to `POST /api/v1/import`.
 7. A summary shows how many cycles and days were uploaded.
@@ -282,7 +279,7 @@ Install the APK (`homeflow-android-0.1.19-test.<sha>.apk`) on your Android devic
 2. Transfer the APK to the device (AirDrop, USB, or email it to yourself).
 3. Install it.
 4. Open HomeFlow → **"Connect to a server"** → enter `homeflow.<tailnet>.ts.net`.
-5. Log in (passkey registered in Part 4 works here too).
+5. Log in (password + the same TOTP code from your authenticator — the code works on any device).
 6. Your cycles and days should appear immediately — data is coming from the server.
 
 ---
@@ -305,7 +302,7 @@ crontab -e
 |---|---|---|
 | `curl /health` returns `502` | Backend not started or crashed | `docker compose logs backend` |
 | Login 401s on every request | `iss` mismatch — Keycloak URL ≠ `APP_HOSTNAME` | align `PUBLIC_KEYCLOAK_URL` and `APP_HOSTNAME` in `.env`; restart |
-| Passkey registration fails | RP-ID ≠ hostname | confirm `webAuthnPolicyRpId` in realm-export matches `APP_HOSTNAME` (Step 2.3) |
+| TOTP code rejected | server/device clock skew | sync NTP on the LXC and the code-generating device (±30s window) |
 | `homeflow.<tailnet>.ts.net` doesn't resolve | Device not on Tailscale / MagicDNS off | check tailnet enrollment; enable MagicDNS |
 | Docker inside LXC crashes | `nesting` or `keyctl` not enabled | Proxmox → LXC → Options → Features → enable both; restart LXC |
 | GHCR pull denied | Not authenticated | `docker login ghcr.io` with PAT (read:packages) |
