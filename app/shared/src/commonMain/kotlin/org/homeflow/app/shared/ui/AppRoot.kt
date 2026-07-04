@@ -6,11 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,12 +30,16 @@ import org.homeflow.app.shared.config.AppMode
 import org.homeflow.app.shared.config.authConfigForHost
 import org.homeflow.app.shared.config.createAppModeStore
 import org.homeflow.app.shared.config.createServerConfigStore
+import org.homeflow.app.shared.config.createThemeStore
 import org.homeflow.app.shared.crypto.loadOrCreateDek
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.local.LocalBootstrap
 import org.homeflow.app.shared.data.local.LocalDataSource
 import org.homeflow.app.shared.data.local.LocalDatabaseFactory
 import org.homeflow.app.shared.data.sync.SyncEngine
+import org.homeflow.app.shared.ui.theme.HomeFlowTheme
+import org.homeflow.app.shared.ui.theme.LocalThemeController
+import org.homeflow.app.shared.ui.theme.ThemeController
 import org.homeflow.core.dto.ImportResultDto
 
 /**
@@ -57,7 +61,7 @@ fun AppRoot(
     serverHostOverride: String? = null,
     clientVersion: String = "unknown",
 ) {
-    MaterialTheme {
+    AppThemeProvider {
         val modeStore = remember { createAppModeStore() }
         val localKeyStore = remember { createLocalKeyStore() }
         val serverConfigStore = remember { createServerConfigStore() }
@@ -264,6 +268,19 @@ fun AppRoot(
                 }
             }
         }
+    }
+}
+
+/**
+ * Creates the app's [ThemeController], provides it via [LocalThemeController], and applies
+ * [HomeFlowTheme] — the single MaterialTheme for the whole app, above the auth gate so login
+ * and lock screens are themed too.
+ */
+@Composable
+private fun AppThemeProvider(content: @Composable () -> Unit) {
+    val themeController = remember { ThemeController(createThemeStore()) }
+    CompositionLocalProvider(LocalThemeController provides themeController) {
+        HomeFlowTheme(themeController.preference, content)
     }
 }
 
