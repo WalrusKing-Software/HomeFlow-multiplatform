@@ -47,25 +47,28 @@ fun StatusBanner(
     onDismiss: (() -> Unit)? = null,
 ) {
     val colors = MaterialTheme.colorScheme
-    val (bg, contentColor) = when (status) {
-        BannerStatus.Success -> colors.tertiaryContainer to colors.onTertiaryContainer
-        BannerStatus.Warning -> Color(0xFFFFF3CD) to Color(0xFF664D03)
-        BannerStatus.Error   -> colors.errorContainer to colors.onErrorContainer
-        BannerStatus.Info    -> colors.secondaryContainer to colors.onSecondaryContainer
-    }
-    val label = when (status) {
-        BannerStatus.Success -> "✓ "
-        BannerStatus.Warning -> "⚠ "
-        BannerStatus.Error   -> "✕ "
-        BannerStatus.Info    -> "ℹ "
-    }
+    val (bg, contentColor) =
+        when (status) {
+            BannerStatus.Success -> colors.tertiaryContainer to colors.onTertiaryContainer
+            BannerStatus.Warning -> Color(0xFFFFF3CD) to Color(0xFF664D03)
+            BannerStatus.Error -> colors.errorContainer to colors.onErrorContainer
+            BannerStatus.Info -> colors.secondaryContainer to colors.onSecondaryContainer
+        }
+    val label =
+        when (status) {
+            BannerStatus.Success -> "✓ "
+            BannerStatus.Warning -> "⚠ "
+            BannerStatus.Error -> "✕ "
+            BannerStatus.Info -> "ℹ "
+        }
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(bg)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(bg)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

@@ -47,10 +47,11 @@ fun <T> SegmentedTabBar(
             SegmentedButton(
                 selected = index == selectedIndex,
                 onClick = { onTabSelected(index) },
-                shape = SegmentedButtonDefaults.itemShape(
-                    index = index,
-                    count = tabs.size,
-                ),
+                shape =
+                    SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = tabs.size,
+                    ),
                 icon = {
                     if (tabIcon != null) {
                         SegmentedButtonDefaults.Icon(active = index == selectedIndex) {

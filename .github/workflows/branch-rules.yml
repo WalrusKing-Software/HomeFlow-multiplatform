@@ -5,9 +5,9 @@ name: Branch Rules
 # branch a PR is allowed to come from. This check fails the PR when the
 # head -> base flow is not allowed.
 #
-#   main          <-  release/x.y.z              (release PRs only)
-#   release/*     <-  develop-* | feature/* | bugfix/*
-#   develop-*     <-  feature/* | bugfix/*       (integration of work branches)
+#   main               <-  release/x.y.z              (release PRs only)
+#   release/*          <-  develop-* | feature/* | bugfix/*
+#   develop | develop-* <- feature/* | bugfix/* | docs/*  (integration of work branches)
 #
 # develop-* is the integration branch for the next release: work branches merge
 # into it while the version number is still undecided, then it lands on a
@@ -19,6 +19,7 @@ on:
     branches:
       - main
       - 'release/*'
+      - develop
       - 'develop-*'
 
 permissions:
@@ -56,11 +57,11 @@ jobs:
                 fail "Only 'develop-*' (or 'feature/*'/'bugfix/*' for hotfixes) may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
-            develop-*)
-              if [[ "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
+            develop|develop-*)
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs)/.+ ]]; then
                 echo "OK: work PR into '$BASE' from '$HEAD'."
               else
-                fail "Only 'feature/*' or 'bugfix/*' branches may be merged into '$BASE' (got head '$HEAD')."
+                fail "Only 'feature/*', 'bugfix/*', or 'docs/*' branches may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
             *)

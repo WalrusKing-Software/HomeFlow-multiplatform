@@ -61,7 +61,7 @@ fun ExpandableCard(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
-    expanded: Boolean? = null,           // null = uncontrolled
+    expanded: Boolean? = null, // null = uncontrolled
     onToggle: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -76,19 +76,21 @@ fun ExpandableCard(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.large,
     ) {
         Column {
             // Clickable header
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = toggle)
-                    .padding(16.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = toggle)
+                        .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {

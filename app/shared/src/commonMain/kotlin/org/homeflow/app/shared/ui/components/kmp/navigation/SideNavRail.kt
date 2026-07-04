@@ -60,11 +60,18 @@ fun <T> SideNavRail(
     NavigationRail(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        header = if (header != null) ({
-            Spacer(Modifier.height(8.dp))
-            header()
-            Spacer(Modifier.height(8.dp))
-        }) else null,
+        header =
+            if (header != null) {
+                (
+                    {
+                        Spacer(Modifier.height(8.dp))
+                        header()
+                        Spacer(Modifier.height(8.dp))
+                    }
+                )
+            } else {
+                null
+            },
     ) {
         Spacer(Modifier.height(8.dp))
         items.forEachIndexed { index, item ->
@@ -82,7 +89,7 @@ fun <T> SideNavRail(
                                         modifier = Modifier.padding(horizontal = 2.dp),
                                     )
                                 }
-                            }
+                            },
                         ) {
                             Icon(
                                 imageVector = icon(item),
