@@ -66,16 +66,47 @@ class LocalDailyLogsStore(
             )
         }
 
-        // Conflict check.
+        // Conflict check (live rows only — selectByDate filters out tombstones).
         val existing = q.selectByDate(userId, date).executeAsOneOrNull()
         if (existing != null) {
             return ApiResult.Failure(ErrorCode.CONFLICT, "A daily log already exists for this date.", 409)
         }
 
         val now = Clock.System.now().toString()
+
+        // A previously-deleted day still occupies the UNIQUE(user_id, log_date) slot, yet is
+        // hidden from selectByDate above — so a plain INSERT would hit the constraint and throw
+        // (crashing the app). Resurrect the tombstoned anchor in place as a fresh, empty log
+        // instead. This is the local counterpart of the server's live-scoped-uniqueness fix;
+        // the outbox upsert re-surfaces the day on the server via last-write-wins on updated_at.
+        val tombstoned = q.selectByDateIncludingDeleted(userId, date).executeAsOneOrNull()
+        if (tombstoned != null) {
+            db.transaction {
+                clearSubLogsAndPain(tombstoned.id)
+                q.resurrect(cycleId, now, tombstoned.id, userId)
+            }
+            return ApiResult.Success(Unit)
+        }
+
         val id = Uuid.random().toString()
         q.insert(id, userId, cycleId, date, null, now, now, null)
         return ApiResult.Success(Unit)
+    }
+
+    /**
+     * Hard-clears every sub-log (multi/single/sex) and pain row attached to [logId]. Used when
+     * resurrecting a tombstoned anchor so it comes back empty rather than carrying the deleted
+     * day's old selections (soft-delete leaves the sub-log rows in place).
+     */
+    private fun clearSubLogsAndPain(logId: String) {
+        db.dailyLogSubsQueries.deleteMultiByLog(logId)
+        db.dailyLogSubsQueries.deleteSingleByLog(logId)
+        db.dailyLogSubsQueries.deleteSexByLogId(logId)
+        val pain = painQ.selectByLogId(logId).executeAsOneOrNull()
+        if (pain != null) {
+            painQ.deleteLocationsByPainLogId(pain.id)
+            painQ.deletePainLogByLogId(logId)
+        }
     }
 
     fun patchNotes(
