@@ -13,7 +13,7 @@ changed." See `CLAUDE.md` for the rules.
      Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
 -->
 
-## [Unreleased] Version 0.1.0 — [Release-Date]
+## Version 0.1.0 - Alpha-1 — 07-04-2026
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
