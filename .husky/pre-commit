@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pre-commit: Kotlin format/lint, secret scan.
+#
+# Activate without Node by pointing git at this directory:
+#   git config core.hooksPath .husky
+# (or install Husky: `npm i -D husky && npx husky` if you add a package.json).
+#
+# The Gradle steps are guarded on ./gradlew existing, so this hook is a safe
+# no-op until the Gradle project is scaffolded (Phase 0).
+
+set -e
+
+if [ -x ./gradlew ]; then
+  echo "Running ktlint format check..."
+  ./gradlew ktlintCheck --daemon
+fi
+
+echo "Scanning for secrets..."
+sh ./scripts/check-secrets.sh
+
+# Version bumps are intentional manual operations before tagging a component or
+# full-suite release. Run `sh scripts/bump-version.sh <server|desktop|android|all>`
+# when you are ready to cut a release. See __docs/BRANCHING.md.

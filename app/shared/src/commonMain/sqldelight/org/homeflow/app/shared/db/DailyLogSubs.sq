@@ -1,0 +1,106 @@
+-- Multi-select symptom sub-logs (emotions, sleep, discharge, skin, digestion, mind).
+CREATE TABLE IF NOT EXISTS daily_log_multi_select (
+    id          TEXT NOT NULL PRIMARY KEY,
+    log_id      TEXT NOT NULL REFERENCES daily_logs(id),
+    category_id TEXT NOT NULL REFERENCES ref_symptom_categories(id),
+    option_id   TEXT NOT NULL REFERENCES ref_symptom_options(id),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    deleted_at  TEXT,
+    UNIQUE(log_id, category_id, option_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_select_log_cat ON daily_log_multi_select(log_id, category_id);
+
+-- Single-select symptom sub-logs (energy, blood_flow, collection_method).
+CREATE TABLE IF NOT EXISTS daily_log_single_select (
+    id          TEXT NOT NULL PRIMARY KEY,
+    log_id      TEXT NOT NULL REFERENCES daily_logs(id),
+    category_id TEXT NOT NULL REFERENCES ref_symptom_categories(id),
+    option_id   TEXT NOT NULL REFERENCES ref_symptom_options(id),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    deleted_at  TEXT,
+    UNIQUE(log_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_single_select_log_cat ON daily_log_single_select(log_id, category_id);
+
+-- Sex payload stored as plaintext JSON array of option-id strings inside the encrypted DB.
+CREATE TABLE IF NOT EXISTS daily_log_sex (
+    id         TEXT NOT NULL PRIMARY KEY,
+    log_id     TEXT NOT NULL REFERENCES daily_logs(id) UNIQUE,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
+);
+
+-- Multi-select queries --
+
+-- Used by the sync assembler to get all multi-select entries for a log in one pass.
+selectAllMultiByLog:
+SELECT category_id, option_id
+FROM daily_log_multi_select
+WHERE log_id = :logId AND deleted_at IS NULL;
+
+-- Used by the sync assembler to get all single-select entries for a log in one pass.
+selectAllSingleByLog:
+SELECT category_id, option_id
+FROM daily_log_single_select
+WHERE log_id = :logId AND deleted_at IS NULL;
+
+selectMultiByLogAndCategory:
+SELECT dms.option_id
+FROM daily_log_multi_select dms
+WHERE dms.log_id = :logId AND dms.category_id = :categoryId AND dms.deleted_at IS NULL;
+
+deleteMultiByLogAndCategory:
+DELETE FROM daily_log_multi_select WHERE log_id = :logId AND category_id = :categoryId;
+
+deleteMultiByLog:
+DELETE FROM daily_log_multi_select WHERE log_id = :logId;
+
+insertMulti:
+INSERT OR IGNORE INTO daily_log_multi_select (id, log_id, category_id, option_id, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Single-select queries --
+
+selectSingleByLogAndCategory:
+SELECT dss.option_id
+FROM daily_log_single_select dss
+WHERE dss.log_id = :logId AND dss.category_id = :categoryId AND dss.deleted_at IS NULL;
+
+deleteSingleByLogAndCategory:
+DELETE FROM daily_log_single_select WHERE log_id = :logId AND category_id = :categoryId;
+
+deleteSingleByLog:
+DELETE FROM daily_log_single_select WHERE log_id = :logId;
+
+insertSingle:
+INSERT OR REPLACE INTO daily_log_single_select (id, log_id, category_id, option_id, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Sex queries --
+
+selectSexByLogId:
+SELECT payload FROM daily_log_sex WHERE log_id = :logId AND deleted_at IS NULL;
+
+upsertSex:
+INSERT OR REPLACE INTO daily_log_sex (id, log_id, payload, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteSexByLogId:
+DELETE FROM daily_log_sex WHERE log_id = :logId;
+
+-- Delete all rows --
+
+deleteAllMulti:
+DELETE FROM daily_log_multi_select;
+
+deleteAllSingle:
+DELETE FROM daily_log_single_select;
+
+deleteAllSex:
+DELETE FROM daily_log_sex;

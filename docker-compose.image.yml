@@ -1,0 +1,29 @@
+# docker-compose.image.yml — use a pre-built GHCR server image instead of building on the Pi.
+#
+# Usage (override the base docker-compose.yml):
+#   HOMEFLOW_IMAGE=ghcr.io/ashay1341/homeflow-multiplatform-server:test-<sha> \
+#     docker compose -f docker-compose.yml -f docker-compose.image.yml up -d
+#
+# This replaces the `build:` directive in the base file with `image:`, so Docker
+# pulls the pre-built image from GHCR rather than running `./gradlew :server:installDist`
+# on the Pi. The Pi needs to authenticate to GHCR first (see below).
+#
+# Authenticate on the Pi (once per machine, or after token rotation):
+#   docker login ghcr.io -u <github-username> --password-stdin
+#   # paste a GitHub PAT with read:packages scope, then Ctrl-D
+#
+# Produce the image via the release-test pipeline (push to release-test branch),
+# or via the real release pipeline (push a v* tag). The test image tag is printed
+# in the "Print pull command" step of the Server job in GitHub Actions.
+#
+# For the migration job (Flyway), the image tag must also be set when using the
+# build-stage migration approach from DEPLOYMENT.md §5. Use the dist archive
+# (homeflow-server-<version>.tar.gz from the run artifacts) instead:
+#   tar -xzf homeflow-server-<version>.tar.gz
+#   # then run migrations using the Gradle wrapper from the dist
+# OR build a throwaway migrate image separately (DEPLOYMENT.md §5, unchanged).
+
+services:
+  backend:
+    image: ${HOMEFLOW_IMAGE:?Set HOMEFLOW_IMAGE to the GHCR image tag, e.g. ghcr.io/ashay1341/homeflow-multiplatform-server:0.1.19}
+    build: !reset null

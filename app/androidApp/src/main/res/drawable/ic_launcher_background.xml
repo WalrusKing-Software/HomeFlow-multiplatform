@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HomeFlow adaptive-icon background: the warm cream→crimson diagonal gradient
+     from icons/homeflow-icon.svg. Full-bleed square; the launcher applies its own
+     mask, so no rounded corners are baked in here. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path android:pathData="M0,0 h512 v512 h-512 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="512"
+                android:endY="512">
+                <item android:offset="0.0" android:color="#FFB5A7" />
+                <item android:offset="0.55" android:color="#F08080" />
+                <item android:offset="1.0" android:color="#C9184A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

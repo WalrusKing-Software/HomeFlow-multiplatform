@@ -1,0 +1,64 @@
+CREATE TABLE IF NOT EXISTS daily_logs (
+    id         TEXT NOT NULL PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    cycle_id   TEXT NOT NULL REFERENCES cycles(id),
+    log_date   TEXT NOT NULL,
+    notes      TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT,
+    UNIQUE(user_id, log_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date);
+CREATE INDEX IF NOT EXISTS idx_daily_logs_cycle_id ON daily_logs(cycle_id);
+
+selectByDate:
+SELECT * FROM daily_logs WHERE user_id = :userId AND log_date = :logDate AND deleted_at IS NULL;
+
+selectByCycleId:
+SELECT * FROM daily_logs WHERE cycle_id = :cycleId AND deleted_at IS NULL ORDER BY log_date;
+
+insert:
+INSERT INTO daily_logs (id, user_id, cycle_id, log_date, notes, created_at, updated_at, deleted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateNotes:
+UPDATE daily_logs SET notes = :notes, updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+updateTimestamp:
+UPDATE daily_logs SET updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+softDelete:
+UPDATE daily_logs SET deleted_at = :deletedAt, updated_at = :updatedAt WHERE id = :id AND user_id = :userId;
+
+softDeleteByDate:
+UPDATE daily_logs SET deleted_at = :deletedAt, updated_at = :updatedAt WHERE user_id = :userId AND log_date = :logDate AND deleted_at IS NULL;
+
+selectByDateIncludingDeleted:
+SELECT * FROM daily_logs WHERE user_id = :userId AND log_date = :logDate;
+
+selectByIdIncludingDeleted:
+SELECT * FROM daily_logs WHERE id = :id AND user_id = :userId;
+
+-- Resurrect a soft-deleted anchor in place as a fresh, empty log. Reusing the row (rather
+-- than inserting a new one) avoids violating UNIQUE(user_id, log_date), which still counts
+-- the tombstone. The caller clears the old sub-logs/pain first.
+resurrect:
+UPDATE daily_logs SET cycle_id = :cycleId, notes = NULL, deleted_at = NULL, updated_at = :updatedAt
+WHERE id = :id AND user_id = :userId;
+
+upsert:
+INSERT OR REPLACE INTO daily_logs (id, user_id, cycle_id, log_date, notes, created_at, updated_at, deleted_at)
+VALUES (:id, :userId, :cycleId, :logDate, :notes, :createdAt, :updatedAt, :deletedAt);
+
+deleteAll:
+DELETE FROM daily_logs;
+
+-- Used by analytics: dates with a flow log (blood_flow category is single-select).
+selectDatesWithFlow:
+SELECT dl.log_date FROM daily_logs dl
+INNER JOIN daily_log_single_select dlss ON dlss.log_id = dl.id
+INNER JOIN ref_symptom_options rso ON rso.id = dlss.option_id
+INNER JOIN ref_symptom_categories rsc ON rsc.id = rso.category_id
+WHERE dl.cycle_id = :cycleId AND rsc.slug = 'blood_flow' AND dl.deleted_at IS NULL;
