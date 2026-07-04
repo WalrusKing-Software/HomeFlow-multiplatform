@@ -133,6 +133,34 @@ class LocalDataSourceContractTest {
         }
 
     @Test
+    fun `recreate a previously deleted day does not crash and starts empty`() =
+        runTest {
+            val ds = ds()
+            val cycle = (ds.createCycle("2024-01-15") as ApiResult.Success).value
+            // Log the day with a selection, then delete it (leaves a soft-delete tombstone
+            // that still occupies the UNIQUE(user_id, log_date) slot).
+            ds.createDailyLog("2024-01-16", cycle.id)
+            val emotionOption =
+                (ds.getSymptomCategories() as ApiResult.Success)
+                    .value.categories
+                    .first { it.slug == "emotions" }
+                    .options
+                    .first()
+                    .id
+            ds.putOptionIds("2024-01-16", "emotions", listOf(emotionOption))
+            ds.deleteDay("2024-01-16")
+
+            // Re-adding the same day must NOT throw a UNIQUE-constraint violation (the crash).
+            val recreate = ds.createDailyLog("2024-01-16", cycle.id)
+            assertIs<ApiResult.Success<*>>(recreate)
+
+            // And the resurrected day is a fresh, empty log (old selections cleared).
+            val log = (ds.getDailyLog("2024-01-16") as ApiResult.Success).value
+            assertNull(log.emotions)
+            assertNull(log.notes)
+        }
+
+    @Test
     fun `createDailyLog unknown cycle returns VALIDATION_ERROR`() =
         runTest {
             val result = ds().createDailyLog("2024-01-15", "no-such-cycle")

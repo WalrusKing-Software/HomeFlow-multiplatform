@@ -58,6 +58,9 @@ WHERE dms.log_id = :logId AND dms.category_id = :categoryId AND dms.deleted_at I
 deleteMultiByLogAndCategory:
 DELETE FROM daily_log_multi_select WHERE log_id = :logId AND category_id = :categoryId;
 
+deleteMultiByLog:
+DELETE FROM daily_log_multi_select WHERE log_id = :logId;
+
 insertMulti:
 INSERT OR IGNORE INTO daily_log_multi_select (id, log_id, category_id, option_id, created_at, updated_at, deleted_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -71,6 +74,9 @@ WHERE dss.log_id = :logId AND dss.category_id = :categoryId AND dss.deleted_at I
 
 deleteSingleByLogAndCategory:
 DELETE FROM daily_log_single_select WHERE log_id = :logId AND category_id = :categoryId;
+
+deleteSingleByLog:
+DELETE FROM daily_log_single_select WHERE log_id = :logId;
 
 insertSingle:
 INSERT OR REPLACE INTO daily_log_single_select (id, log_id, category_id, option_id, created_at, updated_at, deleted_at)
