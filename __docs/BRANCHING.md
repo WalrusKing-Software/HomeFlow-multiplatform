@@ -46,8 +46,12 @@ bugfix/<desc>             a single bug fix
   release branches tidy and the version choice deferred to the last responsible moment.
   Name it anything after `develop-` (`develop-next`, `develop-0.2`, a theme, …); the
   ruleset matches `develop-*`.
-- A release branch is named for the **target version only**; pre-release qualifiers
-  (`-alpha`, `-rc`) live in **tags**, not branch names.
+- A release branch is named for the **target version** (`release/x.y.z`). The
+  version-only form is the canonical, preferred style, with pre-release qualifiers
+  (`-alpha`, `-rc`) carried in **tags**. An optional `v` prefix and/or a pre-release
+  suffix on the branch name are also accepted (e.g. `release/v0.1.0-alpha-1`) — the
+  branch-flow check matches `release/v?x.y.z[-suffix]`. Either way, the published
+  pre-release identity lives in the **tag** (`v0.1.0-alpha.1`).
 - Optional `feature/server-…`, `feature/desktop-…`, `feature/android-…`,
   `feature/shared-…` prefixes (convention, not enforced) keep intent legible.
 
