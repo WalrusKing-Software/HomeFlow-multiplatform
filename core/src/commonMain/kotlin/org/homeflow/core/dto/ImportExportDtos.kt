@@ -22,8 +22,7 @@ data class ImportResultDto(
 /**
  * The native `homeflow` export/import envelope (`GET /api/v1/export?format=json`,
  * `POST /api/v1/import?source=homeflow`). Slug-and-date-keyed, UUID-free — see
- * `__docs/API.md` "Import & Export" and decision D4 in
- * `__docs/IMPLEMENTATION-PHASES-modular-offline.md`.
+ * `__docs/API.md` "Import & Export" (slug-and-date-keyed, UUID-free).
  */
 @Serializable
 data class HomeFlowExport(

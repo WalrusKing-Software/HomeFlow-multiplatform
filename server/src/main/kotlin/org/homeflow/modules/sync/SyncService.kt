@@ -29,8 +29,7 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
- * Push and pull handlers for Phase 16a sync endpoints (`__docs/API.md`,
- * `__docs/IMPLEMENTATION-PHASES-modular-offline.md`).
+ * Push and pull handlers for the Phase 16a sync endpoints (`__docs/API.md`).
  *
  * **Push** (`POST /api/v1/sync/changes`): applies incoming entity updates from a client
  * using Last-Write-Wins (LWW) merge. After applying, returns the server's current state
