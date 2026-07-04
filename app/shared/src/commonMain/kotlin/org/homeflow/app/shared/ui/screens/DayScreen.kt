@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +27,7 @@ import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.ui.components.DateStepperField
 import org.homeflow.app.shared.ui.components.EmptyHint
 import org.homeflow.app.shared.ui.components.Loadable
+import org.homeflow.app.shared.ui.components.kmp.feedback.ConfirmDialog
 import org.homeflow.app.shared.ui.components.toLoadable
 
 /** Day view: a date stepper over the resolved log for the chosen day, with edit and delete affordances. */
@@ -58,27 +57,23 @@ fun DayScreen(repository: HomeFlowRepository) {
         value = repository.loadDay(date).toLoadable()
     }
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete this day?") },
-            text = { Text("This will permanently delete the log for $date. This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteDialog = false
-                    scope.launch {
-                        when (val result = repository.deleteDay(date.toString())) {
-                            is ApiResult.Success -> reloadKey++
-                            is ApiResult.Failure -> deleteError = result.message
-                        }
-                    }
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            },
-        )
-    }
+    ConfirmDialog(
+        visible = showDeleteDialog,
+        title = "Delete this day?",
+        body = "This will permanently delete the log for $date. This cannot be undone.",
+        confirmLabel = "Delete",
+        destructive = true,
+        onConfirm = {
+            showDeleteDialog = false
+            scope.launch {
+                when (val result = repository.deleteDay(date.toString())) {
+                    is ApiResult.Success -> reloadKey++
+                    is ApiResult.Failure -> deleteError = result.message
+                }
+            }
+        },
+        onDismiss = { showDeleteDialog = false },
+    )
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
