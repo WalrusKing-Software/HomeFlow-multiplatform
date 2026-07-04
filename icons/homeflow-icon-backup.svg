@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#FFB5A7"/>
+      <stop offset="55%" stop-color="#F08080"/>
+      <stop offset="100%" stop-color="#C9184A"/>
+    </linearGradient>
+    <linearGradient id="petal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.82"/>
+    </linearGradient>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="0" dy="3" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.25"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Icon background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow -->
+  <rect x="16" y="16" width="480" height="480" rx="96"
+        fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="2"/>
+
+  <!-- Lotus / cycle flower -->
+  <g transform="translate(256 262)" filter="url(#soft)">
+    <!-- 5 petals, rotated around center — each petal is a teardrop -->
+    <g fill="url(#petal)">
+      <path d="M 0 -150
+               C -38 -110, -38 -50, 0 -10
+               C  38 -50,  38 -110, 0 -150 Z"
+            transform="rotate(0)"/>
+      <path d="M 0 -150
+               C -38 -110, -38 -50, 0 -10
+               C  38 -50,  38 -110, 0 -150 Z"
+            transform="rotate(72)"/>
+      <path d="M 0 -150
+               C -38 -110, -38 -50, 0 -10
+               C  38 -50,  38 -110, 0 -150 Z"
+            transform="rotate(144)"/>
+      <path d="M 0 -150
+               C -38 -110, -38 -50, 0 -10
+               C  38 -50,  38 -110, 0 -150 Z"
+            transform="rotate(216)"/>
+      <path d="M 0 -150
+               C -38 -110, -38 -50, 0 -10
+               C  38 -50,  38 -110, 0 -150 Z"
+            transform="rotate(288)"/>
+    </g>
+    <!-- Center -->
+    <circle r="26" fill="#FFFFFF"/>
+    <circle r="12" fill="#F08080"/>
+  </g>
+</svg>
