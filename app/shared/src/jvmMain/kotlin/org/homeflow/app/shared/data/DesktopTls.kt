@@ -61,9 +61,11 @@ object DesktopTls {
     }
 
     private fun caPath(): String? =
-        (System.getenv("HOMEFLOW_DEV_CA_CERT")
-            ?: System.getProperty("homeflow.dev.ca")
-            ?: DesktopServerConfigStore().loadCaCertPath())
+        (
+            System.getenv("HOMEFLOW_DEV_CA_CERT")
+                ?: System.getProperty("homeflow.dev.ca")
+                ?: DesktopServerConfigStore().loadCaCertPath()
+        )
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
