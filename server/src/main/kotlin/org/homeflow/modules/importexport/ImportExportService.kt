@@ -27,8 +27,8 @@ import org.homeflow.modules.users.UserPrincipal
 import java.util.UUID
 
 /**
- * The native `homeflow` export/import format (`__docs/API.md` "Import & Export",
- * `__docs/IMPLEMENTATION-PHASES-modular-offline.md` Phase 12). The wire shape is
+ * The native `homeflow` export/import format (`__docs/API.md` "Import & Export").
+ * The wire shape is
  * slug-and-date-keyed and UUID-free (D4); this service is the only place that maps
  * slugs to this database's option/location UUIDs and back. Both directions go
  * through the existing [DailyLogsService]/[DailyLogSubsService] so decryption (on
