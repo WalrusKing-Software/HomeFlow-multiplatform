@@ -71,10 +71,11 @@ fun LabeledTextField(
             leadingIcon = leadingIcon,
             trailingIcon = trailingIcon,
             visualTransformation = visualTransformation,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = keyboardType,
-                imeAction = imeAction,
-            ),
+            keyboardOptions =
+                KeyboardOptions(
+                    keyboardType = keyboardType,
+                    imeAction = imeAction,
+                ),
             keyboardActions = keyboardActions,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -83,8 +84,12 @@ fun LabeledTextField(
             Text(
                 text = supportingMessage,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isError) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                color =
+                    if (isError) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
             )
         }
     }

@@ -58,14 +58,25 @@ fun ConfirmDialog(
     AlertDialog(
         modifier = modifier,
         onDismissRequest = onDismiss,
-        icon = if (icon != null) ({
-            androidx.compose.material3.Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (destructive) MaterialTheme.colorScheme.error
-                       else MaterialTheme.colorScheme.primary,
-            )
-        }) else null,
+        icon =
+            if (icon != null) {
+                (
+                    {
+                        androidx.compose.material3.Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint =
+                                if (destructive) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                        )
+                    }
+                )
+            } else {
+                null
+            },
         title = {
             Text(
                 text = title,
@@ -82,9 +93,14 @@ fun ConfirmDialog(
         confirmButton = {
             TextButton(
                 onClick = onConfirm,
-                colors = if (destructive) ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ) else ButtonDefaults.textButtonColors(),
+                colors =
+                    if (destructive) {
+                        ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
             ) {
                 Text(confirmLabel)
             }

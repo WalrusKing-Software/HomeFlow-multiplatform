@@ -1,5 +1,6 @@
 package org.homeflow.app.shared.ui.shell
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -9,10 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
@@ -31,6 +36,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
+import org.homeflow.app.shared.config.ThemePreference
+import org.homeflow.app.shared.config.isDark
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.sync.SyncStatus
@@ -40,10 +47,31 @@ import org.homeflow.app.shared.ui.screens.CyclesScreen
 import org.homeflow.app.shared.ui.screens.DashboardScreen
 import org.homeflow.app.shared.ui.screens.DayScreen
 import org.homeflow.app.shared.ui.screens.PreferencesScreen
+import org.homeflow.app.shared.ui.theme.LocalThemeController
+import org.homeflow.app.shared.ui.theme.showTopBarThemeToggle
 import org.homeflow.core.dto.ImportResultDto
 
 /** Below this window width the shell uses a top tab row; at or above it, a side rail. */
 private val RAIL_BREAKPOINT = 600.dp
+
+/**
+ * Quick light/dark toggle for the top bar (desktop). Flips to the opposite of the currently
+ * effective theme, setting an explicit LIGHT/DARK (leaving SYSTEM). The Settings → Appearance
+ * selector remains the place to choose "System".
+ */
+@Composable
+private fun ThemeToggleButton() {
+    val controller = LocalThemeController.current
+    val dark = controller.preference.isDark(isSystemInDarkTheme())
+    IconButton(
+        onClick = { controller.set(if (dark) ThemePreference.LIGHT else ThemePreference.DARK) },
+    ) {
+        Icon(
+            imageVector = if (dark) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+            contentDescription = if (dark) "Switch to light theme" else "Switch to dark theme",
+        )
+    }
+}
 
 /** Small sync-status label for the top bar; only shown in Mode C. */
 @Composable
@@ -101,6 +129,9 @@ fun AppShell(
         TopAppBar(
             title = { Text("HomeFlow") },
             actions = {
+                if (showTopBarThemeToggle) {
+                    ThemeToggleButton()
+                }
                 if (syncStatusFlow != null) {
                     SyncStatusChip(syncStatus)
                 }

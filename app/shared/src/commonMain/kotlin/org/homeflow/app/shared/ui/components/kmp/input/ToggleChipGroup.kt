@@ -67,7 +67,7 @@ fun <T> ToggleChipGroup(
                             multiSelect -> selected + option
                             isSelected -> emptySet()
                             else -> setOf(option)
-                        }
+                        },
                     )
                 },
                 label = { Text(label(option)) },
