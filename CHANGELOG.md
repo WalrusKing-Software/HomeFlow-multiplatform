@@ -32,6 +32,22 @@ Ktor server).
   `CONFIGURE_TOTP` as the first-login required action.
 
 ### Fixed
+- **You can now open the app and view (and edit) your data while offline in
+  server-connected mode.** Previously, when a device was set up to connect to a
+  self-hosted server, launching the app with no connectivity failed at the login gate
+  and showed an error screen — even though every read and write in server mode is
+  already served from the on-device encrypted store. The app-lock gate (biometric /
+  passphrase) still guards local access, but once it passes, an unreachable server no
+  longer blocks you from your own data: the local store opens, and changes sync to the
+  server automatically when connectivity returns. A genuinely expired/revoked session
+  (a definitive answer from a reachable server) still sends you to a fresh login; only
+  the very first login requires being online.
+- **Logging a day you had previously deleted no longer crashes the app.** On the client's
+  on-device store, re-adding a daily log for a date whose earlier log had been deleted hit a
+  uniqueness collision with the leftover soft-delete tombstone and threw an uncaught SQLite
+  error on save (crashing the app). The deleted anchor is now reused as a fresh, empty log,
+  so re-logging a previously-deleted day works and still syncs to the server. (This is the
+  client-side counterpart of the server tombstone fix below.)
 - **Cross-device sync no longer stalls after a day is deleted.** A soft-deleted daily-log
   tombstone still occupied the `(user_id, log_date)` unique constraint, so when a device
   pushed a new day for that same date (e.g. after a cycle delete cascaded day tombstones)

@@ -9,6 +9,7 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import org.homeflow.app.shared.config.AuthConfig
 import org.homeflow.app.shared.data.ApiResult
+import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,12 +34,16 @@ class AuthControllerTest {
         store: FakeTokenStore = FakeTokenStore(),
         gate: FakeAppLockGate = FakeAppLockGate(),
         engine: MockEngine = meEngine(),
+        allowOfflineUnlock: Boolean = false,
+        tokenHolder: TokenHolder = TokenHolder(),
     ): AuthController =
         AuthController(
             config = AuthConfig(host = "example.test"),
             oidc = oidc,
             tokenStore = store,
             gate = gate,
+            tokenHolder = tokenHolder,
+            allowOfflineUnlock = allowOfflineUnlock,
             httpClientFactory = { c, h, onRefresh -> buildHttpClient(c, h, onRefresh, engine = engine) },
         )
 
@@ -84,6 +89,71 @@ class AuthControllerTest {
             assertIs<AuthState.Authenticated>(controller.state.value)
             assertEquals(1, oidc.refreshCount)
             assertEquals("refresh-RT", store.token)
+        }
+
+    @Test
+    fun unlock_offline_authenticates_from_local_when_allowed() =
+        runTest {
+            val oidc = FakeOidcClient().apply { refreshError = RuntimeException("network unreachable") }
+            val store = FakeTokenStore(token = "stored-rt")
+            val holder = TokenHolder()
+            val controller =
+                controller(
+                    oidc = oidc,
+                    store = store,
+                    gate = FakeAppLockGate(authResult = true),
+                    allowOfflineUnlock = true,
+                    tokenHolder = holder,
+                )
+
+            controller.unlock("passphrase")
+
+            // Offline unlock reaches Authenticated (local store is authoritative in Mode C)...
+            assertIs<AuthState.Authenticated>(controller.state.value)
+            // ...and seeds the refresh token so sync can self-heal once the network returns.
+            assertEquals("stored-rt", holder.refreshToken)
+            // The stored token is left intact (not cleared) — the session is not rejected.
+            assertEquals("stored-rt", store.token)
+        }
+
+    @Test
+    fun unlock_offline_grant_rejected_still_logs_out() =
+        runTest {
+            val oidc =
+                FakeOidcClient().apply {
+                    refreshError = OidcException(statusCode = 400, oauthError = "invalid_grant", description = null)
+                }
+            val store = FakeTokenStore(token = "stored-rt")
+            val controller =
+                controller(
+                    oidc = oidc,
+                    store = store,
+                    gate = FakeAppLockGate(authResult = true),
+                    allowOfflineUnlock = true,
+                )
+
+            controller.unlock("passphrase")
+
+            // A rejected grant comes from a REACHABLE server — never masked as "offline".
+            assertIs<AuthState.LoggedOut>(controller.state.value)
+            assertNull(store.token)
+        }
+
+    @Test
+    fun unlock_offline_errors_when_not_allowed() =
+        runTest {
+            val oidc = FakeOidcClient().apply { refreshError = RuntimeException("network unreachable") }
+            val controller =
+                controller(
+                    oidc = oidc,
+                    store = FakeTokenStore(token = "stored-rt"),
+                    gate = FakeAppLockGate(authResult = true),
+                )
+
+            controller.unlock("passphrase")
+
+            // Default (Mode B, no local store): unreachable server still surfaces an error.
+            assertIs<AuthState.Error>(controller.state.value)
         }
 
     @Test
