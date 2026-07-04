@@ -16,6 +16,39 @@ authoritative spec), and reimplements the server and clients in Kotlin.
 
 ---
 
+## Download
+
+[![Latest release](https://img.shields.io/github/v/release/ashay1341/HomeFlow-multiplatform?include_prereleases&label=latest%20release)](https://github.com/ashay1341/HomeFlow-multiplatform/releases/latest)
+
+Ready-to-run builds for all three apps are attached to every
+**[GitHub Release](https://github.com/ashay1341/HomeFlow-multiplatform/releases/latest)**.
+Download the piece(s) you need — `<version>` is the release version:
+
+| To run… | Download | Setup guide |
+|---|---|---|
+| **Desktop — Windows** | `HomeFlow-<version>.msi` | `__docs/SETUP-DESKTOP.md` |
+| **Desktop — macOS** | `HomeFlow-<version>.dmg` | `__docs/SETUP-DESKTOP.md` |
+| **Desktop — Linux** | `homeflow_<version>_amd64.deb` | `__docs/SETUP-DESKTOP.md` |
+| **Android** | `homeflow-android-<version>.apk` | `__docs/SETUP-ANDROID.md` |
+| **Self-hosted server** | `homeflow-server-<version>.zip` / `.tar.gz` | `__docs/SETUP-SERVER.md` |
+
+> **Self-hosting the server with Docker.** The server is also published as a multi-arch
+> (`amd64` + `arm64`) container image under this repository's **Packages** (GitHub
+> Container Registry) — this is what a Raspberry Pi / homelab box pulls:
+>
+> ```bash
+> docker pull ghcr.io/ashay1341/homeflow-multiplatform-server:<version>
+> ```
+>
+> GitHub **Packages** hosts only this server image (it is a container registry, not a
+> file host); the downloadable app **executables** all live on the **Releases** page
+> above.
+
+The desktop app also runs fully **local-only** with no server — see the setup guides
+for choosing a mode.
+
+---
+
 ## Architecture
 
 ```
