@@ -145,8 +145,10 @@ jobs:
 
       - name: Print install instructions
         shell: bash
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
         run: |
-          echo "::notice::APKs built from branch '${{ github.event.inputs.branch }}' @ ${{ steps.meta.outputs.sha7 }} (versionCode ${{ steps.meta.outputs.version_code }})."
+          echo "::notice::APKs built from branch '$BRANCH' @ ${{ steps.meta.outputs.sha7 }} (versionCode ${{ steps.meta.outputs.version_code }})."
           echo "::notice::Download them from this run's Artifacts section, then sideload:"
           echo "::notice::  adb install -r homeflow-${{ steps.meta.outputs.bref }}-${{ steps.meta.outputs.sha7 }}.apk"
           if [[ "${{ steps.signing.outputs.enabled }}" != "true" ]]; then
