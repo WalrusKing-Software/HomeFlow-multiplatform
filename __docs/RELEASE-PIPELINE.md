@@ -847,3 +847,27 @@ sh scripts/bump-version.sh all
 git add gradle.properties && git commit -m "chore: bump all to 0.3.0"
 git tag v0.3.0 && git push origin v0.3.0
 ```
+
+## 14. On-demand Android test APK (sideloading)
+
+`build-android-apk.yml` builds an Android APK from **any branch** for local
+sideloading onto a test phone — separate from the release pipeline. It creates **no
+GitHub Release** and commits nothing: the APKs are temporary workflow **artifacts**,
+downloadable from the run's "Artifacts" section for 14 days.
+
+- **Trigger:** Actions → "Build Android Test APK" → *Run workflow*, entering the
+  `branch` to build; or `gh workflow run build-android-apk.yml -f branch=<branch>`.
+  (The UI button only appears once the workflow exists on the repo's **default
+  branch**; before that, use the `gh` form.)
+- **Outputs:** a release APK (`homeflow-<branch>-<sha>.apk`, signed with the
+  `ANDROID_KEYSTORE_*` secrets — §3.5; built `*-unsigned.apk` and not installable if
+  the secrets are absent) and a debug APK (`homeflow-<branch>-<sha>-debug.apk`, always
+  debug-signed and installable).
+- **`versionCode`:** `2000000000 + run_number` — a high, monotonic value so a test
+  APK always installs over any prior build (`adb install -r …`). Distinct from the
+  release scheme (§3.4).
+- **Which to install:** the **release** APK to test against your real server; the
+  **debug** APK for local-only / visual testing (it is debuggable and points SERVER
+  mode at `localhost:8443`, per `MainActivity`). A CI-signed APK can only update an
+  install signed with the same key — otherwise uninstall first (see the on-device
+  testing notes).
