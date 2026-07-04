@@ -43,9 +43,11 @@ build. `.gitignore`/`.gitattributes` (LF) in place.
   backend/android/desktop clients with PKCE-S256 + audience mappers); the Ktor
   backend builds and responds; Caddy proxies `/realms/*` → Keycloak (200) and
   `/api`,`/health` → backend with the security headers applied.
-- The custom password + WebAuthn-passkey 2FA browser flow (`browser-with-passkey`)
-  and the `webauthn-register` default required action were deferred to **Phase 3**
-  (auth), where they are now bound in the realm export. See `KEYCLOAK.md`.
+- The custom password + 2FA browser flow and its default required action were deferred
+  to **Phase 3** (auth), where they are now bound in the realm export. (The second factor
+  was later changed from a WebAuthn passkey to TOTP — `browser-with-otp` /
+  `CONFIGURE_TOTP` — because passkeys can't use a private LAN RP-ID on Android.) See
+  `KEYCLOAK.md`.
 
 **Done when:** `./gradlew build` succeeds; `:app:desktopApp:run` opens an empty
 desktop window; `:app:androidApp:assembleDebug` produces an APK; `ktlintCheck` and
@@ -118,12 +120,14 @@ migrations, confirms a clean re-run, and reads the seed via Exposed (10 categori
 **Done when:** no/expired/tampered JWT → 401; valid JWT reaches the handler;
 `users/me` returns the record; first login upserts (no duplicates); account
 deletion removes data + the Keycloak account; all errors use the ApiError shape.
-- ✅ Keycloak realm: the `browser-with-passkey` flow (password → conditional
-  WebAuthn 2FA) is defined and bound as the realm browser flow, and
-  `webauthn-register` is enabled as a default required action, in
+- ✅ Keycloak realm: the `browser-with-otp` flow (password → conditional
+  TOTP 2FA) is defined and bound as the realm browser flow, and
+  `CONFIGURE_TOTP` is enabled as a default required action, in
   `infra/keycloak/realm-export.json` (deferred here from Phase 0). Verified by a
   throwaway `start-dev --import-realm` (`Realm 'homeflow' imported`). The live
-  passkey gesture itself is still a manual check on first login (see `KEYCLOAK.md`).
+  TOTP enrollment is still a manual check on first login (see `KEYCLOAK.md`).
+  (Originally a WebAuthn passkey flow; changed to TOTP because passkeys can't use a
+  private LAN RP-ID on Android.)
 
 **Status:** done — `AuthUsersTest` (Testcontainers Postgres + in-process RS256
 tokens served via a local JWKS) covers all six done-when criteria (8 tests);

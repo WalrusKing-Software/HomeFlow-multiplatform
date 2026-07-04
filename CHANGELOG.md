@@ -18,7 +18,72 @@ changed." See `CLAUDE.md` for the rules.
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
 
+### Changed
+- **Two-factor auth is now TOTP (authenticator-app codes) instead of a WebAuthn
+  passkey.** On first login Keycloak shows a QR code to enroll an authenticator
+  (Bitwarden, Aegis, Google Authenticator, 1Password, …); every login after that asks
+  for the current 6-digit code. This replaces the passkey second factor, which could
+  not work on Android: a passkey's Relying Party ID must be a real public domain, and
+  Android's Credential Manager refuses to offer any passkey provider for a private LAN
+  hostname like `homeflow.lan`, so the passkey prompt appeared but no provider (Bitwarden
+  included) was ever offered — across every browser. TOTP has no domain/RP-ID binding, so
+  it works identically on desktop and Android and needs no re-enrollment if the server
+  hostname changes (LAN ↔ Tailscale). The realm now binds `browser-with-otp` with
+  `CONFIGURE_TOTP` as the first-login required action.
+
+### Fixed
+- **You can now open the app and view (and edit) your data while offline in
+  server-connected mode.** Previously, when a device was set up to connect to a
+  self-hosted server, launching the app with no connectivity failed at the login gate
+  and showed an error screen — even though every read and write in server mode is
+  already served from the on-device encrypted store. The app-lock gate (biometric /
+  passphrase) still guards local access, but once it passes, an unreachable server no
+  longer blocks you from your own data: the local store opens, and changes sync to the
+  server automatically when connectivity returns. A genuinely expired/revoked session
+  (a definitive answer from a reachable server) still sends you to a fresh login; only
+  the very first login requires being online.
+- **Cross-device sync no longer stalls after a day is deleted.** A soft-deleted daily-log
+  tombstone still occupied the `(user_id, log_date)` unique constraint, so when a device
+  pushed a new day for that same date (e.g. after a cycle delete cascaded day tombstones)
+  the sync push aborted with a duplicate-key violation. The whole push rolled back and the
+  server sequence cursor never advanced, so **other devices pulled nothing** — changes made
+  on one client never reached the others. The uniqueness is now a partial index scoped to
+  live rows (`V4__daily_log_live_unique.sql`): at most one non-deleted day per date, while
+  tombstones may coexist. Pushes for a previously-deleted date now succeed and propagate.
+- **An expired or revoked stored session now returns you to the login screen instead of
+  crashing.** When the desktop app unlocked and its stored refresh token was rejected by
+  Keycloak (expired, revoked, or the realm/Keycloak was recreated), the OAuth error body
+  was mis-parsed as a successful token response and surfaced as a cryptic
+  `field 'access_token' is required … was missing` message. Token-endpoint errors are now
+  parsed as OAuth errors (`OidcException`); a rejected grant clears the dead token and drops
+  to a fresh login, while transient network errors keep the session intact.
+- **The installed desktop app can now connect to a server.** The desktop OIDC login
+  runs a loopback redirect listener on `127.0.0.1` using
+  `com.sun.net.httpserver.HttpServer`, whose `jdk.httpserver` module was being stripped
+  from the jlink-trimmed runtime in the packaged MSI/DMG/DEB — so clicking **Connect**
+  crashed with `NoClassDefFoundError: com/sun/net/httpserver/HttpServer` (it worked only
+  under `./gradlew run`, which uses the full JDK). `jdk.httpserver` is now forced into the
+  packaged runtime alongside `java.sql`.
+- **Keycloak login-theme assets now load through the Caddy reverse proxy.** Keycloak
+  serves its login-theme JavaScript/CSS under `/resources`, which the Caddyfile did not
+  proxy — so those scripts 404'd with an empty MIME type and login-page features that
+  depend on them broke. Added a `/resources/*` route.
+
 ### Added
+- **Trust a self-hosted server's private certificate on desktop.** The "Connect to
+  your server" screen now offers **"My server uses a private certificate…"**, which
+  opens a file picker to select your server's CA certificate (e.g. Caddy's
+  `caddy-root.crt` for a LAN `homeflow.lan` install). The certificate is validated,
+  stored, and trusted for the reachability check and login — so an installed desktop
+  app can reach a self-signed / internal-CA LAN server without setting environment
+  variables or editing the launcher config. (Android continues to use the OS trust
+  store.)
+- **Android connects to a LAN self-hosted server behind a private CA.** The release
+  Android build now trusts a user-installed CA certificate for `homeflow.lan` (a scoped
+  network-security config). After importing your server's `caddy-root.crt` on the device,
+  the app can reach and log in to a self-signed LAN server. Other hostnames stay strict
+  system-CA-only, so Tailscale/public deployments are unaffected. (Making the trusted host
+  user-configurable and supporting Tailscale is tracked in `__docs/BACKLOG.md`.)
 - **Recover from and switch between setup modes (onboarding hardening).** The
   first-run and server-connection flows no longer dead-end:
   - The "Connect to your server" screen now has a **Back to setup** button, so a
@@ -78,10 +143,11 @@ Ktor server).
   - Fail-fast configuration (`config/Config.kt`, `config/KeycloakConfig.kt`)
     validates the environment on startup, errors are returned through a single
     typed-error handler, and a coarse global request rate limit is applied.
-  - The Keycloak realm now enforces **password + WebAuthn-passkey 2FA**: the
-    `browser-with-passkey` flow is bound as the browser flow and new users are
-    prompted to register a passkey on first login (`webauthn-register` default
-    action).
+  - The Keycloak realm enforces **password + TOTP 2FA**: the `browser-with-otp`
+    flow is bound as the browser flow and new users are prompted to enroll an
+    authenticator on first login (`CONFIGURE_TOTP` default action). (See the
+    Changed note above — this was originally a WebAuthn passkey flow, replaced by
+    TOTP because passkeys can't use a private LAN RP-ID on Android.)
 - **Server cycles & daily-log anchor (Phase 4).** The server can now record and
   read cycles and the per-day log anchor:
   - Full cycle lifecycle over `/api/v1/cycles`: list (newest first), start a new
@@ -136,7 +202,7 @@ Ktor server).
   sign you in and reach the server:
   - Log in through Keycloak with Authorization Code + PKCE (S256) in the system
     browser (desktop, via a loopback redirect listener) or a Chrome Custom Tab
-    (Android, via AppAuth) — reusing the existing password + passkey 2FA — then
+    (Android, via AppAuth) — reusing the existing password + TOTP 2FA — then
     load your account with `GET /api/v1/users/me`.
   - The long-lived offline refresh token is stored only in OS-secure storage
     (Android Keystore-backed encrypted prefs; desktop OS keychain), the access

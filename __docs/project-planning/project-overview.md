@@ -55,7 +55,7 @@ Feature specifics can be found in the [Features Document](./features.md).
 - **Server** — Kotlin, Ktor (JVM), Exposed, HikariCP, Flyway, PostgreSQL, Keycloak
 - **Clients** — Compose Multiplatform + Material 3 (desktop JVM + Android), Ktor client
 - **Database** — PostgreSQL
-- **Auth** — Keycloak (OIDC Authorization Code + PKCE for users; WebAuthn passkey 2FA)
+- **Auth** — Keycloak (OIDC Authorization Code + PKCE for users; TOTP 2FA)
 - **Deployment** — Docker (self-hosted; Raspberry Pi over Tailscale)
 
 

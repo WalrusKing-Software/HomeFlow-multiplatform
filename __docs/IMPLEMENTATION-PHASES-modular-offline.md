@@ -1427,7 +1427,7 @@ phase makes the host runtime and adds the adoption path.
     the `ServerConfigStore` seam; the Mode-B "local DB dormant, server is source of truth" rule;
     the adoption (local-export → import) path.
 16. `__docs/DEPLOYMENT.md` — the "adopt a server" runbook (enter the canonical Tailscale
-    `*.ts.net` host; the WebAuthn RP-ID / `iss` must match that host — cross-ref `KEYCLOAK.md`).
+    `*.ts.net` host; the `iss` must match that host — cross-ref `KEYCLOAK.md`).
 17. `CHANGELOG.md` — Added: "Connect the app to your self-hosted server and upload your local
     data to it; use the same data across devices."
 
@@ -1447,7 +1447,7 @@ phase makes the host runtime and adds the adoption path.
   decodes a `200` `ImportResultDto`; a `400 VALIDATION_ERROR` body maps to
   `ApiResult.Failure(VALIDATION_ERROR)`.
 - **Manual / dev-server** (document, not automated): a Mode-A desktop with logged data → Settings
-  "Connect to a server" → enter host → Keycloak login (password + passkey) → confirm the upload
+  "Connect to a server" → enter host → Keycloak login (password + TOTP) → confirm the upload
   prompt → server shows the data; re-running the upload is a no-op (`cyclesCreated=0,
   dailyLogsCreated=0`). A fresh Android "Connect to a server" + login sees the same data.
 
@@ -1473,7 +1473,7 @@ phase makes the host runtime and adds the adoption path.
   host-test target compiles). `:app:androidApp:assembleDebug` + `:app:desktopApp` build.
 - [x] `ServerConfigStoreTest`, `ServerMigrationTest`, `RemoteImportUploadTest` pass.
 - [ ] **Manual, two devices:** a Mode-A desktop with logged data enters a server host →
-  completes Keycloak login (password + passkey) → confirms the upload → and thereafter
+  completes Keycloak login (password + TOTP) → confirms the upload → and thereafter
   reads/writes that data **on the server** (verified via the server DB or a second client).
 - [ ] **Manual, second device:** a fresh Android app picks "Connect to a server," logs into the
   same server, and sees the desktop-originated data — desktop + Android show identical data.
@@ -1496,8 +1496,8 @@ phase makes the host runtime and adds the adoption path.
   post-server-login (the gate is a Mode-A concern), **STOP and report** — the DEK is rooted in
   the OS secure store and should be readable via `LocalKeyStore.loadDek()` without the gate, but
   confirm before assuming.
-- **Runtime host ↔ Keycloak.** The entered host must match what Keycloak stamps in `iss` and the
-  WebAuthn RP-ID, or login 401s / the passkey fails (the canonical-hostname gotchas in
+- **Runtime host ↔ Keycloak.** The entered host must match what Keycloak stamps in `iss`,
+  or login 401s (the canonical-hostname gotchas in
   `CLAUDE.md`/`KEYCLOAK.md`). This is a deployment/config concern, not a client bug — surface the
   OIDC/`getMe` failure clearly; do not try to "fix" it client-side.
 - **Auto-prompt recompose.** If the migration `AlertDialog` is gated on a non-observable

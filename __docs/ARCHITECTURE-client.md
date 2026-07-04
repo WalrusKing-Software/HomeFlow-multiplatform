@@ -111,12 +111,12 @@ A single configured Ktor `HttpClient` in `commonMain`:
 ## Auth flow (platform-specific OIDC, shared orchestration)
 
 Realm-side config (clients, PKCE, audience mapper, `offline_access`, session
-lifetimes, WebAuthn RP-ID) is in `KEYCLOAK.md`. `AuthController` in `commonMain`
+lifetimes, TOTP 2FA) is in `KEYCLOAK.md`. `AuthController` in `commonMain`
 owns the sequence; `OidcClient`/`TokenStore`/`AppLockGate` are `expect`/`actual`.
 
 1. **One-time login.** Fetch the realm OIDC discovery doc (endpoints never
    hard-coded), then run Authorization Code + PKCE(S256) in the system browser. The
-   existing password + passkey 2FA happens there. Scopes: `openid offline_access`.
+   existing password + TOTP 2FA happens there. Scopes: `openid offline_access`.
    - **Android:** AppAuth + Chrome Custom Tab; redirect `org.homeflow.mobile:/oauth2redirect`.
    - **Desktop:** open the system browser to a **loopback** redirect
      (`http://127.0.0.1:<ephemeral-port>/oauth2redirect`) served by a tiny local
@@ -127,6 +127,23 @@ owns the sequence; `OidcClient`/`TokenStore`/`AppLockGate` are `expect`/`actual`
 3. **App-open gate.** `AppLockGate` requires a strong factor before the stored
    refresh token is used: BiometricPrompt (Android, device-credential fallback);
    OS credential prompt or app passphrase (desktop).
+
+### Offline unlock (Mode C / server-connected)
+
+A server-connected install is offline-first (Mode C): every read/write is served from
+the on-device encrypted store, and the server is a background sync peer. So the auth
+gate must not require the network. `AuthController` takes an `allowOfflineUnlock` flag
+(set true only for the Mode-C composition in `AppRoot`). When it is set and the token
+refresh — or the follow-up `GET /users/me` — fails because the server is **unreachable**
+(a transient/network error; `ApiResult.Failure.httpStatus == 0`), `unlock()` still
+reaches `AuthState.Authenticated` off the local store instead of `AuthState.Error`. It
+seeds the refresh token into `TokenHolder` (`setRefreshToken`) so the Ktor bearer
+provider can mint a fresh access token — and `SyncEngine` resume — the moment
+connectivity returns, with no re-unlock. The app-lock gate is still mandatory. A
+**rejected grant** (`OidcException.isGrantRejected`, a definitive answer from a reachable
+server) is never treated as offline: it clears the dead token and drops to a fresh
+login. The very first login still requires connectivity (interactive OIDC cannot run
+offline).
 
 ---
 

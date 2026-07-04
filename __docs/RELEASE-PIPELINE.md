@@ -1,10 +1,10 @@
 # RELEASE-PIPELINE.md — Packaging & Release Automation
 
-> **Status:** Plan / specification. The workflow described here does **not yet
-> exist** — this document is the implementation brief. It is written to be
-> implementable end-to-end by a careful agent (e.g. Claude Sonnet 4.6) with **no
-> further design decisions required**. Every file to create or edit is given in
-> full, with exact paths and contents.
+> **Status:** Implemented. The release pipeline described here exists as the
+> `.github/workflows/release-*.yml` workflows (server, desktop, Android, plus the
+> `release-test` dry-run). This document remains the authoritative reference for
+> how the pipeline is structured and how to change it; every file is given in full,
+> with exact paths and contents.
 
 This document defines a GitHub Actions **release pipeline** that builds and
 publishes all three HomeFlow deliverables — the **server**, the **desktop app**,

@@ -7,7 +7,7 @@ Keycloak handles all identity and authentication for this app. The backend never
 This document covers:
 - Realm settings
 - Client configuration (three clients: frontend public + backend confidential + android public/native)
-- WebAuthn passwordless authentication setup
+- TOTP (authenticator-app) second-factor setup
 - The audience mapper (critical — JWT validation will fail without this)
 - Token lifetimes
 - Brute-force protection
@@ -29,11 +29,15 @@ This document covers:
 > "Fastify backend" or `homeflow-frontend`, read "Ktor backend" / `homeflow-desktop`.
 > The realm-export.json is the source of truth.
 >
-> As of Phase 3 the realm export **binds the custom `browser-with-passkey` flow**
-> (password → conditional WebAuthn 2FA) as the browser flow and enables the
-> `webauthn-register` default required action, both described below. The passwordless
-> flow is not bound. The realm imports cleanly; the live passkey gesture is still
-> verified manually on first login.
+> The realm export **binds the custom `browser-with-otp` flow**
+> (password → conditional TOTP 2FA) as the browser flow and enables the
+> `CONFIGURE_TOTP` default required action, both described below. TOTP replaced the
+> original WebAuthn/passkey 2FA because a passkey's Relying Party ID must be a real,
+> public domain — Android's Credential Manager refuses to surface any passkey provider
+> for a private LAN hostname like `homeflow.lan`, so passkeys could never complete on
+> the phone. TOTP has no domain/RP-ID dependency and works in every browser on every
+> platform. The realm imports cleanly; the live TOTP enrollment is verified manually
+> on first login.
 
 This app uses **three separate Keycloak clients**. This is a common source of confusion — do not consolidate them into one.
 
@@ -172,7 +176,7 @@ In the Keycloak Admin Console:
 
 This client handles the native Android app's OIDC Authorization Code + PKCE flow.
 The app launches a **Chrome Custom Tab** for the one-time login (so the existing
-password + passkey 2FA flow is reused unchanged), exchanges the code for tokens,
+password + TOTP 2FA flow is reused unchanged), exchanges the code for tokens,
 and then stays logged in via an **offline refresh token** behind a biometric gate.
 The app code that drives this lives in `android/app/src/main/java/org/homeflow/mobile/auth/`.
 
@@ -237,14 +241,21 @@ Clients → `homeflow-android` → Client Scopes.
 app 401s. See the *Audience Mapper* section below; the app's tokens must carry
 `aud: homeflow-backend` exactly like the web client's do.
 
-### WebAuthn (passkey) in the Custom Tab
-The 2FA passkey prompt appears inside the login Custom Tab. For it to work, the
-**WebAuthn Policy Relying Party ID must equal the canonical hostname** the app
-connects to (the Tailscale `*.ts.net` name once Phase 0b lands — see
-`DEPLOYMENT.md`). A passkey registered against `homeflow.lan` will not work when
-the app connects via the `ts.net` name; pick one canonical hostname for the realm
-and register the passkey against it. This is the same RP-ID constraint the web
-client already has — there is no separate mobile passkey configuration.
+### TOTP 2FA in the Custom Tab
+The 2FA prompt appears inside the login Custom Tab as a **6-digit code field**. TOTP
+has no Relying Party ID and no domain binding, so it works identically whether the app
+connects via `homeflow.lan`, a Tailscale `*.ts.net` name, or anything else — there is
+no per-hostname configuration and nothing to re-enroll if the hostname changes. Any
+authenticator app (Bitwarden, Aegis, Google Authenticator, 1Password, …) that scanned
+the enrollment QR can produce the code.
+
+> **Why not passkeys on mobile?** A WebAuthn passkey's RP ID must be a real, registrable
+> public domain. Desktop browsers tolerate a private LAN domain, but Android routes every
+> browser passkey through Google Play Services' Credential Manager, which validates the RP
+> domain and silently declines to offer *any* provider for a non-public name like
+> `homeflow.lan`. The passkey sheet appears but no provider (Bitwarden included) is ever
+> offered — across all browsers, because they all defer to the same GMS layer. TOTP sidesteps
+> this entirely.
 
 ---
 
@@ -297,78 +308,73 @@ If `aud` only contains `account`, the mapper is not configured correctly.
 
 ---
 
-## Authentication Flow — Password + Passkey (2FA)
+## Authentication Flow — Password + TOTP (2FA)
 
 This app uses **two factors**:
 1. **Username + password** (first factor)
-2. **WebAuthn passkey** via Bitwarden (second factor)
+2. **TOTP** — a 6-digit time-based code from an authenticator app (second factor)
 
-On the very first login, a required action fires to register the passkey. After that, every login requires both factors.
+On the very first login, a required action fires to enroll TOTP. After that, every login requires both factors.
 
-**Why WebAuthn over TOTP as the second factor:**
-- Phishing-resistant — credentials are cryptographically bound to the origin (`https://<APP_HOSTNAME>`), so a fake login page cannot steal them
-- TOTP codes can be phished; passkeys cannot
-- Bitwarden supports passkey storage on premium accounts via its browser extension
+**Why TOTP as the second factor:**
+- **Works on every platform.** Unlike a WebAuthn passkey, TOTP has no Relying Party ID and no domain binding, so it works with a private LAN hostname (`homeflow.lan`). Android's Credential Manager will not surface any passkey provider for a non-public domain, so passkeys are unusable on the phone; TOTP is not.
+- **Provider-agnostic.** Bitwarden generates TOTP codes natively, so the "everything in Bitwarden" workflow is preserved; any other authenticator (Aegis, Google Authenticator, 1Password) works too.
+- **No re-enrollment on hostname change.** A passkey is bound to the origin and must be re-registered if the hostname changes; a TOTP secret is not.
 
-> **Note:** This is not the same as WebAuthn passwordless. The `webauthn-authenticator` (2FA) and `webauthn-authenticator-passwordless` are separate authenticators in Keycloak and store credentials separately. The realm export uses the regular WebAuthn 2FA flow (`browser-with-passkey`). The passwordless flow (`browser-passwordless`) is kept in the export but not bound.
+> **Trade-off vs. passkeys:** TOTP is not phishing-resistant the way a passkey is (a fake login page can capture a code within its 30-second window). For this single-user, self-hosted, LAN/Tailscale deployment the operator controls the hostname and the login is not exposed to the public web, so the phishing surface is minimal; cross-platform reliability wins. See `threat-model.md`.
 
-### WebAuthn Policy (2FA — not passwordless)
+### OTP Policy
 
-In the Keycloak Admin Console:
-1. Go to Authentication → Policies → **WebAuthn Policy** (not "WebAuthn Passwordless Policy")
-2. Configure:
+Configured in `realm-export.json` (Authentication → Policies → **OTP Policy** in the Admin Console):
 
 | Setting | Value |
 |---|---|
-| Relying Party Name | `Period Tracker` |
-| Relying Party ID | `<APP_HOSTNAME>` (e.g. `localhost` in dev, `homeflow.lan` in production) |
-| Signature Algorithms | `ES256` |
-| Attestation Conveyance | `none` |
-| Authenticator Attachment | `cross-platform` (allows Bitwarden browser extension) |
-| Require Resident Key | `No` (2FA doesn't require a discoverable credential) |
-| User Verification | `preferred` |
+| OTP Type | `Time Based` (TOTP) |
+| Algorithm | `SHA1` (widest authenticator compatibility) |
+| Number of Digits | `6` |
+| Token Period | `30` seconds |
+| Look Ahead Window | `1` |
 
-> **Relying Party ID must exactly match the hostname** the app is served from. This is enforced by the browser — a mismatch will silently prevent the passkey from working.
-
-### Authentication Flow — `browser-with-passkey`
+### Authentication Flow — `browser-with-otp`
 
 This flow is pre-configured in `realm-export.json` and imported automatically. The structure is:
 
 ```
-browser-with-passkey (bound as Browser Flow)
+browser-with-otp (bound as Browser Flow)
 ├── Cookie (Alternative)
 ├── Kerberos (Disabled)
 ├── Identity Provider Redirector (Alternative)
-└── browser-with-passkey forms (Alternative sub-flow)
+└── browser-with-otp forms (Alternative sub-flow)
     ├── Username Password Form (Required)
-    └── browser-with-passkey WebAuthn (Conditional sub-flow)
+    └── browser-with-otp Conditional OTP (Conditional sub-flow)
         ├── Condition - User Configured (Required)
-        └── WebAuthn Authenticator (Required)
+        └── OTP Form (Required)
 ```
 
-The conditional sub-flow means: if the user has a WebAuthn credential registered, challenge them for it. If not (first login), skip it — and the `webauthn-register` required action will fire to prompt registration.
+The conditional sub-flow means: if the user has a TOTP credential configured, challenge them for it. If not (first login), skip it — and the `CONFIGURE_TOTP` required action will fire to prompt enrollment.
 
 ### Required Actions
 
-The `webauthn-register` required action is set as the default for all new users (configured in the realm export). On first login, after entering their password, the user is immediately prompted to register a passkey via Bitwarden.
+The `CONFIGURE_TOTP` required action is set as the default for all new users (configured in the realm export). On first login, after entering their password, the user is immediately prompted to enroll a TOTP authenticator.
 
 | Action | Setting |
 |---|---|
 | Verify Email | Disabled (no email server configured) |
 | Update Password | Disabled (set via admin Credentials tab) |
-| Webauthn Register | **Enabled as default action** |
+| Configure OTP | **Enabled as default action** |
+| Webauthn Register | Disabled |
 
-### Register the Passkey (first login)
+### Enroll TOTP (first login)
 
-No manual pre-registration is needed — the required action handles it. On first login:
+No manual pre-enrollment is needed — the required action handles it. On first login:
 1. User enters username + password
-2. Keycloak fires the `webauthn-register` required action
-3. Browser prompts to save a passkey — Bitwarden will offer to store it
-4. After saving, the login completes
+2. Keycloak fires the `CONFIGURE_TOTP` required action and shows a QR code
+3. In Bitwarden (edit the login item → Authenticator key / TOTP → **scan QR**) — or any authenticator app — scan the QR
+4. Enter the 6-digit code Keycloak asks for to confirm, then the login completes
 
-On all subsequent logins, after entering username + password, Keycloak will challenge them with the WebAuthn prompt.
+On all subsequent logins, after entering username + password, Keycloak challenges for the current 6-digit code.
 
-> **Important:** Register the passkey from the same browser/device that Bitwarden is installed on. The passkey is tied to the origin — if the hostname changes later, the passkey must be re-registered.
+> **Tip:** Store the TOTP secret in the same Bitwarden login item as the password so both factors live together and sync across devices. Keep one recovery copy of the secret/QR offline — losing the only authenticator means an admin must reset the OTP credential in the Keycloak Console (Users → Credentials → delete OTP; the required action re-fires on next login).
 
 ---
 
@@ -380,10 +386,11 @@ These are already configured in the realm export. Verify them after any import:
 |---|---|
 | Verify Email | Disabled (no email server configured) |
 | Update Password | Disabled (set via admin Credentials tab instead) |
-| Webauthn Register | **Enabled as default action** — fires on first login |
+| Configure OTP | **Enabled as default action** — fires on first login |
+| Webauthn Register | Disabled |
 | Webauthn Register Passwordless | Disabled |
 
-The `Webauthn Register` required action fires automatically for any new user on their first login, prompting them to register a passkey before the session completes.
+The `Configure OTP` required action fires automatically for any new user on their first login, prompting them to enroll a TOTP authenticator before the session completes.
 
 ---
 
@@ -403,10 +410,10 @@ This app has exactly one user account (plus the admin account). The user account
    - Enabled: On
 5. Save
 6. Go to the **Credentials** tab → **Set Password** → enter a strong password → toggle "Temporary" **off**
-7. The `Webauthn Register` required action is already set as a realm default, so it will fire automatically on the user's first login
-8. On first login: user enters username + password → Keycloak prompts to register a passkey → done
+7. The `Configure OTP` required action is already set as a realm default, so it will fire automatically on the user's first login
+8. On first login: user enters username + password → Keycloak shows a QR code → user scans it into Bitwarden/an authenticator and confirms the code → done
 
-> After first login the user will need the passkey on every subsequent login (factor 2).
+> After first login the user will need the 6-digit TOTP code on every subsequent login (factor 2).
 
 ---
 
@@ -418,9 +425,9 @@ The realm configuration is exported as `keycloak/realm-export.json` and imported
 - Realm settings (session lifetimes incl. offline session, brute-force protection, registration settings)
 - All three client definitions (frontend + backend + android) with their scopes and mappers
 - The audience mappers (on both public clients, or the shared audience scope)
-- The `browser-with-passkey` authentication flow (password + WebAuthn 2FA)
-- WebAuthn policy settings (RP name, RP ID, attachment, verification)
-- Required actions (`webauthn-register` as default)
+- The `browser-with-otp` authentication flow (password + TOTP 2FA)
+- OTP policy settings (TOTP, SHA1, 6 digits, 30s period)
+- Required actions (`CONFIGURE_TOTP` as default)
 
 > After adding the `homeflow-android` client (and enabling offline sessions),
 > re-run the export below so `realm-export.json` stays the source of truth for a
@@ -430,7 +437,7 @@ The realm configuration is exported as `keycloak/realm-export.json` and imported
 ### What the export does NOT include
 - User accounts (exported separately or created manually — see above)
 - Client secrets (these are environment-specific — regenerate after import)
-- Passkey registrations (tied to the device — must be re-registered)
+- TOTP credentials (per-user secret — must be re-enrolled on first login)
 
 ### Generating the export
 
@@ -452,7 +459,7 @@ docker compose cp keycloak:/tmp/export/homeflow-realm.json \
 2. Update `KEYCLOAK_CLIENT_SECRET` in `.env`
 3. Assign `manage-users` role to the backend service account (verify this survived the import)
 4. Create the user account
-5. Have the user register their passkey
+5. Have the user enroll TOTP on first login (the `CONFIGURE_TOTP` required action fires automatically)
 
 ---
 
@@ -499,8 +506,8 @@ This is the internal container-to-container URL. The backend fetches this on sta
        &code_challenge_method=S256
        &state=<random CSRF token>
 
-3. Keycloak shows WebAuthn prompt
-   → user authenticates with passkey
+3. Keycloak shows TOTP prompt
+   → user enters the 6-digit code from their authenticator
 
 4. Keycloak redirects to /auth/callback?code=<auth_code>&state=<state>
 
@@ -574,14 +581,13 @@ The `oauth_state` and `code_verifier` cookies are short-lived (10 minutes) and s
 ### All requests return 401 after login appears to succeed
 Most likely cause: audience mapper is missing or misconfigured. Decode the access token at [jwt.io](https://jwt.io) and check the `aud` claim. If `homeflow-backend` is not present, the mapper is not configured correctly. See the Audience Mapper section above.
 
-### WebAuthn prompt doesn't appear
-- Confirm the Relying Party ID matches the exact hostname the app is served from
-- Confirm the `browser-passwordless` flow is bound as the Browser Flow in Authentication → Bindings
-- In dev, Caddy's localhost TLS must be trusted — WebAuthn requires a secure context (HTTPS)
+### TOTP prompt doesn't appear
+- Confirm the `browser-with-otp` flow is bound as the Browser Flow in Authentication → Bindings
+- Confirm the user actually has an OTP credential (Users → Credentials) — if not, the conditional sub-flow is correctly skipping it and the `CONFIGURE_TOTP` required action should fire instead on next login
 
-### Passkey registered but login fails with "invalid credential"
-- The passkey is bound to the origin. If the hostname changed since registration, re-register the passkey.
-- Check that `APP_HOSTNAME` in `.env` exactly matches what was used during passkey registration.
+### TOTP code is rejected ("invalid authenticator code")
+- The device clock is skewed. TOTP depends on wall-clock time; make sure both the server host and the phone/desktop generating the code have accurate time (NTP). The realm allows a look-ahead window of 1 period (±30s).
+- The authenticator was enrolled against a *different* Keycloak (e.g. after a `down -v` that regenerated the realm). Delete the stale OTP credential in Users → Credentials and re-enroll on next login.
 
 ### JWT `iss` claim mismatch
 The backend validates `iss` using the internal Keycloak URL (`http://keycloak:8080/realms/homeflow`). Keycloak issues tokens with the `iss` set to whatever hostname it thinks it's running on. The `KC_HOSTNAME` env var must be set correctly so the `iss` in the token matches what `config/keycloak.ts` expects. If these diverge, all tokens will fail validation.
@@ -607,8 +613,11 @@ online refresh token. Confirm: (1) the app requests `offline_access`, (2) the
 scope is assigned to `homeflow-android`, and (3) realm *Offline session idle* is
 enabled (not "Disabled"). Without all three, no offline token is issued.
 
-### Android app: passkey prompt fails inside the login Custom Tab
-The WebAuthn Relying Party ID must equal the hostname the app connects to. If the
-app uses the Tailscale `*.ts.net` name but the passkey was registered against
-`homeflow.lan` (or vice-versa), it fails. Pick one canonical hostname for the
-realm (Phase 0b) and register the passkey against it.
+### Android app: 2FA never completes inside the login Custom Tab
+This app uses **TOTP**, not passkeys, precisely because passkeys cannot work on Android
+with a private hostname. If you see a passkey/security-key prompt instead of a 6-digit
+code field, the Keycloak realm is still running the old `browser-with-passkey` flow —
+re-import the realm or switch the browser-flow binding to `browser-with-otp` and set the
+`CONFIGURE_TOTP` required action as default (Authentication → Required Actions). A private
+LAN RP-ID (`homeflow.lan`) will never surface a passkey provider in Android's Credential
+Manager; TOTP has no such constraint.

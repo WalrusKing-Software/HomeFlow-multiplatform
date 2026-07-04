@@ -16,6 +16,9 @@ class FakeOidcClient(
     var logoutCount = 0
     var lastLoggedOutToken: String? = null
 
+    /** When set, [refresh] throws this instead of returning tokens (simulates offline / rejection). */
+    var refreshError: Exception? = null
+
     override suspend fun login(): OidcTokens {
         loginCount++
         return loginTokens
@@ -23,6 +26,7 @@ class FakeOidcClient(
 
     override suspend fun refresh(refreshToken: String): OidcTokens {
         refreshCount++
+        refreshError?.let { throw it }
         return refreshTokens
     }
 
