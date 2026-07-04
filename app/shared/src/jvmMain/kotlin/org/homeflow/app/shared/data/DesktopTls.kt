@@ -65,8 +65,7 @@ object DesktopTls {
             System.getenv("HOMEFLOW_DEV_CA_CERT")
                 ?: System.getProperty("homeflow.dev.ca")
                 ?: DesktopServerConfigStore().loadCaCertPath()
-        )
-            ?.trim()
+        )?.trim()
             ?.takeIf { it.isNotEmpty() }
 
     private fun buildTrustManager(path: String): X509TrustManager? {
