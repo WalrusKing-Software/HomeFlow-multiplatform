@@ -8,7 +8,6 @@ actual val supportsCustomServerCertificate: Boolean = false
 
 actual fun customServerCertificateName(): String? = null
 
-actual suspend fun chooseCustomServerCertificate(): ServerCertificateResult =
-    ServerCertificateResult.CANCELLED
+actual suspend fun chooseCustomServerCertificate(): ServerCertificateResult = ServerCertificateResult.CANCELLED
 
 actual fun clearCustomServerCertificate() = Unit
