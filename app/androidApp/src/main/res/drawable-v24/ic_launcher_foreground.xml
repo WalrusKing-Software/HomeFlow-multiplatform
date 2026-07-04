@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HomeFlow adaptive-icon foreground: the eight-petal bloom, plum crescent and
+     soft center highlight from icons/homeflow-icon.svg. Everything is scaled to
+     ~0.8 around the centre so the petal tips stay inside the adaptive-icon safe
+     zone (inner 72dp of the 108dp / 512px viewport). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+
+        <!-- Eight petals arranged in a circular flow -->
+        <group android:pivotX="256" android:pivotY="256" android:rotation="0">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="45">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="90">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="135">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="180">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="225">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="270">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+        <group android:pivotX="256" android:pivotY="256" android:rotation="315">
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.9"
+                android:pathData="M256,256 C230,180 215,130 256,90 C297,130 282,180 256,256 Z" />
+        </group>
+
+        <!-- Plum accent crescent — hints at the moon / cycle motif -->
+        <path android:pathData="M256,360 A70,70 0 1 0 256,220 A55,55 0 1 1 256,360 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="256"
+                    android:startY="220"
+                    android:endX="256"
+                    android:endY="360">
+                    <item android:offset="0.0" android:color="#5B3A7A" />
+                    <item android:offset="1.0" android:color="#3E2558" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Soft inner glow / center highlight -->
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.35"
+            android:pathData="M198,256 a58,58 0 1 0 116,0 a58,58 0 1 0 -116,0 Z" />
+    </group>
+</vector>

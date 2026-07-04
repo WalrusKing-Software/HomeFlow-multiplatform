@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-variant overlay: points the app at the debug-only network security config so
+  debuggable builds trust a user-installed CA (Caddy dev root) for local testing.
+  Merged into the debug manifest only; the release manifest is unchanged.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

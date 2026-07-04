@@ -1,0 +1,69 @@
+name: Branch Rules
+
+# Enforces the branching MODEL that GitHub's native branch protection cannot:
+# protection rules can require a PR, but they cannot restrict which *source*
+# branch a PR is allowed to come from. This check fails the PR when the
+# head -> base flow is not allowed.
+#
+#   main          <-  release/x.y.z              (release PRs only)
+#   release/*     <-  develop-* | feature/* | bugfix/*
+#   develop-*     <-  feature/* | bugfix/*       (integration of work branches)
+#
+# develop-* is the integration branch for the next release: work branches merge
+# into it while the version number is still undecided, then it lands on a
+# release/x.y.z branch as a single clean commit. Single-train model (server +
+# desktop + android ship together). See __docs/BRANCHING.md.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-branch-flow:
+    name: validate-branch-flow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce source -> target branch policy
+        shell: bash
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          echo "Pull request: '$HEAD'  ->  '$BASE'"
+          fail() { echo "::error::$1"; exit 1; }
+
+          case "$BASE" in
+            main)
+              # release/x.y.z, with an optional 'v' prefix and optional pre-release
+              # qualifier (e.g. release/0.1.0, release/v0.1.0, release/v0.1.0-alpha-1).
+              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+                echo "OK: release PR into 'main' from '$HEAD'."
+              else
+                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
+              fi
+              ;;
+            release/*)
+              if [[ "$HEAD" =~ ^develop-.+ || "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
+                echo "OK: PR into '$BASE' from '$HEAD' (develop integration or work/hotfix branch)."
+              else
+                fail "Only 'develop-*' (or 'feature/*'/'bugfix/*' for hotfixes) may be merged into '$BASE' (got head '$HEAD')."
+              fi
+              ;;
+            develop-*)
+              if [[ "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
+                echo "OK: work PR into '$BASE' from '$HEAD'."
+              else
+                fail "Only 'feature/*' or 'bugfix/*' branches may be merged into '$BASE' (got head '$HEAD')."
+              fi
+              ;;
+            *)
+              echo "No branch-flow rule defined for base '$BASE'; nothing to enforce."
+              ;;
+          esac

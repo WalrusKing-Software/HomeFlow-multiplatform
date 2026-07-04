@@ -1,0 +1,22 @@
+# Keep the build context small and reproducible: never ship local build output,
+# caches, secrets, or IDE state into the image build.
+.git
+.gradle
+**/build/
+**/bin/
+.kotlin
+.idea
+*.iml
+local.properties
+.env
+.env.*
+!.env.example
+backups/
+*.apk
+*.aab
+*.dmg
+*.msi
+*.deb
+*.pkg
+# the exported chat transcript and any local scratch files
+*.txt

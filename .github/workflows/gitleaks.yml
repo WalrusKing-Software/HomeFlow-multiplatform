@@ -1,0 +1,40 @@
+name: Secret Scan (gitleaks)
+
+# Scans the repository (working tree + full git history) for committed secrets,
+# using the repo's own .gitleaks.toml (same config the Husky pre-commit hook
+# and scripts/check-secrets.sh use). Runs the gitleaks Docker image directly so
+# it stays free on private repos and identical to the documented local command.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - 'develop-*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history so the scan covers every commit, not just the tip.
+          fetch-depth: 0
+      - name: Run gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect \
+              --source=/repo \
+              --config=/repo/.gitleaks.toml \
+              --redact \
+              --exit-code 1 \
+              --verbose

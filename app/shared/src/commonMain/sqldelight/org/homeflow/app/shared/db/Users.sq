@@ -1,0 +1,17 @@
+CREATE TABLE IF NOT EXISTS users (
+    id         TEXT NOT NULL PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM users;
+
+selectById:
+SELECT * FROM users WHERE id = :id;
+
+insert:
+INSERT OR REPLACE INTO users (id, created_at, updated_at) VALUES (?, ?, ?);
+
+deleteAll:
+DELETE FROM users;

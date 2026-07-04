@@ -1,0 +1,36 @@
+# Caddy reverse proxy — the only publicly reachable entry point.
+# On the LAN it serves an internal-CA TLS cert; over Tailscale swap `tls internal`
+# for the tailnet cert (see __docs/DEPLOYMENT.md §11). There is no web frontend —
+# clients are native desktop/Android apps, so Caddy only proxies the API, the
+# health check, and the Keycloak OIDC endpoints the native clients use.
+{$APP_HOSTNAME} {
+	tls internal
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /health {
+		reverse_proxy backend:8080
+	}
+
+	# OIDC for the native clients (discovery, auth, token, end-session) over the
+	# canonical hostname. Never expose the admin console or /realms/*/admin.
+	handle /realms/* {
+		reverse_proxy keycloak:8080
+	}
+
+	# Keycloak login-theme static assets (JS/CSS) live under /resources, not /realms.
+	# Required so the login and TOTP-enrollment pages render — their theme scripts are
+	# ES modules that otherwise 404 with an empty MIME type and break the page.
+	handle /resources/* {
+		reverse_proxy keycloak:8080
+	}
+
+	header {
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+}

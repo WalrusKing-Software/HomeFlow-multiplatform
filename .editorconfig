@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+max_line_length = 120
+# Compose @Composable functions are PascalCase by convention — don't flag them.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+# Generated Compose resource accessors are not ours to lint.
+ktlint_standard_filename = disabled
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Generated code (Compose resource accessors, etc.) lives under build/ — never lint it.
+[**/build/**]
+ktlint = disabled

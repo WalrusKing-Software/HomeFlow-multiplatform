@@ -1,0 +1,48 @@
+*.iml
+.kotlin
+.gradle
+**/build/
+**/bin/
+xcuserdata
+!src/**/build/
+local.properties
+.idea
+.DS_Store
+captures
+.externalNativeBuild
+.cxx
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings
+node_modules/
+/VERSION
+
+# Claude Code conversation exports (/export) — may contain sensitive context; never commit.
+*-local-command-caveat*.txt
+
+# --- Secrets / signing / sensitive (HomeFlow) -------------------------------
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+# Android release signing credentials (the .example template stays tracked).
+keystore.properties
+# TLS certificates / keys (e.g. the exported Caddy dev root CA) — never commit.
+*.crt
+*.cer
+*.pem
+*.p12
+*.key
+backups/
+
+# --- Distribution artifacts (when built outside build/) ---------------------
+*.apk
+*.aab
+*.dmg
+*.msi
+*.deb
+*.pkg
