@@ -203,15 +203,16 @@ private fun PainEditor(
 ) {
     var editing by remember { mutableStateOf<EditingState?>(null) }
 
-    val accordionRegions = remember(regions) {
-        regions.map { region ->
-            PainRegion(
-                id = region.id,
-                label = region.label,
-                locations = region.locations.map { PainLocation(it.id, it.label) },
-            )
+    val accordionRegions =
+        remember(regions) {
+            regions.map { region ->
+                PainRegion(
+                    id = region.id,
+                    label = region.label,
+                    locations = region.locations.map { PainLocation(it.id, it.label) },
+                )
+            }
         }
-    }
     val selected = pain.map { PainLocationRating(it.locationId, it.severity) }
 
     SectionCard("Pain") {
