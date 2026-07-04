@@ -18,6 +18,13 @@ changed." See `CLAUDE.md` for the rules.
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
 
+### Added
+- **HomeFlow now has its own app icon** — the eight-petal bloom on a warm
+  coral-to-crimson gradient (`icons/homeflow-icon.svg`), replacing the default
+  Android robot and Compose desktop placeholder. It appears as the Android launcher
+  icon (adaptive + legacy), the desktop installer icon (Windows/macOS/Linux), and
+  the desktop window/taskbar icon.
+
 ### Changed
 - **Two-factor auth is now TOTP (authenticator-app codes) instead of a WebAuthn
   passkey.** On first login Keycloak shows a QR code to enroll an authenticator
