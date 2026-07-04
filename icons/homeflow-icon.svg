@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background gradient: warm cream -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#FFB5A7"/>
+      <stop offset="55%" stop-color="#F08080"/>
+      <stop offset="100%" stop-color="#C9184A"/>
+    </linearGradient>
+    <linearGradient id="petal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.82"/>
+    </linearGradient>
+
+    <!-- Accent gradient: deep plum -->
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5B3A7A"/>
+      <stop offset="100%" stop-color="#3E2558"/>
+    </linearGradient>
+
+    <!-- Single petal shape (reused 8 times, rotated) -->
+    <path id="petal-shape"
+          d="M 256 256
+             C 230 180, 215 130, 256 90
+             C 297 130, 282 180, 256 256 Z"/>
+  </defs>
+
+  <!-- Rounded-square background (app-icon shape) -->
+  <rect x="0" y="0" width="512" height="512" rx="110" ry="110" fill="url(#bg)"/>
+
+  <!-- Eight petals arranged in a circular flow -->
+  <g opacity="0.95">
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(0   256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(45  256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(90  256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(135 256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(180 256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(225 256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(270 256 256)"/>
+    <use href="#petal-shape" fill="url(#petal)" transform="rotate(315 256 256)"/>
+  </g>
+
+  <!-- Plum accent crescent — hints at the moon/cycle motif -->
+  <path d="M 256 360
+           A 70 70 0 1 0 256 220
+           A 55 55 0 1 1 256 360 Z"
+        fill="url(#accent)"/>
+
+  <!-- Soft inner glow / center highlight -->
+  <circle cx="256" cy="256" r="58" fill="#FFFFFF" opacity="0.35"/>
+</svg>

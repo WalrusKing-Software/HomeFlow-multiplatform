@@ -19,6 +19,11 @@ Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
 
 ### Added
+- **HomeFlow now has its own app icon** — the eight-petal bloom on a warm
+  coral-to-crimson gradient (`icons/homeflow-icon.svg`), replacing the default
+  Android robot and Compose desktop placeholder. It appears as the Android launcher
+  icon (adaptive + legacy), the desktop installer icon (Windows/macOS/Linux), and
+  the desktop window/taskbar icon.
 - **The project is now licensed** under the GNU Affero General Public License v3.0
   (`LICENSE`) — a copyleft license that keeps any self-hosted derivative open.
 - **Security disclosure policy** (`SECURITY.md`) — how to privately report a
