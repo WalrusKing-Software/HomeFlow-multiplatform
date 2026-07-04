@@ -281,8 +281,9 @@ private fun SwitchToLocalButton(onSwitchToLocal: () -> Unit) {
     ConfirmDialog(
         visible = showDialog,
         title = "Switch to local-only mode?",
-        body = "Your data stays on this device and will stop syncing with the server. " +
-            "You can reconnect later from Settings.",
+        body =
+            "Your data stays on this device and will stop syncing with the server. " +
+                "You can reconnect later from Settings.",
         confirmLabel = "Switch",
         onConfirm = {
             showDialog = false
