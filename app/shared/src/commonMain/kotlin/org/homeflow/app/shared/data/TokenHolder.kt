@@ -26,6 +26,18 @@ class TokenHolder {
         accessTokenExpiresAt = tokens.accessTokenExpiresAt
     }
 
+    /**
+     * Seed only the refresh token (no access token). Used after an **offline unlock**
+     * (Mode C): the app-lock gate has passed and the local store is authoritative, but the
+     * IdP was unreachable so no access token could be minted. Storing the refresh token here
+     * lets the Ktor bearer provider ([org.homeflow.app.shared.data.buildHttpClient]) obtain a
+     * fresh access token — and background sync resume — as soon as connectivity returns, with
+     * no re-unlock required.
+     */
+    fun setRefreshToken(rt: String) {
+        refreshToken = rt
+    }
+
     fun clear() {
         accessToken = null
         refreshToken = null

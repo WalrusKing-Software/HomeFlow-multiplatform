@@ -41,6 +41,13 @@ SELECT * FROM daily_logs WHERE user_id = :userId AND log_date = :logDate;
 selectByIdIncludingDeleted:
 SELECT * FROM daily_logs WHERE id = :id AND user_id = :userId;
 
+-- Resurrect a soft-deleted anchor in place as a fresh, empty log. Reusing the row (rather
+-- than inserting a new one) avoids violating UNIQUE(user_id, log_date), which still counts
+-- the tombstone. The caller clears the old sub-logs/pain first.
+resurrect:
+UPDATE daily_logs SET cycle_id = :cycleId, notes = NULL, deleted_at = NULL, updated_at = :updatedAt
+WHERE id = :id AND user_id = :userId;
+
 upsert:
 INSERT OR REPLACE INTO daily_logs (id, user_id, cycle_id, log_date, notes, created_at, updated_at, deleted_at)
 VALUES (:id, :userId, :cycleId, :logDate, :notes, :createdAt, :updatedAt, :deletedAt);

@@ -7,6 +7,7 @@ import org.homeflow.app.shared.config.defaultAuthConfig
 fun buildAuthController(
     config: AuthConfig = defaultAuthConfig(),
     clientVersion: String = "unknown",
+    allowOfflineUnlock: Boolean = false,
 ): AuthController =
     AuthController(
         config = config,
@@ -14,4 +15,5 @@ fun buildAuthController(
         tokenStore = createTokenStore(),
         gate = createAppLockGate(),
         clientVersion = clientVersion,
+        allowOfflineUnlock = allowOfflineUnlock,
     )

@@ -11,6 +11,7 @@ import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.RemoteDataSource
 import org.homeflow.app.shared.data.TokenHolder
 import org.homeflow.app.shared.data.buildHttpClient
+import org.homeflow.app.shared.data.local.LocalBootstrap
 import org.homeflow.app.shared.data.userMessage
 import org.homeflow.core.dto.ImportResultDto
 import org.homeflow.core.dto.UserDto
@@ -61,6 +62,14 @@ class AuthController(
     private val gate: AppLockGate,
     private val tokenHolder: TokenHolder = TokenHolder(),
     private val clientVersion: String = "unknown",
+    /**
+     * When true, an unlock whose token refresh / `getMe` fails because the server is
+     * **unreachable** (offline) still reaches [AuthState.Authenticated] using the local store,
+     * rather than [AuthState.Error]. Set only for the Mode-C composition (server-connected +
+     * local offline store); a genuine grant rejection still forces re-login. Default false
+     * preserves the strict online behavior for any other caller.
+     */
+    private val allowOfflineUnlock: Boolean = false,
     httpClientFactory: (AuthConfig, TokenHolder, suspend (String) -> OidcTokens?) -> HttpClient =
         { c, h, onRefresh -> buildHttpClient(c, h, onRefresh) },
 ) : SessionController {
@@ -130,21 +139,31 @@ class AuthController(
                 return
             }
             val tokens =
-                try {
-                    oidc.refresh(refresh)
-                } catch (e: OidcException) {
-                    if (e.isGrantRejected) {
-                        // The stored session is no longer valid (expired, revoked, or the realm/
-                        // Keycloak was recreated). Drop the dead token and send the user to a fresh
-                        // login instead of surfacing a raw token-parse error.
-                        authDebugLog("unlock: stored refresh rejected (${e.statusCode}/${e.oauthError}); re-login")
-                        tokenStore.clear()
-                        tokenHolder.clear()
-                        _state.value = AuthState.LoggedOut
-                        return
+                runCatching { oidc.refresh(refresh) }
+                    .getOrElse { e ->
+                        if (e is OidcException && e.isGrantRejected) {
+                            // The stored session is no longer valid (expired, revoked, or the realm/
+                            // Keycloak was recreated). Drop the dead token and send the user to a
+                            // fresh login instead of surfacing a raw token-parse error. This is a
+                            // definitive answer from a REACHABLE server, so it is never treated as
+                            // "offline" — even in Mode C.
+                            authDebugLog("unlock: stored refresh rejected (${e.statusCode}/${e.oauthError}); re-login")
+                            tokenStore.clear()
+                            tokenHolder.clear()
+                            _state.value = AuthState.LoggedOut
+                            return
+                        }
+                        if (allowOfflineUnlock) {
+                            // The IdP is unreachable (offline / transient). In Mode C the app-lock
+                            // gate has already passed and the local encrypted store is authoritative,
+                            // so unlock offline and let sync resume when connectivity returns rather
+                            // than blocking the user out of their own on-device data.
+                            authDebugLog("unlock: IdP unreachable (${e.describe()}); using local data offline")
+                            authenticateOffline(refresh)
+                            return
+                        }
+                        throw e
                     }
-                    throw e
-                }
             tokens.refreshToken?.let { tokenStore.saveRefreshToken(it) }
             tokenHolder.set(tokens)
             loadUser()
@@ -181,6 +200,21 @@ class AuthController(
      * that [LocalDataSource] must not implement (D-15.6/D-15.9).
      */
     suspend fun uploadLocalData(json: String): ApiResult<ImportResultDto> = remote.uploadHomeflowImport(json)
+
+    /**
+     * Reach [AuthState.Authenticated] from the local store when the server is unreachable.
+     * Only called under [allowOfflineUnlock] after the app-lock gate has passed. Seeds the
+     * refresh token so the HTTP client can mint a fresh access token (and sync can resume)
+     * once the network returns, then presents the synthetic local user (unused by the Mode-C
+     * shell, which renders off the local repository).
+     */
+    private fun authenticateOffline(refreshToken: String) {
+        tokenHolder.setRefreshToken(refreshToken)
+        _state.value = AuthState.Authenticated(offlineUser(), repository)
+    }
+
+    /** The single local account identity used while offline (see [LocalBootstrap.LOCAL_USER_ID]). */
+    private fun offlineUser(): UserDto = UserDto(id = LocalBootstrap.LOCAL_USER_ID, createdAt = "")
 
     private suspend fun loadUser() {
         // Check server compatibility before loading the user. A 404 or network error
@@ -219,7 +253,15 @@ class AuthController(
                 }
                 is ApiResult.Failure -> {
                     authDebugLog("getMe FAILED: code=${result.code} status=${result.httpStatus} msg=${result.message}")
-                    AuthState.Error(result.userMessage())
+                    if (allowOfflineUnlock && result.httpStatus == 0) {
+                        // httpStatus == 0 is the network-error marker (see ApiResult helpers): the
+                        // API is unreachable, not rejecting us. In Mode C fall back to the local
+                        // store rather than erroring the whole app.
+                        authDebugLog("getMe offline (network unreachable); using local data")
+                        AuthState.Authenticated(offlineUser(), repository)
+                    } else {
+                        AuthState.Error(result.userMessage())
+                    }
                 }
             }
     }
