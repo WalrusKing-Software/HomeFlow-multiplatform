@@ -83,13 +83,22 @@ compose.desktop {
             // Best-effort screenshot protection on desktop is a runtime concern (the window
             // is not added to the OS screen-capture exclusion here); see the client security
             // checklist in __docs/ARCHITECTURE-client.md.
+            // App icon (the HomeFlow bloom, icons/homeflow-icon.svg). jpackage needs a
+            // platform-native format per OS: .ico for Windows, .icns for macOS, .png for
+            // Linux. Rasterised from the SVG into app/desktopApp/icons/.
+            val iconsDir = project.file("icons")
             windows {
                 menuGroup = "HomeFlow"
                 // Stable UUID so MSI upgrades replace the prior install instead of stacking.
                 upgradeUuid = "5f1d2c9e-7b3a-4e2f-9c8d-1a2b3c4d5e6f"
+                iconFile.set(iconsDir.resolve("homeflow.ico"))
+            }
+            macOS {
+                iconFile.set(iconsDir.resolve("homeflow.icns"))
             }
             linux {
                 packageName = "homeflow"
+                iconFile.set(iconsDir.resolve("homeflow.png"))
             }
         }
     }
