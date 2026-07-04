@@ -3,8 +3,7 @@ package org.homeflow.core.dto
 import kotlinx.serialization.Serializable
 
 /**
- * Sync wire DTOs — the `GET/POST /api/v1/sync/changes` protocol
- * (`__docs/IMPLEMENTATION-PHASES-modular-offline.md` Phase 16).
+ * Sync wire DTOs — the `GET/POST /api/v1/sync/changes` protocol (see `__docs/API.md`).
  *
  * Key differences from the export/import shape (Phase 12):
  * - Each aggregate carries its UUID `id` and `cycleId` (D1) so identity is preserved

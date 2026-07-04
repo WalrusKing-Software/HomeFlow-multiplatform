@@ -69,10 +69,11 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/API.md` | every route's contract |
 | `__docs/KEYCLOAK.md` | realm, clients, audience mapper, TOTP 2FA, JWT validation |
 | `__docs/threat-model.md` | threats + mitigations |
-| `__docs/IMPLEMENTATION-PHASES.md` | build order with done-when checklists |
+| `__docs/SETUP-SERVER.md` / `SETUP-DESKTOP.md` / `SETUP-ANDROID.md` | end-user install + server-connection guides |
 | `__docs/DOCKER.md` / `__docs/DEPLOYMENT.md` | containers / Pi + Tailscale runbook |
 | `__docs/TESTING.md` | test layers and what's covered |
 | `__docs/BACKUP.md` / `__docs/BRANCHING.md` | backups / git model + CI gates |
+| `__docs/RELEASE-PIPELINE.md` / `COMPATIBILITY.md` | release packaging / client–server compatibility |
 | `__docs/project-planning/` | product overview + feature spec |
 | `openapi.yaml` | the API contract (initial spec; may become a server-generated output) |
 
@@ -104,9 +105,23 @@ make dev                    # docker compose with the dev overlay
 
 ## Status
 
-Greenfield. The documentation/spec is in place (ported from the HomeFlow web repo);
-implementation follows `__docs/IMPLEMENTATION-PHASES.md` starting at Phase 0
-(Gradle KMP scaffold). See `CHANGELOG.md`.
+Feature-complete and preparing the first release (**0.1.0**). The Kotlin
+Multiplatform rebuild is implemented end to end: the shared `:core` contract, the
+Ktor server (auth, cycles, daily logs, symptoms, analytics, preferences), and the
+desktop + Android clients (read and write). Three deployment modes are supported:
+
+- **Local-only** — run a client with no server; data is stored on-device in an
+  encrypted local store.
+- **Server-connected** — stand up the self-hosted server and point clients at it; the
+  server is the source of truth (includes a one-time "adopt a server" migration that
+  lifts existing local data up to the server).
+- **Offline-capable + sync** — clients keep a first-class local store, work fully
+  offline, and reconcile with the server when connectivity returns.
+
+Releases are cut per component (server / desktop / android); see
+`__docs/RELEASE-PIPELINE.md`, `COMPATIBILITY.md`, and `CHANGELOG.md`.
+
+Licensed under **AGPL-3.0** (see `LICENSE`). Security disclosures: see `SECURITY.md`.
 
 
 
