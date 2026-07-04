@@ -41,10 +41,12 @@ jobs:
 
           case "$BASE" in
             main)
-              if [[ "$HEAD" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              # release/x.y.z, with an optional 'v' prefix and optional pre-release
+              # qualifier (e.g. release/0.1.0, release/v0.1.0, release/v0.1.0-alpha-1).
+              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
                 echo "OK: release PR into 'main' from '$HEAD'."
               else
-                fail "Only 'release/x.y.z' branches may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
+                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
               fi
               ;;
             release/*)
