@@ -455,8 +455,10 @@ light/dark switching is automatic.
 
 ### Placement (per-platform, by window width)
 
-- **Both platforms:** an "Appearance" segmented control (System / Light / Dark / Classic)
-  in the Settings screen — always discoverable, including on phones.
+- **Both platforms:** an "Appearance" picker (System / Light / Dark / Classic) in the
+  Settings screen — always discoverable, including on phones. It adapts to width: a
+  compact segmented control on wide windows, a vertical radio list (with per-option
+  descriptions) on narrow/phone windows.
 - **Wide layout (desktop / tablets, ≥ `RAIL_BREAKPOINT`):** an extra one-tap light/dark
   toggle `IconButton` in the top app bar. Narrow (phone) layouts omit it and rely on
   Settings.

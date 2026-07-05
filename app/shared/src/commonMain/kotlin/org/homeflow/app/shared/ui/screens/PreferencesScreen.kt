@@ -2,6 +2,7 @@ package org.homeflow.app.shared.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -18,6 +20,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.config.ThemeMode
@@ -183,10 +187,32 @@ private fun ReorderRow(
     }
 }
 
+/** Below this width the appearance picker uses a vertical radio list; at or above it, segmented. */
+private val THEME_PICKER_BREAKPOINT = 600.dp
+
+private val THEME_LABELS =
+    mapOf(
+        ThemeMode.SYSTEM to "System",
+        ThemeMode.LIGHT to "Light",
+        ThemeMode.DARK to "Dark",
+        ThemeMode.CLASSIC_DARK to "Classic",
+    )
+
+private val THEME_DESCRIPTIONS =
+    mapOf(
+        ThemeMode.SYSTEM to "Follow the device's light or dark setting",
+        ThemeMode.LIGHT to "Light rose theme",
+        ThemeMode.DARK to "Branded rose-tinted dark theme",
+        ThemeMode.CLASSIC_DARK to "Neutral near-black dark theme",
+    )
+
 /**
- * Appearance: choose the app's color scheme. A three-way segmented control (System / Light /
- * Dark) shown on every platform, so the setting is discoverable even on phones where the top-bar
- * quick toggle is absent. Changes apply immediately and persist via [onThemeModeChange].
+ * Appearance: choose the app's color scheme. Shown on every platform so the setting is
+ * discoverable even on phones where the top-bar quick toggle is absent. Changes apply immediately
+ * and persist via [onThemeModeChange].
+ *
+ * Layout adapts to width: wide windows (desktop / tablets) get a compact segmented control;
+ * narrow windows (phones) get a vertical radio list with room for each option's description.
  */
 @Composable
 private fun AppearanceSection(
@@ -195,13 +221,6 @@ private fun AppearanceSection(
 ) {
     // Fixed display order; index maps 1:1 to the enum ordinal (SYSTEM, LIGHT, DARK, CLASSIC_DARK).
     val options = ThemeMode.entries
-    val labels =
-        mapOf(
-            ThemeMode.SYSTEM to "System",
-            ThemeMode.LIGHT to "Light",
-            ThemeMode.DARK to "Dark",
-            ThemeMode.CLASSIC_DARK to "Classic",
-        )
 
     SectionCard("Appearance") {
         Text(
@@ -210,12 +229,54 @@ private fun AppearanceSection(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SegmentedTabBar(
-            tabs = options,
-            selectedIndex = options.indexOf(themeMode),
-            onTabSelected = { onThemeModeChange(options[it]) },
-            label = { labels.getValue(it) },
-        )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth >= THEME_PICKER_BREAKPOINT) {
+                SegmentedTabBar(
+                    tabs = options,
+                    selectedIndex = options.indexOf(themeMode),
+                    onTabSelected = { onThemeModeChange(options[it]) },
+                    label = { THEME_LABELS.getValue(it) },
+                )
+            } else {
+                Column {
+                    options.forEach { option ->
+                        ThemeRadioRow(
+                            selected = option == themeMode,
+                            label = THEME_LABELS.getValue(option),
+                            description = THEME_DESCRIPTIONS.getValue(option),
+                            onSelect = { onThemeModeChange(option) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeRadioRow(
+    selected: Boolean,
+    label: String,
+    description: String,
+    onSelect: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
