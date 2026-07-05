@@ -54,3 +54,23 @@ internal val HomeFlowDarkColors =
         surfaceVariant = Color(0xFF524346),
         onSurfaceVariant = Color(0xFFD6C2C5),
     )
+
+// Classic dark — a neutral, near-black theme (no brand tint) with a calm blue accent, for
+// users who prefer a plain dark look over the branded rose [HomeFlowDarkColors] above.
+internal val HomeFlowClassicDarkColors =
+    darkColorScheme(
+        primary = Color(0xFF8AB4F8),
+        onPrimary = Color(0xFF0B1B33),
+        primaryContainer = Color(0xFF29405E),
+        onPrimaryContainer = Color(0xFFD6E3FF),
+        secondary = Color(0xFFB8C7DB),
+        onSecondary = Color(0xFF22313F),
+        tertiary = Color(0xFFCBC0DB),
+        onTertiary = Color(0xFF322C3E),
+        background = Color(0xFF121212),
+        onBackground = Color(0xFFE3E3E3),
+        surface = Color(0xFF121212),
+        onSurface = Color(0xFFE3E3E3),
+        surfaceVariant = Color(0xFF2A2A2A),
+        onSurfaceVariant = Color(0xFFC6C6C6),
+    )

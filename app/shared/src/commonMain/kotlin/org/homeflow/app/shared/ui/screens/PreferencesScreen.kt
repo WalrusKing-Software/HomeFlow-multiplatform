@@ -193,13 +193,20 @@ private fun AppearanceSection(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
-    // Fixed display order; index maps 1:1 to the enum ordinal (SYSTEM, LIGHT, DARK).
+    // Fixed display order; index maps 1:1 to the enum ordinal (SYSTEM, LIGHT, DARK, CLASSIC_DARK).
     val options = ThemeMode.entries
-    val labels = mapOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
+    val labels =
+        mapOf(
+            ThemeMode.SYSTEM to "System",
+            ThemeMode.LIGHT to "Light",
+            ThemeMode.DARK to "Dark",
+            ThemeMode.CLASSIC_DARK to "Classic",
+        )
 
     SectionCard("Appearance") {
         Text(
-            "Choose the app theme. \"System\" follows your device's light or dark setting.",
+            "Choose the app theme. \"System\" follows your device's light or dark setting. " +
+                "\"Dark\" is the rose-tinted theme; \"Classic\" is a neutral near-black theme.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

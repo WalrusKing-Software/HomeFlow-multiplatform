@@ -442,8 +442,9 @@ screen including the login/lock gate — `App` no longer wraps its own `Material
 Screens must read colors from `MaterialTheme.colorScheme`, never hard-code them, so
 light/dark switching is automatic.
 
-- **`ThemeMode { SYSTEM, LIGHT, DARK }`** (in `config/`). `SYSTEM` resolves against
-  `isSystemInDarkTheme()`; the default on first run.
+- **`ThemeMode { SYSTEM, LIGHT, DARK, CLASSIC_DARK }`** (in `config/`). `SYSTEM` resolves
+  against `isSystemInDarkTheme()` (the default on first run); `DARK` is the branded
+  rose-tinted dark scheme; `CLASSIC_DARK` is a neutral near-black scheme.
 - **`ThemePreferenceStore`** (expect/actual, mirrors `AppModeStore`) persists the choice
   in a **non-encrypted** store — the appearance preference is not sensitive and must be
   readable before the app-lock gate:
@@ -454,7 +455,7 @@ light/dark switching is automatic.
 
 ### Placement (per-platform, by window width)
 
-- **Both platforms:** a three-way "Appearance" segmented control (System / Light / Dark)
+- **Both platforms:** an "Appearance" segmented control (System / Light / Dark / Classic)
   in the Settings screen — always discoverable, including on phones.
 - **Wide layout (desktop / tablets, ≥ `RAIL_BREAKPOINT`):** an extra one-tap light/dark
   toggle `IconButton` in the top app bar. Narrow (phone) layouts omit it and rely on

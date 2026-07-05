@@ -19,10 +19,11 @@ changed." See `CLAUDE.md` for the rules.
 
 ### Added
 - **Dark mode.** The app now has a light and a dark theme, chosen from a new
-  "Appearance" section in Settings (System / Light / Dark) on both desktop and Android.
-  "System" follows the device's light/dark setting. On wide windows (desktop and
-  tablets) the top bar also gains a one-tap light/dark toggle. The choice is remembered
-  across launches.
+  "Appearance" section in Settings (System / Light / Dark / Classic) on both desktop and
+  Android. "System" follows the device's light/dark setting, "Dark" is the branded
+  rose-tinted dark theme, and "Classic" is a neutral near-black dark theme. On wide
+  windows (desktop and tablets) the top bar also gains a one-tap light/dark toggle. The
+  choice is remembered across launches.
 
 
 ### Changed

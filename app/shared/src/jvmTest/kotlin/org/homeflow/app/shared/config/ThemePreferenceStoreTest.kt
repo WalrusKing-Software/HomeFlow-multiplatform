@@ -44,6 +44,12 @@ class ThemePreferenceStoreTest {
     }
 
     @Test
+    fun `save then load round-trips CLASSIC_DARK`() {
+        store.save(ThemeMode.CLASSIC_DARK)
+        assertEquals(ThemeMode.CLASSIC_DARK, store.load())
+    }
+
+    @Test
     fun `save overwrites previous value`() {
         store.save(ThemeMode.DARK)
         store.save(ThemeMode.LIGHT)

@@ -78,6 +78,7 @@ private fun ThemeToggleButton(
             ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
             ThemeMode.LIGHT -> false
             ThemeMode.DARK -> true
+            ThemeMode.CLASSIC_DARK -> true
         }
     IconButton(onClick = { onThemeModeChange(if (dark) ThemeMode.LIGHT else ThemeMode.DARK) }) {
         Icon(

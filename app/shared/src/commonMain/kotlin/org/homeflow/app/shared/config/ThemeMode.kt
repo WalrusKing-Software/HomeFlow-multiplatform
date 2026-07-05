@@ -4,12 +4,16 @@ package org.homeflow.app.shared.config
  * The user's chosen appearance for the app.
  *
  * - [SYSTEM] follows the OS light/dark setting (the default on first run).
- * - [LIGHT] / [DARK] force that scheme regardless of the OS.
+ * - [LIGHT] / [DARK] force that scheme regardless of the OS. [DARK] is the branded,
+ *   rose-tinted dark theme.
+ * - [CLASSIC_DARK] is a neutral, near-black dark theme for users who prefer a plain,
+ *   low-color dark look over the branded one.
  */
 enum class ThemeMode {
     SYSTEM,
     LIGHT,
     DARK,
+    CLASSIC_DARK,
 }
 
 /**
