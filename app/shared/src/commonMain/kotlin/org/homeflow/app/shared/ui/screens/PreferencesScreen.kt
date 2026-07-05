@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.homeflow.app.shared.config.ThemePreference
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.CategoryLabel
 import org.homeflow.app.shared.data.HomeFlowRepository
@@ -39,7 +40,11 @@ import org.homeflow.app.shared.data.userFacingMessage
 import org.homeflow.app.shared.data.userMessage
 import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
+import org.homeflow.app.shared.ui.components.kmp.feedback.ConfirmDialog
+import org.homeflow.app.shared.ui.components.kmp.layout.ExpandableCard
+import org.homeflow.app.shared.ui.components.kmp.navigation.SegmentedTabBar
 import org.homeflow.app.shared.ui.components.toLoadable
+import org.homeflow.app.shared.ui.theme.LocalThemeController
 import org.homeflow.core.dto.ImportResultDto
 
 /** The text the user must type to confirm the irreversible account deletion. */
@@ -73,6 +78,7 @@ fun PreferencesScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        AppearanceSection()
         when (val current = state) {
             is Loadable.Loading ->
                 Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
@@ -99,6 +105,25 @@ fun PreferencesScreen(
             onSwitchToLocal = onSwitchToLocal,
         )
         DangerZone(onDeleteAccount)
+    }
+}
+
+/** Theme selector (System / Light / Dark). Shown on both platforms. */
+@Composable
+private fun AppearanceSection() {
+    val themeController = LocalThemeController.current
+    SectionCard("Appearance") {
+        Text(
+            "Choose a light or dark theme, or follow your device setting.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SegmentedTabBar(
+            tabs = ThemePreference.entries,
+            selectedIndex = themeController.preference.ordinal,
+            onTabSelected = { themeController.set(ThemePreference.entries[it]) },
+            label = { it.label },
+        )
     }
 }
 
@@ -276,27 +301,19 @@ private fun SwitchToLocalButton(onSwitchToLocal: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Switch to local-only mode") }
 
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Switch to local-only mode?") },
-            text = {
-                Text(
-                    "Your data stays on this device and will stop syncing with the server. " +
-                        "You can reconnect later from Settings.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDialog = false
-                    onSwitchToLocal()
-                }) { Text("Switch") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
-            },
-        )
-    }
+    ConfirmDialog(
+        visible = showDialog,
+        title = "Switch to local-only mode?",
+        body =
+            "Your data stays on this device and will stop syncing with the server. " +
+                "You can reconnect later from Settings.",
+        confirmLabel = "Switch",
+        onConfirm = {
+            showDialog = false
+            onSwitchToLocal()
+        },
+        onDismiss = { showDialog = false },
+    )
 }
 
 @Composable
@@ -356,7 +373,7 @@ private fun DangerZone(onDeleteAccount: suspend () -> ApiResult<Unit>) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    SectionCard("Danger zone") {
+    ExpandableCard(title = "Danger zone") {
         Text(
             "Permanently delete your account and all tracked data. This cannot be undone.",
             style = MaterialTheme.typography.bodyMedium,

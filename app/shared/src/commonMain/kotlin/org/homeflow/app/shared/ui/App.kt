@@ -1,6 +1,5 @@
 package org.homeflow.app.shared.ui
 
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,70 +37,68 @@ fun App(
     syncEngine: SyncEngine? = null,
     syncRepository: HomeFlowRepository? = null,
 ) {
-    MaterialTheme {
-        val scope = rememberCoroutineScope()
-        val state by controller.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val state by controller.state.collectAsState()
 
-        LaunchedEffect(controller) { controller.start() }
+    LaunchedEffect(controller) { controller.start() }
 
-        when (val current = state) {
-            is AuthState.LoggedOut ->
-                LoginScreen(onLogin = { scope.launch { controller.login() } })
+    when (val current = state) {
+        is AuthState.LoggedOut ->
+            LoginScreen(onLogin = { scope.launch { controller.login() } })
 
-            is AuthState.Authenticating ->
-                LoadingScreen(message = "Working…")
+        is AuthState.Authenticating ->
+            LoadingScreen(message = "Working…")
 
-            is AuthState.Locked ->
-                LockScreen(
-                    usesPassphrase = controller.usesPassphraseGate,
-                    needsEnrollment = current.needsEnrollment,
-                    onSubmitPassphrase = { secret ->
-                        scope.launch {
-                            if (current.needsEnrollment) controller.enroll(secret) else controller.unlock(secret)
-                        }
-                    },
-                    onBiometric = { scope.launch { controller.unlock(null) } },
-                    onLogout = { scope.launch { controller.logout() } },
-                )
-
-            is AuthState.Authenticated -> {
-                // Mode C: use local-first repository + background sync triggers.
-                if (syncEngine != null && syncRepository != null) {
-                    // Initial sync on foreground + periodic timer (~15 min).
-                    LaunchedEffect(current) {
-                        syncEngine.syncNow()
-                        while (true) {
-                            kotlinx.coroutines.delay(15 * 60 * 1_000L)
-                            syncEngine.syncNow()
-                        }
+        is AuthState.Locked ->
+            LockScreen(
+                usesPassphrase = controller.usesPassphraseGate,
+                needsEnrollment = current.needsEnrollment,
+                onSubmitPassphrase = { secret ->
+                    scope.launch {
+                        if (current.needsEnrollment) controller.enroll(secret) else controller.unlock(secret)
                     }
-                    AppShell(
-                        repository = syncRepository,
-                        onLogout = { scope.launch { controller.logout() } },
-                        onDeleteAccount = { controller.deleteAccount() },
-                        onExport = onExport,
-                        onConnectServer = onConnectServer,
-                        onUploadToServer = onUploadToServer,
-                        connectedHost = connectedHost,
-                        onSwitchToLocal = onSwitchToLocal,
-                        syncStatusFlow = syncEngine.status,
-                    )
-                } else {
-                    AppShell(
-                        repository = current.repository,
-                        onLogout = { scope.launch { controller.logout() } },
-                        onDeleteAccount = { controller.deleteAccount() },
-                        onExport = onExport,
-                        onConnectServer = onConnectServer,
-                        onUploadToServer = onUploadToServer,
-                        connectedHost = connectedHost,
-                        onSwitchToLocal = onSwitchToLocal,
-                    )
-                }
-            }
+                },
+                onBiometric = { scope.launch { controller.unlock(null) } },
+                onLogout = { scope.launch { controller.logout() } },
+            )
 
-            is AuthState.Error ->
-                ErrorScreen(message = current.message, onRetry = { controller.start() })
+        is AuthState.Authenticated -> {
+            // Mode C: use local-first repository + background sync triggers.
+            if (syncEngine != null && syncRepository != null) {
+                // Initial sync on foreground + periodic timer (~15 min).
+                LaunchedEffect(current) {
+                    syncEngine.syncNow()
+                    while (true) {
+                        kotlinx.coroutines.delay(15 * 60 * 1_000L)
+                        syncEngine.syncNow()
+                    }
+                }
+                AppShell(
+                    repository = syncRepository,
+                    onLogout = { scope.launch { controller.logout() } },
+                    onDeleteAccount = { controller.deleteAccount() },
+                    onExport = onExport,
+                    onConnectServer = onConnectServer,
+                    onUploadToServer = onUploadToServer,
+                    connectedHost = connectedHost,
+                    onSwitchToLocal = onSwitchToLocal,
+                    syncStatusFlow = syncEngine.status,
+                )
+            } else {
+                AppShell(
+                    repository = current.repository,
+                    onLogout = { scope.launch { controller.logout() } },
+                    onDeleteAccount = { controller.deleteAccount() },
+                    onExport = onExport,
+                    onConnectServer = onConnectServer,
+                    onUploadToServer = onUploadToServer,
+                    connectedHost = connectedHost,
+                    onSwitchToLocal = onSwitchToLocal,
+                )
+            }
         }
+
+        is AuthState.Error ->
+            ErrorScreen(message = current.message, onRetry = { controller.start() })
     }
 }
