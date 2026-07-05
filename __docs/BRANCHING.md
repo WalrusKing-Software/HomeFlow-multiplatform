@@ -79,6 +79,7 @@ git tag v0.1.0 && git push origin v0.1.0
 | `server-vX.Y.Z[-pre.N]` | Server only | `server-v0.2.1` |
 | `desktop-vX.Y.Z[-pre.N]` | Desktop only | `desktop-v0.2.1` |
 | `android-vX.Y.Z[-pre.N]` | Android only | `android-v0.2.1` |
+| `clients-vX.Y.Z[-pre.N]` | Desktop + Android together, no server | `clients-v0.2.1` |
 
 Pre-release ordering (SemVer): `-alpha.N` < `-beta.N` < `-rc.N` < final — tags only.
 
@@ -87,13 +88,16 @@ Pre-release ordering (SemVer): `-alpha.N` < `-beta.N` < `-rc.N` < final — tags
 reads its own key. `:core` and `:app:shared` are never released independently and
 carry no version. For Android, `versionName` = the tag's `X.Y.Z` and **`versionCode`**
 is a monotonic integer derived from it. Desktop installer version = same `X.Y.Z`.
+A `clients-v*` release requires `version.desktop` and `version.android` to already
+match (bump both together with `sh scripts/bump-version.sh clients`).
 
 **Compatibility:** see `COMPATIBILITY.md` for the client–server compatibility matrix.
 Update it whenever a release raises the minimum supported client version.
 
 **Changelog:** one `CHANGELOG.md` at the repo root (Keep-a-Changelog; see `CLAUDE.md`).
 Component-only releases use prefixed headers (`## [Server X.Y.Z]`, `## [Desktop X.Y.Z]`,
-`## [Android X.Y.Z]`); full-suite releases use `## [X.Y.Z]`.
+`## [Android X.Y.Z]`, `## [Clients X.Y.Z]` for a combined desktop+Android release);
+full-suite releases use `## [X.Y.Z]`.
 
 ---
 
