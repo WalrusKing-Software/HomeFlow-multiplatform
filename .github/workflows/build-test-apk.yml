@@ -69,11 +69,14 @@ jobs:
       - name: Collect APK
         id: collect
         shell: bash
+        # REF is passed via env (not interpolated into the script) so an arbitrary
+        # ref string can't inject shell — see semgrep run-shell-injection.
+        env:
+          REF: ${{ github.event.inputs.ref }}
         run: |
           set -euo pipefail
           # Filesystem-safe label from the requested ref (e.g. feature/foo -> feature-foo).
-          ref="${{ github.event.inputs.ref }}"
-          label="$(echo "$ref" | tr '/ ' '--' | tr -cd 'A-Za-z0-9._-')"
+          label="$(echo "$REF" | tr '/ ' '--' | tr -cd 'A-Za-z0-9._-')"
           sha7="$(git rev-parse --short=7 HEAD)"
           name="homeflow-test-${label}-${sha7}.apk"
 
@@ -94,13 +97,16 @@ jobs:
 
       - name: Build summary
         shell: bash
+        # REF via env (not interpolated) — see semgrep run-shell-injection.
+        env:
+          REF: ${{ github.event.inputs.ref }}
         run: |
           {
             echo "### Test APK built :iphone:"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Ref | \`${{ github.event.inputs.ref }}\` |"
+            echo "| Ref | \`${REF}\` |"
             echo "| Commit | \`${{ steps.collect.outputs.sha7 }}\` |"
             echo "| APK | \`${{ steps.collect.outputs.apk_name }}\` |"
             echo "| Build type | debug (debug-signed, not minified) |"
