@@ -7,9 +7,17 @@ name: Build Android Test APK
 # debug APK (always installable, auto-signed with the Android debug key), then
 # uploads both as workflow artifacts.
 #
-# The APKs are NOT published as a GitHub Release and are NOT committed — they are
-# temporary build outputs downloadable from the run's "Artifacts" section for 14
-# days, to copy onto the test phone (e.g. `adb install -r homeflow-<branch>-<sha>.apk`).
+# When `publish` is true (the default) it ALSO attaches the APK(s) to a GitHub
+# pre-release tagged `apk-<branch>`, so — on a public repo — you get a direct,
+# login-free download link to open on the phone:
+#   https://github.com/<owner>/<repo>/releases/tag/apk-<branch>
+# The pre-release is throwaway: each run replaces the previous one for that branch,
+# so there is always exactly one "latest test APK" per branch at a stable URL. It is
+# marked pre-release and never becomes the repo's "Latest release". Set `publish` to
+# false to build artifacts only (no release).
+#
+# The APKs are always ALSO uploaded as workflow artifacts (14-day retention), which
+# require a GitHub login and a .zip unwrap — handy from a desktop, clunky from a phone.
 #
 # Notes:
 #   - The debug build is debuggable and (see MainActivity) points SERVER mode at
@@ -28,9 +36,13 @@ on:
         description: 'Branch (or ref) to build the APK from'
         required: true
         default: 'develop'
+      publish:
+        description: 'Also publish the APK as a downloadable GitHub pre-release (direct phone link)'
+        type: boolean
+        default: true
 
 permissions:
-  contents: read
+  contents: write   # create/replace the per-branch pre-release that hosts the APK download
 
 concurrency:
   group: build-android-apk-${{ github.event.inputs.branch }}
@@ -143,13 +155,73 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      - name: Print install instructions
+      - name: Publish APK as a pre-release (phone download)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.inputs.branch }}
+          BREF: ${{ steps.meta.outputs.bref }}
+          SHA7: ${{ steps.meta.outputs.sha7 }}
+          SIGNED: ${{ steps.signing.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          tag="apk-${BREF}"
+
+          # Attach the always-installable debug APK, plus the signed release APK when
+          # available. `apk-<branch>` is a throwaway, moving tag — none of the release
+          # workflows trigger on it (they match v*/android-v*/server-v*/desktop-v*).
+          files=("out/homeflow-${BREF}-${SHA7}-debug.apk")
+          if [[ "${SIGNED}" == "true" ]]; then
+            files=("out/homeflow-${BREF}-${SHA7}.apk" "${files[@]}")
+            primary="the **signed release** APK (\`homeflow-${BREF}-${SHA7}.apk\`)"
+          else
+            primary="the **debug** APK (the release APK was unsigned — no signing secrets)"
+          fi
+
+          # Replace any previous pre-release for this branch so exactly one remains,
+          # always at the same URL: .../releases/tag/apk-<branch>.
+          gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
+
+          {
+            echo "On-demand test APK from \`${BRANCH}\` (commit \`${SHA7}\`). **Not a real release.**"
+            echo ""
+            echo "**Install on the phone:** open this page on the phone and tap the \`.apk\` to download it directly (public repo — no login needed), then open it to install."
+            echo ""
+            echo "- Recommended: ${primary}."
+            echo "- \`*-debug.apk\` is always installable (debug-signed); use it if the signed APK is blocked."
+            echo "- If an install is blocked by a signature mismatch, uninstall the existing HomeFlow build first."
+            echo ""
+            echo "_Throwaway pre-release — the next run for this branch replaces it._"
+          } > release-notes.md
+
+          # Tag the commit that was actually built (the checked-out `branch` input) —
+          # NOT $GITHUB_SHA, which on workflow_dispatch is the dispatched ref (e.g. main).
+          built_sha="$(git rev-parse HEAD)"
+          gh release create "$tag" "${files[@]}" \
+            --target "$built_sha" \
+            --prerelease \
+            --latest=false \
+            --title "Test APK — ${BRANCH} @ ${SHA7}" \
+            --notes-file release-notes.md
+
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+          echo "::notice::Published test APK pre-release: ${url}"
+          {
+            echo "### :iphone: Test APK published"
+            echo ""
+            echo "Open on the phone and tap the \`.apk\` to install (no login):"
+            echo ""
+            echo "**${url}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print artifact install instructions
         shell: bash
         env:
           BRANCH: ${{ github.event.inputs.branch }}
         run: |
           echo "::notice::APKs built from branch '$BRANCH' @ ${{ steps.meta.outputs.sha7 }} (versionCode ${{ steps.meta.outputs.version_code }})."
-          echo "::notice::Download them from this run's Artifacts section, then sideload:"
+          echo "::notice::They are also downloadable from this run's Artifacts section, then sideload:"
           echo "::notice::  adb install -r homeflow-${{ steps.meta.outputs.bref }}-${{ steps.meta.outputs.sha7 }}.apk"
           if [[ "${{ steps.signing.outputs.enabled }}" != "true" ]]; then
             echo "::warning::Release APK is UNSIGNED (no signing secrets) — use the -debug.apk, or configure the ANDROID_KEYSTORE_* secrets."
