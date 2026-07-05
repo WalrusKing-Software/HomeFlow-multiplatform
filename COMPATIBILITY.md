@@ -58,3 +58,9 @@ The server reads two env vars at startup:
 | `server-v0.2.1` | `release-server.yml` | HomeFlow Server 0.2.1 (2 assets) |
 | `desktop-v0.2.1` | `release-desktop.yml` | HomeFlow Desktop 0.2.1 (3 assets) |
 | `android-v0.2.1` | `release-android.yml` | HomeFlow Android 0.2.1 (2 assets) |
+| `clients-v0.2.1` | `release-clients.yml` | HomeFlow Clients 0.2.1 (5 assets: desktop + Android, no server) |
+
+A `clients-v*` release ships desktop + Android together without a server change, so
+the server's `MIN_CLIENT_VERSION` requirement is unaffected — it assumes the current
+server already satisfies the new client build. If a client change needs a newer
+server, cut a `server-v*` (or lockstep `v*`) release instead and update the matrix above.
