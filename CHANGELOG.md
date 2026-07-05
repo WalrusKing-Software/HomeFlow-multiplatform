@@ -7,10 +7,11 @@ entry answers "what can I do now that I couldn't before?" — not "what files
 changed." See `CLAUDE.md` for the rules.
 
 <!-- Section header formats (used by the release pipeline awk extractor):
-     Combined release:  ## [X.Y.Z] - YYYY-MM-DD
-     Server only:       ## [Server X.Y.Z] - YYYY-MM-DD
-     Desktop only:      ## [Desktop X.Y.Z] - YYYY-MM-DD
-     Android only:      ## [Android X.Y.Z] - YYYY-MM-DD
+     Combined release:   ## [X.Y.Z] - YYYY-MM-DD
+     Server only:        ## [Server X.Y.Z] - YYYY-MM-DD
+     Desktop only:       ## [Desktop X.Y.Z] - YYYY-MM-DD
+     Android only:       ## [Android X.Y.Z] - YYYY-MM-DD
+     Clients (both, no server): ## [Clients X.Y.Z] - YYYY-MM-DD
 -->
 
 
@@ -18,6 +19,13 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **Clients-only release pipeline.** Tagging `clients-vX.Y.Z` (or a manual
+  `release-clients.yml` dispatch) builds and publishes desktop installers (Windows
+  `.msi`, macOS `.dmg`, Linux `.deb`) and a signed Android APK/AAB together in one
+  GitHub Release, with no server artifact. Use this for UX/shared-module changes
+  that affect both client apps but don't require a new server. Requires
+  `version.desktop` and `version.android` to match; bump both together with
+  `sh scripts/bump-version.sh clients`. See `__docs/RELEASE-PIPELINE.md` §13.1.
 - **Dark mode, with a theme setting.** Settings now has an "Appearance" section to
   choose **System**, **Light**, **Dark**, or **Classic Dark** — "System" follows your
   device's light/dark setting, "Dark" is the HomeFlow-branded coral/crimson dark theme,
