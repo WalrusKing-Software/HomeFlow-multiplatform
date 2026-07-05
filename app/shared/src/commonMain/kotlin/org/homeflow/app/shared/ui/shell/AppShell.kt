@@ -9,10 +9,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
@@ -31,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
+import org.homeflow.app.shared.config.ThemeMode
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.sync.SyncStatus
@@ -56,6 +61,30 @@ private fun SyncStatusChip(status: SyncStatus) {
             is SyncStatus.Error -> "Sync error" to MaterialTheme.colorScheme.error
         }
     Text(label, fontSize = 12.sp, color = color)
+}
+
+/**
+ * Quick light/dark toggle for the wide-layout top bar. Reads the effective scheme (resolving
+ * [ThemeMode.SYSTEM] against the OS) and flips to the opposite explicit mode — so one tap always
+ * does the visually obvious thing. The full three-way choice (incl. "System") lives in Settings.
+ */
+@Composable
+private fun ThemeToggleButton(
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+) {
+    val dark =
+        when (themeMode) {
+            ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+        }
+    IconButton(onClick = { onThemeModeChange(if (dark) ThemeMode.LIGHT else ThemeMode.DARK) }) {
+        Icon(
+            imageVector = if (dark) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+            contentDescription = if (dark) "Switch to light theme" else "Switch to dark theme",
+        )
+    }
 }
 
 /** The destinations of the signed-in shell, in order, each with its rail icon. */
@@ -86,6 +115,8 @@ fun AppShell(
     repository: HomeFlowRepository,
     onLogout: () -> Unit,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onExport: (suspend () -> Unit)? = null,
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
@@ -97,12 +128,17 @@ fun AppShell(
     val syncStatus by syncStatusFlow?.collectAsState()
         ?: androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<SyncStatus>(SyncStatus.Idle) }
 
-    val topBar: @Composable () -> Unit = {
+    // On wide (desktop/tablet) layouts the top bar carries a quick light/dark toggle; on narrow
+    // (phone) layouts the top bar stays minimal and appearance lives only in Settings.
+    val topBar: @Composable (showThemeToggle: Boolean) -> Unit = { showThemeToggle ->
         TopAppBar(
             title = { Text("HomeFlow") },
             actions = {
                 if (syncStatusFlow != null) {
                     SyncStatusChip(syncStatus)
+                }
+                if (showThemeToggle) {
+                    ThemeToggleButton(themeMode = themeMode, onThemeModeChange = onThemeModeChange)
                 }
                 TextButton(onClick = onLogout) { Text("Log out") }
             },
@@ -119,6 +155,8 @@ fun AppShell(
                 PreferencesScreen(
                     repository = repository,
                     onDeleteAccount = onDeleteAccount,
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
                     onExport = onExport,
                     onConnectServer = onConnectServer,
                     onUploadToServer = onUploadToServer,
@@ -130,8 +168,8 @@ fun AppShell(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth >= RAIL_BREAKPOINT) {
-            // Wide: side navigation rail beside the content.
-            Scaffold(topBar = topBar) { padding ->
+            // Wide: side navigation rail beside the content; top bar carries the quick theme toggle.
+            Scaffold(topBar = { topBar(true) }) { padding ->
                 Row(Modifier.fillMaxSize().padding(padding)) {
                     SideNavRail(
                         items = Tab.entries,
@@ -148,7 +186,7 @@ fun AppShell(
             Scaffold(
                 topBar = {
                     Column {
-                        topBar()
+                        topBar(false)
                         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
                             Tab.entries.forEach { entry ->
                                 Tab(

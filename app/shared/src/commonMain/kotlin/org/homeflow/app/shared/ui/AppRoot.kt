@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,15 +26,18 @@ import org.homeflow.app.shared.auth.buildAuthController
 import org.homeflow.app.shared.auth.createLocalKeyStore
 import org.homeflow.app.shared.auth.localSessionController
 import org.homeflow.app.shared.config.AppMode
+import org.homeflow.app.shared.config.ThemeMode
 import org.homeflow.app.shared.config.authConfigForHost
 import org.homeflow.app.shared.config.createAppModeStore
 import org.homeflow.app.shared.config.createServerConfigStore
+import org.homeflow.app.shared.config.createThemePreferenceStore
 import org.homeflow.app.shared.crypto.loadOrCreateDek
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.local.LocalBootstrap
 import org.homeflow.app.shared.data.local.LocalDataSource
 import org.homeflow.app.shared.data.local.LocalDatabaseFactory
 import org.homeflow.app.shared.data.sync.SyncEngine
+import org.homeflow.app.shared.ui.theme.HomeFlowTheme
 import org.homeflow.core.dto.ImportResultDto
 
 /**
@@ -57,7 +59,14 @@ fun AppRoot(
     serverHostOverride: String? = null,
     clientVersion: String = "unknown",
 ) {
-    MaterialTheme {
+    val themeStore = remember { createThemePreferenceStore() }
+    var themeMode by remember { mutableStateOf(themeStore.load()) }
+    val onThemeModeChange: (ThemeMode) -> Unit = { newMode ->
+        themeStore.save(newMode)
+        themeMode = newMode
+    }
+
+    HomeFlowTheme(themeMode) {
         val modeStore = remember { createAppModeStore() }
         val localKeyStore = remember { createLocalKeyStore() }
         val serverConfigStore = remember { createServerConfigStore() }
@@ -102,6 +111,8 @@ fun AppRoot(
                         controller = controller,
                         onExport = { controller.exportData() },
                         onConnectServer = { showConnect = true },
+                        themeMode = themeMode,
+                        onThemeModeChange = onThemeModeChange,
                     )
                     if (showConnect) {
                         // Opaque, input-blocking overlay so taps can't leak to the app beneath.
@@ -232,6 +243,8 @@ fun AppRoot(
                         },
                         syncEngine = syncEngine,
                         syncRepository = syncRepository,
+                        themeMode = themeMode,
+                        onThemeModeChange = onThemeModeChange,
                     )
 
                     // Auto-prompt overlay — rendered on top of the signed-in App content. Confirm

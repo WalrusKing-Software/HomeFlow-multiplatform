@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.homeflow.app.shared.config.ThemeMode
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.CategoryLabel
 import org.homeflow.app.shared.data.HomeFlowRepository
@@ -41,6 +42,7 @@ import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
 import org.homeflow.app.shared.ui.components.kmp.feedback.ConfirmDialog
 import org.homeflow.app.shared.ui.components.kmp.layout.ExpandableCard
+import org.homeflow.app.shared.ui.components.kmp.navigation.SegmentedTabBar
 import org.homeflow.app.shared.ui.components.toLoadable
 import org.homeflow.core.dto.ImportResultDto
 
@@ -57,6 +59,8 @@ private const val DELETE_CONFIRMATION = "DELETE"
 fun PreferencesScreen(
     repository: HomeFlowRepository,
     onDeleteAccount: suspend () -> ApiResult<Unit>,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onExport: (suspend () -> Unit)? = null,
     onConnectServer: (() -> Unit)? = null,
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
@@ -93,6 +97,7 @@ fun PreferencesScreen(
 
             is Loadable.Loaded -> ReorderForm(repository, current.value)
         }
+        AppearanceSection(themeMode = themeMode, onThemeModeChange = onThemeModeChange)
         if (onExport != null) ExportSection(onExport)
         ServerSection(
             connectedHost = connectedHost,
@@ -175,6 +180,35 @@ private fun ReorderRow(
             OutlinedButton(onClick = onMoveUp, enabled = canMoveUp) { Text("↑") }
             OutlinedButton(onClick = onMoveDown, enabled = canMoveDown) { Text("↓") }
         }
+    }
+}
+
+/**
+ * Appearance: choose the app's color scheme. A three-way segmented control (System / Light /
+ * Dark) shown on every platform, so the setting is discoverable even on phones where the top-bar
+ * quick toggle is absent. Changes apply immediately and persist via [onThemeModeChange].
+ */
+@Composable
+private fun AppearanceSection(
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+) {
+    // Fixed display order; index maps 1:1 to the enum ordinal (SYSTEM, LIGHT, DARK).
+    val options = ThemeMode.entries
+    val labels = mapOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
+
+    SectionCard("Appearance") {
+        Text(
+            "Choose the app theme. \"System\" follows your device's light or dark setting.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SegmentedTabBar(
+            tabs = options,
+            selectedIndex = options.indexOf(themeMode),
+            onTabSelected = { onThemeModeChange(options[it]) },
+            label = { labels.getValue(it) },
+        )
     }
 }
 

@@ -434,6 +434,34 @@ needs to know which mode it is in.
 
 ---
 
+## Theming (light / dark)
+
+The single Material 3 theme is `HomeFlowTheme(themeMode)` in `ui/theme/` (`Theme.kt` +
+`Color.kt`). It is applied **once** at the composition root (`AppRoot`), wrapping every
+screen including the login/lock gate — `App` no longer wraps its own `MaterialTheme`.
+Screens must read colors from `MaterialTheme.colorScheme`, never hard-code them, so
+light/dark switching is automatic.
+
+- **`ThemeMode { SYSTEM, LIGHT, DARK }`** (in `config/`). `SYSTEM` resolves against
+  `isSystemInDarkTheme()`; the default on first run.
+- **`ThemePreferenceStore`** (expect/actual, mirrors `AppModeStore`) persists the choice
+  in a **non-encrypted** store — the appearance preference is not sensitive and must be
+  readable before the app-lock gate:
+  - **Desktop:** `~/.homeflow/theme.properties` (key `theme_mode`)
+  - **Android:** plain `SharedPreferences` (`homeflow_theme`)
+- `AppRoot` owns the `themeMode` state and threads `themeMode` + `onThemeModeChange`
+  down through `App → AppShell → PreferencesScreen`.
+
+### Placement (per-platform, by window width)
+
+- **Both platforms:** a three-way "Appearance" segmented control (System / Light / Dark)
+  in the Settings screen — always discoverable, including on phones.
+- **Wide layout (desktop / tablets, ≥ `RAIL_BREAKPOINT`):** an extra one-tap light/dark
+  toggle `IconButton` in the top app bar. Narrow (phone) layouts omit it and rely on
+  Settings.
+
+---
+
 ## Building + running locally
 
 - `./gradlew :app:shared:compileCommonMainKotlinMetadata` — compile shared sources
