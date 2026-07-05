@@ -18,6 +18,11 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **On-demand test-APK builds.** A new "Build Test APK" GitHub Actions workflow
+  (`workflow_dispatch`) builds a debug-signed Android APK from any branch, tag, or
+  commit you name and hands it back as a downloadable artifact — so a mobile change
+  can be sideloaded onto a test phone without cutting a release or touching the
+  `release-test` branch.
 - **Dark mode.** The app now has a light and a dark theme, chosen from a new
   "Appearance" section in Settings (System / Light / Dark / Classic) on both desktop and
   Android. "System" follows the device's light/dark setting, "Dark" is the branded

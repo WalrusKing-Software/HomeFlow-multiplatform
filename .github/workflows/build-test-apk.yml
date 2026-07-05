@@ -1,0 +1,113 @@
+name: Build Test APK
+
+# On-demand DEBUG APK build from any branch, tag, or commit — for sideloading onto
+# a test phone. This is NOT a release: it produces a single debug-signed APK as a
+# downloadable workflow artifact. No GitHub Release, no GHCR image, no signing
+# secrets required.
+#
+# Why this exists (vs. release-android.yml / release-test.yml):
+#   - release-android.yml publishes a signed RELEASE APK+AAB to a GitHub Release
+#     and is tied to `android-vX.Y.Z` tags / gradle.properties versions.
+#   - release-test.yml builds all three deliverables and requires merging the code
+#     under test into the persistent `release-test` branch first.
+#   - This workflow just takes a branch name in the Run form and hands back a debug
+#     APK — the fastest path to "try this branch on the test phone."
+#
+# How to use:
+#   Actions tab → "Build Test APK" → Run workflow → enter the branch/tag/SHA to
+#   build → download the `test-apk-*` artifact from the finished run and install it
+#   on the test phone (see the run summary for install notes).
+#
+# See __docs/RELEASE-PIPELINE.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, or commit SHA to build'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: read   # checkout only; nothing is published
+
+concurrency:
+  # One in-flight build per requested ref; a newer request supersedes an older one.
+  group: build-test-apk-${{ github.event.inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Debug APK (${{ github.event.inputs.ref }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install required SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Assemble debug APK
+        shell: bash
+        # Debug builds are auto-signed with the Android debug keystore (no secrets
+        # needed) and are always installable. versionCode is made monotonic per run
+        # so a reinstall over a previous test APK upgrades cleanly instead of being
+        # rejected as a downgrade.
+        run: >
+          ./gradlew :app:androidApp:assembleDebug
+          -PversionCode=${{ github.run_number }}
+          --no-daemon --no-configuration-cache
+
+      - name: Collect APK
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Filesystem-safe label from the requested ref (e.g. feature/foo -> feature-foo).
+          ref="${{ github.event.inputs.ref }}"
+          label="$(echo "$ref" | tr '/ ' '--' | tr -cd 'A-Za-z0-9._-')"
+          sha7="$(git rev-parse --short=7 HEAD)"
+          name="homeflow-test-${label}-${sha7}.apk"
+
+          apk="$(ls app/androidApp/build/outputs/apk/debug/*.apk | head -n1)"
+          mkdir -p out
+          cp "$apk" "out/${name}"
+          echo "artifact_name=test-apk-${label}-${sha7}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${name}" >> "$GITHUB_OUTPUT"
+          echo "sha7=${sha7}" >> "$GITHUB_OUTPUT"
+          echo "Collected out/${name} (from $apk)"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.collect.outputs.artifact_name }}
+          path: out/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "### Test APK built :iphone:"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Ref | \`${{ github.event.inputs.ref }}\` |"
+            echo "| Commit | \`${{ steps.collect.outputs.sha7 }}\` |"
+            echo "| APK | \`${{ steps.collect.outputs.apk_name }}\` |"
+            echo "| Build type | debug (debug-signed, not minified) |"
+            echo ""
+            echo "**Install on the test phone:**"
+            echo "1. Download the **${{ steps.collect.outputs.artifact_name }}** artifact below and unzip it to get the \`.apk\`."
+            echo "2. Transfer the \`.apk\` to the phone (or \`adb install -r <file>.apk\`) and open it to install."
+            echo ""
+            echo "> Debug builds use the debug signing key, so this cannot upgrade over an app installed from a *release* APK — uninstall the release build first if the install is blocked by a signature mismatch."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -847,3 +847,31 @@ sh scripts/bump-version.sh all
 git add gradle.properties && git commit -m "chore: bump all to 0.3.0"
 git tag v0.3.0 && git push origin v0.3.0
 ```
+
+---
+
+## 14. Ad-hoc test-APK builds (not a release)
+
+`.github/workflows/build-test-apk.yml` exists for a different need than the
+release workflows above: quickly getting a branch onto a **test phone** without
+cutting a release.
+
+| | Release workflows (§7, §13) | `build-test-apk.yml` |
+|---|---|---|
+| Trigger | `v*` tags / `workflow_dispatch` | `workflow_dispatch` only, with a `ref` input (branch/tag/SHA) |
+| Build type | signed **release** APK + AAB | debug-signed **APK** only |
+| Signing | needs `ANDROID_KEYSTORE_*` secrets | none — Android debug keystore, always installable |
+| Output | assets on a GitHub Release | a `test-apk-*` **workflow artifact** (14-day retention) |
+| Version | semantic from `gradle.properties` | `versionCode = github.run_number` (monotonic); real version in the filename |
+
+**Usage:** Actions → **Build Test APK** → **Run workflow** → enter the branch/tag/
+SHA → download the `test-apk-*` artifact from the finished run, unzip, and install
+the `.apk` on the phone (`adb install -r` or open it on-device). The run summary
+prints the install notes.
+
+Because it is debug-signed, a test APK cannot upgrade over an app installed from a
+**release** APK (signature mismatch) — uninstall the release build on the test
+phone first if an install is blocked. It never publishes a Release or a GHCR
+image, and it needs no secrets, so it works from forks and any branch — including
+branches created before this workflow was merged, since the workflow runs from the
+default branch and checks out the requested `ref`.
