@@ -808,6 +808,7 @@ and vice versa.
 | `server-vX.Y.Z` | `release-server.yml` | HomeFlow Server X.Y.Z | dist .zip + .tar.gz |
 | `desktop-vX.Y.Z` | `release-desktop.yml` | HomeFlow Desktop X.Y.Z | .msi + .dmg + .deb |
 | `android-vX.Y.Z` | `release-android.yml` | HomeFlow Android X.Y.Z | .apk + .aab |
+| `clients-vX.Y.Z` | `release-clients.yml` | HomeFlow Clients X.Y.Z | .msi + .dmg + .deb + .apk + .aab (no server) |
 
 ### Version sources
 
@@ -846,4 +847,67 @@ git tag server-v0.2.1 && git push origin server-v0.2.1
 sh scripts/bump-version.sh all
 git add gradle.properties && git commit -m "chore: bump all to 0.3.0"
 git tag v0.3.0 && git push origin v0.3.0
+
+# Clients only (desktop + Android together, no server):
+sh scripts/bump-version.sh clients
+git add gradle.properties && git commit -m "chore: bump clients to 0.2.1"
+git tag clients-v0.2.1 && git push origin clients-v0.2.1
 ```
+
+### 13.1 Clients-only releases (`release-clients.yml`)
+
+Most day-to-day work touches `:app:shared` — UX changes, bug fixes, or features that
+land in both platform apps (or in code shared by both) without any server change.
+Cutting a full `desktop-v*` release and a separate `android-v*` release for the same
+change is two tags, two changelog headers, and two GitHub Releases for one logical
+change. `release-clients.yml` ships **both client apps together as a single GitHub
+Release**, with no server artifact at all — triggered by a `clients-vX.Y.Z` tag or
+`workflow_dispatch`.
+
+- **Version source:** `version.desktop` and `version.android` in `gradle.properties`
+  — same two keys the individual `release-desktop.yml`/`release-android.yml` use.
+  The `prepare` job **requires the two to be equal** (and, on a tag push, equal to
+  the tag core) before building anything. This is what makes "clients" mean "both,
+  in lockstep": if a prior `desktop-v*`- or `android-v*`-only release left the two
+  keys mismatched, the workflow fails fast with a clear error instead of silently
+  publishing a stale build of one platform under a release that implies both are current.
+- **Bump with `sh scripts/bump-version.sh clients`**, which bumps both keys' patch
+  component together and itself refuses to run if they've already drifted apart
+  (fix that by hand first, e.g. by re-running the lower one up to match).
+- **Assets:** the same 3 desktop installers + APK + AAB as the two individual
+  pipelines, all attached to one Release titled "HomeFlow Clients X.Y.Z". Both
+  `SETUP-DESKTOP.md` and `SETUP-ANDROID.md` are attached.
+- **Release notes:** looked up from a `## [Clients X.Y.Z]` CHANGELOG header first;
+  if that section doesn't exist, it falls back to concatenating whatever
+  `## [Desktop X.Y.Z]` / `## [Android X.Y.Z]` sections are present. Prefer writing a
+  single `## [Clients X.Y.Z]` entry for changes that touch both apps.
+- **`make_latest: false`**, same as every other component-only release — only the
+  full lockstep `v*` release moves the repo's "Latest release" pointer.
+- **Does not affect the server.** `COMPATIBILITY.md`'s min-client-version check still
+  applies: if these client changes require a newer server, that's a `server-v*`
+  release (or a lockstep `v*`) instead — a clients-only release assumes the current
+  server continues to satisfy the new client build.
+
+## 14. On-demand Android test APK (sideloading)
+
+`build-android-apk.yml` builds an Android APK from **any branch** for local
+sideloading onto a test phone — separate from the release pipeline. It creates **no
+GitHub Release** and commits nothing: the APKs are temporary workflow **artifacts**,
+downloadable from the run's "Artifacts" section for 14 days.
+
+- **Trigger:** Actions → "Build Android Test APK" → *Run workflow*, entering the
+  `branch` to build; or `gh workflow run build-android-apk.yml -f branch=<branch>`.
+  (The UI button only appears once the workflow exists on the repo's **default
+  branch**; before that, use the `gh` form.)
+- **Outputs:** a release APK (`homeflow-<branch>-<sha>.apk`, signed with the
+  `ANDROID_KEYSTORE_*` secrets — §3.5; built `*-unsigned.apk` and not installable if
+  the secrets are absent) and a debug APK (`homeflow-<branch>-<sha>-debug.apk`, always
+  debug-signed and installable).
+- **`versionCode`:** `2000000000 + run_number` — a high, monotonic value so a test
+  APK always installs over any prior build (`adb install -r …`). Distinct from the
+  release scheme (§3.4).
+- **Which to install:** the **release** APK to test against your real server; the
+  **debug** APK for local-only / visual testing (it is debuggable and points SERVER
+  mode at `localhost:8443`, per `MainActivity`). A CI-signed APK can only update an
+  install signed with the same key — otherwise uninstall first (see the on-device
+  testing notes).
