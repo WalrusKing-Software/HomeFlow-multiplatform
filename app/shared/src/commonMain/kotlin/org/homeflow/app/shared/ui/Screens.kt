@@ -38,7 +38,10 @@ private fun CenteredColumn(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLogin: () -> Unit) {
+fun LoginScreen(
+    onLogin: () -> Unit,
+    onCancel: (() -> Unit)? = null,
+) {
     CenteredColumn {
         Text("HomeFlow", style = MaterialTheme.typography.headlineMedium)
         Text(
@@ -46,14 +49,27 @@ fun LoginScreen(onLogin: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
         )
         Button(onClick = onLogin) { Text("Log in") }
+        // Non-null only in Mode B (server-connected) — lets the user back out of server setup
+        // instead of being stuck here if they picked the wrong server.
+        if (onCancel != null) {
+            OutlinedButton(onClick = onCancel) { Text("Cancel") }
+        }
     }
 }
 
 @Composable
-fun LoadingScreen(message: String) {
+fun LoadingScreen(
+    message: String,
+    onCancel: (() -> Unit)? = null,
+) {
     CenteredColumn {
         CircularProgressIndicator()
         Text(message, style = MaterialTheme.typography.bodyMedium)
+        // Non-null only in Mode B — lets the user abandon an in-flight login (e.g. a stuck
+        // OIDC browser flow) instead of waiting it out.
+        if (onCancel != null) {
+            OutlinedButton(onClick = onCancel) { Text("Cancel") }
+        }
     }
 }
 
