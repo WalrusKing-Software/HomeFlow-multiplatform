@@ -39,10 +39,20 @@ import org.homeflow.db.Cycles
 import org.homeflow.db.DailyLogs
 import org.homeflow.db.SyncChanges
 import org.homeflow.db.Users
+import org.homeflow.lib.Encryption
 import org.homeflow.lib.KeycloakAdminClient
 import org.homeflow.module
+import org.homeflow.modules.cycles.CyclesRepository
+import org.homeflow.modules.dailylogs.DailyLogSubsRepository
+import org.homeflow.modules.dailylogs.DailyLogsRepository
+import org.homeflow.modules.preferences.PreferencesRepository
+import org.homeflow.modules.refdata.RefDataRepository
+import org.homeflow.modules.sync.ChangeLogRepository
+import org.homeflow.modules.sync.SyncService
+import org.homeflow.modules.users.UserPrincipal
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.AfterClass
 import org.junit.Before
@@ -212,7 +222,67 @@ class SyncTest {
             assertTrue(otherPull.days.isEmpty(), "another user sees none of SUB's days")
         }
 
+    @Test
+    fun `pull is paginated with hasMore and a resumable cursor`() =
+        withApp { client ->
+            client.anchorOn(SUB, "2024-01-20") // records two changes: one cycle + one day
+
+            // A page size of 1 exercises the paging logic without seeding 500+ rows.
+            val paged = pagedSyncService(pageSize = 1)
+            val principal = principalFor(SUB)
+
+            val first = paged.pull(principal, 0)
+            assertEquals(1, first.cycles.size + first.days.size, "the page is capped at pageSize")
+            assertTrue(first.hasMore, "a capped page must report more changes")
+
+            val second = paged.pull(principal, first.cursor)
+            assertEquals(1, second.cycles.size + second.days.size)
+            assertEquals(false, second.hasMore, "the final page reports no more changes")
+
+            // The union of pages equals the unpaginated pull — no gaps, no duplicates.
+            val full = client.pull(SUB, 0)
+            assertEquals(
+                full.cycles.map { it.id }.toSet(),
+                (first.cycles + second.cycles).map { it.id }.toSet(),
+            )
+            assertEquals(
+                full.days.map { it.id }.toSet(),
+                (first.days + second.days).map { it.id }.toSet(),
+            )
+
+            val empty = paged.pull(principal, second.cursor)
+            assertTrue(empty.cycles.isEmpty() && empty.days.isEmpty())
+            assertEquals(second.cursor, empty.cursor, "an empty page echoes the request cursor")
+            assertEquals(false, empty.hasMore)
+        }
+
     // ── Helpers ───────────────────────────────────────────────────────────────────
+
+    /** The [UserPrincipal] the auth plugin would resolve for [sub] (row must already exist). */
+    private fun principalFor(sub: String): UserPrincipal =
+        transaction(db) {
+            val id =
+                Users
+                    .selectAll()
+                    .where { Users.keycloakSub eq sub }
+                    .single()[Users.id]
+            UserPrincipal(id = id, keycloakSub = sub)
+        }
+
+    /** A [SyncService] over the same test DB with an injected tiny pull page (SEC-02). */
+    private fun pagedSyncService(pageSize: Int): SyncService {
+        val changeLog = ChangeLogRepository(db)
+        return SyncService(
+            cyclesRepository = CyclesRepository(db, changeLog),
+            dailyLogsRepository = DailyLogsRepository(db, changeLog),
+            dailyLogSubsRepository = DailyLogSubsRepository(db, changeLog),
+            preferencesRepository = PreferencesRepository(db, changeLog),
+            changeLogRepository = changeLog,
+            refDataRepository = RefDataRepository(db),
+            encryption = Encryption(Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES) { 7 })),
+            pullPageSize = pageSize,
+        )
+    }
 
     private suspend fun HttpClient.pull(
         sub: String,
