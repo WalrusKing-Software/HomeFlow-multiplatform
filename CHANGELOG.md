@@ -34,6 +34,10 @@ changed." See `CLAUDE.md` for the rules.
   there's also a quick light/dark toggle in the top bar.
 
 
+### Fixed
+- **The server now honors `LOG_LEVEL`** (default `INFO`); it previously logged at
+  TRACE regardless of the configured level.
+
 ### Changed
 - **Sync pull is now paginated** (500 changes per page): the server caps each
   `GET /api/v1/sync/changes` response and reports `hasMore`; clients transparently
