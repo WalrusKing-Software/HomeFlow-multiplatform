@@ -35,6 +35,10 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Changed
+- **API rate limiting is now applied per client address** instead of one global
+  bucket, so one client can no longer exhaust the request limit for others. The
+  server resolves the client address from Caddy's `X-Forwarded-For` header
+  (the backend is only reachable through the reverse proxy).
 - **Pain logging is now organized into collapsible body-region rows.** In the day
   editor, pain locations are grouped under expandable headers (Head & Neck, Back,
   Abdomen, …) that show a count badge for how many locations are selected. Tapping a
