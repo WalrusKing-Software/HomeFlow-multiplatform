@@ -235,6 +235,10 @@ See `ARCHITECTURE-server.md` for the validated config and `DEPLOYMENT.md` for th
 production `.env` table. Generate secrets: `openssl rand -base64 32`
 (`APP_ENCRYPTION_KEY`), `openssl rand -base64 24` (passwords).
 
+`POSTGRES_SSLMODE` (optional, default `disable`) sets the JDBC TLS mode. `disable`
+is correct for the single-host Docker network (postgres has no published port);
+use `verify-full` if the database ever moves to a remote host.
+
 ---
 
 ## Common commands

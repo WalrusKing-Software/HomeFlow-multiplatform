@@ -23,14 +23,29 @@ data class DatabaseConfig(
     val user: String,
     val password: String,
     val maxPoolSize: Int = DEFAULT_MAX_POOL_SIZE,
+    val sslMode: String = DEFAULT_SSL_MODE,
 ) {
+    init {
+        require(sslMode in ALLOWED_SSL_MODES) {
+            "POSTGRES_SSLMODE must be one of $ALLOWED_SSL_MODES, got '$sslMode'"
+        }
+    }
+
     // The DB host comes from POSTGRES_HOST config, not an HTTP request header, so the
     // generic nginx request-host rule does not apply (suppressed inline below).
-    val jdbcUrl: String get() = "jdbc:postgresql://$host:$port/$database" // nosemgrep
+    val jdbcUrl: String get() = "jdbc:postgresql://$host:$port/$database?sslmode=$sslMode" // nosemgrep
 
     companion object {
         private const val DEFAULT_PORT = 5432
         private const val DEFAULT_MAX_POOL_SIZE = 10
+
+        /**
+         * SEC-04: `disable` is correct for the single-host Docker network (postgres has no
+         * published port and TLS on it would be self-signed churn); set `verify-full` via
+         * `POSTGRES_SSLMODE` if the database ever moves to a remote host.
+         */
+        private const val DEFAULT_SSL_MODE = "disable"
+        private val ALLOWED_SSL_MODES = setOf("disable", "require", "verify-ca", "verify-full")
 
         /** Builds config from the `POSTGRES_*` env vars, failing fast if any required one is missing. */
         fun fromEnv(): DatabaseConfig =
@@ -40,6 +55,7 @@ data class DatabaseConfig(
                 database = requireEnv("POSTGRES_DB"),
                 user = requireEnv("POSTGRES_USER"),
                 password = requireEnv("POSTGRES_PASSWORD"),
+                sslMode = System.getenv("POSTGRES_SSLMODE")?.takeIf { it.isNotBlank() } ?: DEFAULT_SSL_MODE,
             )
 
         private fun requireEnv(name: String): String =
