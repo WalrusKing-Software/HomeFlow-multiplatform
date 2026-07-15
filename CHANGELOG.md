@@ -60,6 +60,11 @@ changed." See `CLAUDE.md` for the rules.
   pick up remaining pages on their next scheduled sync.
 - **Android app data is excluded from device/cloud backups** (`allowBackup=false`):
   health data and key material never leave the device via Google/adb backup.
+- **Offline sessions now expire after at most 90 days** (previously unlimited as
+  long as the app was used monthly): a stolen offline refresh token has a hard
+  ceiling, and the apps re-login quarterly at most. Existing deployments must set
+  this manually (Realm settings → Sessions → Offline settings) — the realm export
+  only applies on first import.
 - **Containers run with reduced privileges**: `no-new-privileges` everywhere, Caddy
   with only the low-port bind capability, and the backend on a read-only root
   filesystem. Keycloak and the backend now have healthchecks, and the backend
