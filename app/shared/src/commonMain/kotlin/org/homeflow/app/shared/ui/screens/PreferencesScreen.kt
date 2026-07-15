@@ -205,6 +205,7 @@ private fun ReorderRow(
 private fun ExportSection(onExport: suspend () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    var showExportWarning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     SectionCard("Export data") {
@@ -215,16 +216,7 @@ private fun ExportSection(onExport: suspend () -> Unit) {
         )
         status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Button(
-            onClick = {
-                scope.launch {
-                    busy = true
-                    status = null
-                    runCatching { onExport() }
-                        .onSuccess { status = "Export saved." }
-                        .onFailure { status = it.message ?: "Export failed." }
-                    busy = false
-                }
-            },
+            onClick = { showExportWarning = true },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -232,6 +224,30 @@ private fun ExportSection(onExport: suspend () -> Unit) {
             Text("Export my data")
         }
     }
+
+    // SEC-13: the export is deliberately plaintext (portable backup) — the user must
+    // knowingly accept that before health data is written to an unencrypted file.
+    ConfirmDialog(
+        visible = showExportWarning,
+        title = "Export unencrypted data?",
+        body =
+            "The export is a plain, unencrypted JSON file containing all of your health data. " +
+                "Anyone with access to the file can read it. Save it only to a location you " +
+                "trust, and delete it when you no longer need it.",
+        confirmLabel = "Export",
+        onConfirm = {
+            showExportWarning = false
+            scope.launch {
+                busy = true
+                status = null
+                runCatching { onExport() }
+                    .onSuccess { status = "Export saved." }
+                    .onFailure { status = it.message ?: "Export failed." }
+                busy = false
+            }
+        },
+        onDismiss = { showExportWarning = false },
+    )
 }
 
 /**

@@ -19,6 +19,8 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **Export now asks for confirmation first** and warns that the exported file is
+  plain, unencrypted JSON containing all of your health data.
 - **The server refuses to start with the dev-only Keycloak client secret** from
   `realm-export.json`, so a production deployment can no longer run on a secret
   that is committed to the repository. The dev stack sets `ALLOW_DEV_SECRETS=true`
