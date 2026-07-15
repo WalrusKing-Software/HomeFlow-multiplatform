@@ -1,7 +1,8 @@
 # SEC-14: automated dependency updates. PRs target `develop` (the integration
 # branch — main only takes release PRs per __docs/BRANCHING.md) and flow through
 # the normal CI gates (build-checks, semgrep, gitleaks); nothing merges
-# automatically.
+# automatically. The 7-day cooldown skips just-published versions — a
+# compromised release is usually yanked within days (threat-model TA-4).
 version: 2
 updates:
   - package-ecosystem: gradle
@@ -10,12 +11,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   # server/Dockerfile + Dockerfile.dist (digest-pinned bases; Dependabot bumps digests).
   - package-ecosystem: docker
@@ -23,6 +28,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
 
   # docker-compose.yml images (postgres, keycloak, caddy).
   - package-ecosystem: docker-compose
@@ -30,3 +37,5 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
