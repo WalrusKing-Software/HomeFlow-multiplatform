@@ -6,6 +6,12 @@
 {$APP_HOSTNAME} {
 	tls internal
 
+	# SEC-06: cap request bodies globally — the server's import limit is 25 MB,
+	# plus multipart overhead; every other route carries small JSON bodies.
+	request_body {
+		max_size 26MB
+	}
+
 	handle /api/* {
 		reverse_proxy backend:8080
 	}
@@ -28,6 +34,8 @@
 	}
 
 	header {
+		# SEC-06: no includeSubDomains/preload — the hostname is a LAN/tailnet name.
+		Strict-Transport-Security "max-age=31536000"
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin

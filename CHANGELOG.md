@@ -25,6 +25,8 @@ changed." See `CLAUDE.md` for the rules.
   `realm-export.json`, so a production deployment can no longer run on a secret
   that is committed to the repository. The dev stack sets `ALLOW_DEV_SECRETS=true`
   in its compose overlay to keep working out of the box.
+- **The reverse proxy now sends `Strict-Transport-Security`** (1-year max-age) and
+  **caps request bodies at 26 MB**, matching the server's import limit.
 - **`POSTGRES_SSLMODE` environment variable** for TLS on the server's database
   connection (default `disable`, correct for the on-host Docker network; set
   `verify-full` for a remote PostgreSQL). Invalid values fail fast at startup.
