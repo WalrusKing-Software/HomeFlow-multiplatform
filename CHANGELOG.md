@@ -60,6 +60,10 @@ changed." See `CLAUDE.md` for the rules.
   pick up remaining pages on their next scheduled sync.
 - **Android app data is excluded from device/cloud backups** (`allowBackup=false`):
   health data and key material never leave the device via Google/adb backup.
+- **Containers run with reduced privileges**: `no-new-privileges` everywhere, Caddy
+  with only the low-port bind capability, and the backend on a read-only root
+  filesystem. Keycloak and the backend now have healthchecks, and the backend
+  waits for Keycloak to be *ready* (not just started) before serving.
 - **API rate limiting is now applied per client address** instead of one global
   bucket, so one client can no longer exhaust the request limit for others. The
   server resolves the client address from Caddy's `X-Forwarded-For` header

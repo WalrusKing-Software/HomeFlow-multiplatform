@@ -177,8 +177,15 @@ networks: { app-network: { driver: bridge } }
 ```
 
 `docker-compose.dev.yml` (opt-in via `make dev`) adds: Postgres `5432` and
-Keycloak `8180` host ports, `KC_HOSTNAME_STRICT: false`, and `LOG_LEVEL: debug` on
-the backend. It is never auto-merged.
+Keycloak `8180` host ports, `KC_HOSTNAME_STRICT: false`, `LOG_LEVEL: debug` and
+`ALLOW_DEV_SECRETS: true` on the backend. It is never auto-merged.
+
+**Container hardening (SEC-07/08, in the real compose file, elided from the sketch):**
+every service runs with `no-new-privileges`; Caddy drops all capabilities except
+`NET_BIND_SERVICE`; the backend runs on a read-only root filesystem with a `/tmp`
+tmpfs; Keycloak enables `KC_HEALTH_ENABLED` with a healthcheck on management port
+9000 and the backend has a TCP healthcheck — the backend waits for Keycloak
+readiness (`service_healthy`), not just start.
 
 ---
 
