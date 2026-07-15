@@ -455,7 +455,9 @@ docker compose cp keycloak:/tmp/export/homeflow-realm.json \
 
 ### After importing to a new environment
 
-1. Regenerate the `homeflow-backend` client secret
+1. Regenerate the `homeflow-backend` client secret — **the backend refuses to
+   start on the dev-only secret shipped in the export** unless
+   `ALLOW_DEV_SECRETS=true` (set only by the dev compose overlay)
 2. Update `KEYCLOAK_CLIENT_SECRET` in `.env`
 3. Assign `manage-users` role to the backend service account (verify this survived the import)
 4. Create the user account
