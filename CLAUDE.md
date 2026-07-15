@@ -223,7 +223,7 @@ for pure refactors, dependency bumps, or tooling changes with no behavior change
 | Test database name | `period_tracker_test` |
 | Keycloak database name | `keycloak` |
 | Access token TTL | 15 minutes |
-| Refresh token TTL (web) / offline (mobile+desktop) | 8 hours / long-lived `offline_access` |
+| Refresh token TTL (web) / offline (mobile+desktop) | 8 hours / `offline_access` (30-day idle, 90-day max) |
 | Encryption algorithm | AES-256-GCM (server-side only) |
 | JWT signing algorithm | RS256 (only — reject all others) |
 | PKCE method | S256 |
