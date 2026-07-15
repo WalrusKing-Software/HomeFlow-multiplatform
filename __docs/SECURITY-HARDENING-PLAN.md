@@ -3,6 +3,14 @@
 **Audit date:** 2026-07-14 (full-codebase review: server, clients, infra, CI, git history).
 **Status of each task:** `TODO` until implemented; update this file as tasks land.
 
+> **Implementation status (2026-07-14, branch `feature/security-hardening`):**
+> all Phase 0–4 tasks are **DONE** except the operator-manual SEC-15 (secret
+> rotation — operator action) and the deliberately deferred Phase 5 items.
+> SEC-01..05, SEC-06..14 implemented, one commit per task; see `git log` on the
+> branch. SEC-13's dialog verified by compile + pattern reuse (no UI test
+> harness exists for PreferencesScreen); everything else has automated tests
+> or config validation as specified.
+
 This document has two jobs:
 
 1. **Record the audit baseline** — what was checked and found *correct*, so nobody
