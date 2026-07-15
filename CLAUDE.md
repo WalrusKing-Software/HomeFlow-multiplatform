@@ -80,6 +80,7 @@ authoritative — do not invent behavior that contradicts them.
 | `__docs/API.md` | Every route: method, path, request/response shape, error codes | Any route handler or client API call |
 | `__docs/KEYCLOAK.md` | Realm config, clients, audience mapper, TOTP 2FA flow, JWT validation, OIDC | Any auth work |
 | `__docs/threat-model.md` | Threat actors, scenarios, mitigations | Any security-sensitive decision |
+| `__docs/SECURITY-HARDENING-PLAN.md` | Security audit baseline + hardening tasks and their status | Any security-sensitive change |
 | `__docs/TESTING.md` | Test layers (kotlin.test/JUnit5, Testcontainers, Compose UI) | Writing any test |
 | `__docs/DOCKER.md` | Containers, Caddy config, env vars, startup order | Any infra work |
 | `__docs/DEPLOYMENT.md` | Pi deployment runbook; Tailscale + canonical hostname (§11) | Deploying to the homelab |

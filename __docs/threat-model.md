@@ -137,7 +137,8 @@ This document defines the threat model for a self-hosted period tracking web app
 **Mitigations:**
 - Every database query scoped with `AND user_id = $authenticatedUserId`
 - PostgreSQL Row Level Security as a secondary enforcement layer
-- Automated tests asserting cross-user access is rejected (403, not 404)
+- Automated tests asserting cross-user access is rejected (404, not 403 — don't
+  reveal that another user's resource exists)
 
 ---
 
@@ -266,3 +267,4 @@ OS-level keychain store and is considered out of scope (§7: user device comprom
 |---|---|---|
 | 1.0 | 2026-06-09 | Initial threat model — LAN deployment only |
 | 1.1 | 2026-06-28 | Added TS-10: Mode A local at-rest threat + SQLCipher + DEK mitigations |
+| 1.2 | 2026-07-14 | Full-stack security audit + hardening (see `__docs/SECURITY-HARDENING-PLAN.md`): per-client rate limiting, sync pull pagination, HSTS + body cap, container privilege reduction, image digest pinning, 90-day offline-session cap, Android backup disabled, dev-secret startup guard; fixed TS-3 to say 404-not-403 |
