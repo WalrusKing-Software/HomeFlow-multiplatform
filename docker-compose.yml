@@ -5,7 +5,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # SEC-09: pinned by manifest-list digest (multi-arch) to prevent tag mutation.
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: homeflow-postgres-prod
     restart: unless-stopped
     # SEC-07: block privilege escalation (dropping root→postgres still works).
@@ -29,7 +30,7 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    image: quay.io/keycloak/keycloak:26.1@sha256:be6a86215213145bfb4fb3e2b3ab982a806d00262655abdcf3ffa6a38d241c7c
     container_name: homeflow-keycloak-prod
     restart: unless-stopped
     command: start --import-realm
@@ -106,7 +107,7 @@ services:
       start_period: 30s
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     container_name: homeflow-caddy-prod
     restart: unless-stopped
     # SEC-07: minimal capabilities — only the low-port bind Caddy actually needs.
