@@ -19,6 +19,9 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **`POSTGRES_SSLMODE` environment variable** for TLS on the server's database
+  connection (default `disable`, correct for the on-host Docker network; set
+  `verify-full` for a remote PostgreSQL). Invalid values fail fast at startup.
 - **Clients-only release pipeline.** Tagging `clients-vX.Y.Z` (or a manual
   `release-clients.yml` dispatch) builds and publishes desktop installers (Windows
   `.msi`, macOS `.dmg`, Linux `.deb`) and a signed Android APK/AAB together in one
