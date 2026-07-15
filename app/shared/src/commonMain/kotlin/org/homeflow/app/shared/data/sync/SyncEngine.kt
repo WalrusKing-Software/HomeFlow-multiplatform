@@ -155,22 +155,30 @@ class SyncEngine(
 
     private suspend fun pull() {
         ensureSyncStateRow()
-        val cursor = db.syncStateQueries.getCursor().executeAsOneOrNull() ?: 0L
-
-        when (val result = remote.pullSync(cursor)) {
-            is ApiResult.Success -> {
-                val response = result.value
-                response.cycles.forEach { applier.applyRemoteCycle(it) }
-                response.days.forEach { applier.applyRemoteDay(it) }
-                response.preferences?.let { applier.applyRemotePreferences(it) }
-                // Enforce the at-most-one-open-cycle invariant locally with the shared
-                // :core rule (D-16b.7) — deterministic, so it matches the server's own
-                // reconcile without re-enqueuing to the outbox (no echo loop).
-                reconcileLocalOpenCycles()
-                db.syncStateQueries.updateCursor(response.cursor)
-            }
-            is ApiResult.Failure -> error("Pull failed: ${result.message}")
-        }
+        // The server pages the pull (SEC-02): keep pulling from the advanced cursor
+        // while it reports more changes, bounded so a misbehaving server can't spin
+        // us forever — an unfinished backlog resumes on the next sync run.
+        var pages = 0
+        do {
+            val cursor = db.syncStateQueries.getCursor().executeAsOneOrNull() ?: 0L
+            val hasMore =
+                when (val result = remote.pullSync(cursor)) {
+                    is ApiResult.Success -> {
+                        val response = result.value
+                        response.cycles.forEach { applier.applyRemoteCycle(it) }
+                        response.days.forEach { applier.applyRemoteDay(it) }
+                        response.preferences?.let { applier.applyRemotePreferences(it) }
+                        // Enforce the at-most-one-open-cycle invariant locally with the shared
+                        // :core rule (D-16b.7) — deterministic, so it matches the server's own
+                        // reconcile without re-enqueuing to the outbox (no echo loop).
+                        reconcileLocalOpenCycles()
+                        db.syncStateQueries.updateCursor(response.cursor)
+                        response.hasMore
+                    }
+                    is ApiResult.Failure -> error("Pull failed: ${result.message}")
+                }
+            pages++
+        } while (hasMore && pages < MAX_PULL_PAGES)
     }
 
     /**
@@ -202,6 +210,9 @@ class SyncEngine(
         const val ENTITY_CYCLE = "cycle"
         const val ENTITY_DAY = "day"
         const val ENTITY_PREFERENCES = "preferences"
+
+        /** Safety bound on paginated pulls per sync run (SEC-02). */
+        const val MAX_PULL_PAGES = 50
     }
 }
 

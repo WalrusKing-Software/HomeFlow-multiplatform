@@ -356,6 +356,57 @@ class SyncEngineTest {
             assertEquals(1, (b.ds.getCycles() as ApiResult.Success).value.cycles.size)
         }
 
+    @Test
+    fun `a paginated pull fetches all pages in one sync run`() =
+        runBlocking {
+            val db = TestDbHelper.inMemory().also { LocalBootstrap.seed(it) }
+            val cycle1 =
+                SyncCycle(
+                    id = "aaaaaaaa-0000-0000-0000-000000000001",
+                    startDate = "2024-01-01",
+                    endDate = "2024-01-28",
+                    updatedAt = "2024-01-28T00:00:00Z",
+                )
+            val cycle2 =
+                SyncCycle(
+                    id = "bbbbbbbb-0000-0000-0000-000000000002",
+                    startDate = "2024-02-01",
+                    updatedAt = "2024-02-01T00:00:00Z",
+                )
+
+            // A server that pages the pull (SEC-02): cursor 0 → page 1 (hasMore), cursor 1 → page 2.
+            val pagingEngine =
+                MockEngine { request ->
+                    val cursor = request.url.parameters["cursor"]?.toLong() ?: 0L
+                    val response =
+                        when (cursor) {
+                            0L -> SyncPullResponse(cycles = listOf(cycle1), cursor = 1, hasMore = true)
+                            1L -> SyncPullResponse(cycles = listOf(cycle2), cursor = 2, hasMore = false)
+                            else -> SyncPullResponse(cursor = cursor)
+                        }
+                    respond(
+                        json.encodeToString(SyncPullResponse.serializer(), response),
+                        HttpStatusCode.OK,
+                        jsonHeaders,
+                    )
+                }
+            val http =
+                buildHttpClient(
+                    config = config,
+                    tokenHolder = TokenHolder().apply { set(OidcTokens("test-AT", "test-RT", null)) },
+                    onRefresh = { null },
+                    engine = pagingEngine,
+                )
+            val engine = SyncEngine(db, RemoteDataSource(http))
+
+            engine.syncNow()
+
+            assertIs<SyncStatus.Success>(engine.status.value)
+            val cycles = db.cyclesQueries.selectAll(LocalBootstrap.LOCAL_USER_ID).executeAsList()
+            assertEquals(2, cycles.size, "both pages must be applied in one sync run")
+            assertEquals(2L, db.syncStateQueries.getCursor().executeAsOneOrNull(), "the final page cursor persists")
+        }
+
     private companion object {
         val config = AuthConfig(host = "example.test")
         val json =

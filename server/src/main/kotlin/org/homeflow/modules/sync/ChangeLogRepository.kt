@@ -72,18 +72,21 @@ class ChangeLogRepository(
     }
 
     /**
-     * All change rows for [userId] with `server_seq > [cursor]`, ordered ascending by seq.
-     * Used by [GET /api/v1/sync/changes].
+     * Change rows for [userId] with `server_seq > [cursor]`, ordered ascending by seq,
+     * capped at [limit] rows (SEC-02: the pull is paginated — never read an unbounded
+     * change set into memory). Used by [GET /api/v1/sync/changes].
      */
     fun findChangesSince(
         userId: UUID,
         cursor: Long,
+        limit: Int,
     ): List<SyncChangeRow> =
         transaction(db) {
             SyncChanges
                 .selectAll()
                 .where { (SyncChanges.userId eq userId) and (SyncChanges.serverSeq greater cursor) }
                 .orderBy(SyncChanges.serverSeq to SortOrder.ASC)
+                .limit(limit)
                 .map(::toRow)
         }
 
