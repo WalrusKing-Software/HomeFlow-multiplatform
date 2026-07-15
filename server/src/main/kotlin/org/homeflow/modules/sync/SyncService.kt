@@ -42,7 +42,7 @@ import java.util.UUID
  * Encryption boundary: this service decrypts notes/sex on pull and encrypts on push.
  * No plaintext health data is logged; the repositories never see plaintext.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList") // one repository per synced entity, by design
 class SyncService(
     private val cyclesRepository: CyclesRepository,
     private val dailyLogsRepository: DailyLogsRepository,
