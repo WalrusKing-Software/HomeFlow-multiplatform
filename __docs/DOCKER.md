@@ -189,11 +189,13 @@ the backend. It is never auto-merged.
 ```caddyfile
 {$APP_HOSTNAME} {
     tls internal                       # LAN; swap for tailscale cert (DEPLOYMENT §11)
+    request_body { max_size 26MB }     # SEC-06: import cap (25 MB) + multipart overhead
     handle /api/*   { reverse_proxy backend:8080 }
     handle /health  { reverse_proxy backend:8080 }
     handle /realms/* { reverse_proxy keycloak:8080 }   # OIDC for the native clients
     handle /resources/* { reverse_proxy keycloak:8080 } # Keycloak login-theme JS/CSS (login/OTP pages)
     header {
+        Strict-Transport-Security "max-age=31536000"   # SEC-06
         X-Frame-Options DENY
         X-Content-Type-Options nosniff
         Referrer-Policy same-origin
