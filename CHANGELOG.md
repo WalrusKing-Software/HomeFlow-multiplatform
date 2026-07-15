@@ -19,6 +19,10 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **The server refuses to start with the dev-only Keycloak client secret** from
+  `realm-export.json`, so a production deployment can no longer run on a secret
+  that is committed to the repository. The dev stack sets `ALLOW_DEV_SECRETS=true`
+  in its compose overlay to keep working out of the box.
 - **`POSTGRES_SSLMODE` environment variable** for TLS on the server's database
   connection (default `disable`, correct for the on-host Docker network; set
   `verify-full` for a remote PostgreSQL). Invalid values fail fast at startup.

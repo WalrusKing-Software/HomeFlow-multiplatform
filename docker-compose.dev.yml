@@ -24,6 +24,9 @@ services:
     container_name: homeflow-backend-dev
     environment:
       LOG_LEVEL: debug
+      # Dev only: permits the placeholder homeflow-backend secret shipped in
+      # realm-export.json. Production (base compose) refuses to start on it.
+      ALLOW_DEV_SECRETS: "true"
 
   caddy:
     container_name: homeflow-caddy-dev
