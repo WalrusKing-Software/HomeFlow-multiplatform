@@ -13,10 +13,21 @@ class DesktopTokenStore(
         keyring.setPassword(SERVICE, ACCOUNT_REFRESH, token)
     }
 
-    override fun loadRefreshToken(): String? = runCatching { keyring.getPassword(SERVICE, ACCOUNT_REFRESH) }.getOrNull()
+    override fun loadRefreshToken(): String? =
+        try {
+            keyring.getPassword(SERVICE, ACCOUNT_REFRESH)
+        } catch (e: Exception) {
+            // SEC-12: never fail silently — a broken keychain looks like a logout otherwise.
+            authDebugLog("TokenStore: keyring read failed: ${e.describe()}")
+            null
+        }
 
     override fun clear() {
-        runCatching { keyring.deletePassword(SERVICE, ACCOUNT_REFRESH) }
+        try {
+            keyring.deletePassword(SERVICE, ACCOUNT_REFRESH)
+        } catch (e: Exception) {
+            authDebugLog("TokenStore: keyring delete failed: ${e.describe()}")
+        }
     }
 
     internal companion object {

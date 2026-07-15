@@ -42,6 +42,9 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Fixed
+- **Desktop: secure-storage (OS keychain) failures are now logged to the auth
+  diagnostics** instead of failing silently — a broken keychain previously looked
+  like a logout or a wrong passphrase with no way to tell why.
 - **The server now honors `LOG_LEVEL`** (default `INFO`); it previously logged at
   TRACE regardless of the configured level.
 

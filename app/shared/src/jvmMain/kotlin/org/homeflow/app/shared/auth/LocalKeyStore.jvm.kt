@@ -12,8 +12,13 @@ class DesktopLocalKeyStore(
 ) : LocalKeyStore {
     override fun loadDek(): ByteArray? {
         val encoded =
-            runCatching { keyring.getPassword(SERVICE, ACCOUNT_DEK) }.getOrNull()
-                ?: return null
+            try {
+                keyring.getPassword(SERVICE, ACCOUNT_DEK)
+            } catch (e: Exception) {
+                // SEC-12: never fail silently — an unreadable DEK is an unexplainable lockout.
+                authDebugLog("LocalKeyStore: keyring read failed: ${e.describe()}")
+                null
+            } ?: return null
         return Base64.getDecoder().decode(encoded)
     }
 
@@ -23,7 +28,11 @@ class DesktopLocalKeyStore(
     }
 
     override fun clearDek() {
-        runCatching { keyring.deletePassword(SERVICE, ACCOUNT_DEK) }
+        try {
+            keyring.deletePassword(SERVICE, ACCOUNT_DEK)
+        } catch (e: Exception) {
+            authDebugLog("LocalKeyStore: keyring delete failed: ${e.describe()}")
+        }
     }
 
     private companion object {
