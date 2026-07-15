@@ -47,7 +47,7 @@ server/                          # the :server module (Ktor); package root org.h
     plugins/
       Authentication.kt        # JWT validation; resolves the UserPrincipal
       StatusPages.kt           # maps thrown typed errors → ApiError JSON
-      RateLimiting.kt
+      RateLimiting.kt          # per-client (X-Forwarded-For) buckets behind Caddy
       Serialization.kt         # ContentNegotiation(kotlinx.serialization)
     modules/                   # one package per domain
       cycles/
