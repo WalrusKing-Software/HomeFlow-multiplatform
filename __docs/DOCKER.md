@@ -36,6 +36,12 @@ apps, not a served web app).
 
 ## Containers
 
+> **Digest pinning (SEC-09).** Every image in `docker-compose.yml` and both
+> Dockerfiles is pinned as `<tag>@sha256:<manifest-list digest>` — the tag stays
+> for readability, the digest is what Docker enforces (multi-arch safe). To bump
+> an image: `docker buildx imagetools inspect <image>:<tag>` and copy the
+> top-level digest.
+
 ### `postgres`
 - Image `postgres:16-alpine`; hostname `postgres`; no published port in prod (5432
   in dev overlay only).

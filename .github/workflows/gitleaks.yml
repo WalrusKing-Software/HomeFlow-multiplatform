@@ -32,8 +32,9 @@ jobs:
           # Full history so the scan covers every commit, not just the tip.
           fetch-depth: 0
       - name: Run gitleaks
+        # SEC-09/14: pinned version — 'latest' could silently change scanner behavior.
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
             detect \
               --source=/repo \
               --config=/repo/.gitleaks.toml \
