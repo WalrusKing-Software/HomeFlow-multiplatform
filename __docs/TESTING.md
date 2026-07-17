@@ -28,7 +28,8 @@ server/src/test/kotlin/
     Fixtures.kt                      # deterministic data factories
     UserScopingTest.kt               # cross-user access rejection (SECURITY)
     AnalyticsTest.kt                 # exact-value assertions on known data
-app/shared/src/commonTest/kotlin/    # Compose UI tests
+app/shared/src/commonTest/kotlin/    # shared client unit tests (no Compose dependency)
+app/shared/src/jvmTest/kotlin/       # Compose UI tests (JVM/desktop target)
 app/shared/src/jvmTest/ , src/androidHostTest/   # platform-specific client tests
 ```
 
@@ -79,10 +80,12 @@ between tests; treat seeded reference tables as read-only.
 
 ### Client UI (Compose)
 
-`runComposeUiTest` over `commonTest`: each screen renders its Loading / Error /
+`runComposeUiTest` over `app/shared/src/jvmTest`: each screen renders its Loading / Error /
 Loaded states from a fake repository; the day view resolves option IDs to labels;
 empty states render (not crashes) when analytics fields are null. Keep these
-narrow — exhaustive UI testing isn't worth it for a single-user app.
+narrow — exhaustive UI testing isn't worth it for a single-user app. UI tests run
+on the desktop JVM target (headless Skiko) because the Android host-test compilation
+of commonTest has no Robolectric/instrumentation environment for `runComposeUiTest`.
 
 ### End-to-end
 
