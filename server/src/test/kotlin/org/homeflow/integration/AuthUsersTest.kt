@@ -1,32 +1,31 @@
 package org.homeflow.integration
 
-import com.auth0.jwk.Jwk
-import com.auth0.jwk.JwkProvider
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
-import org.flywaydb.core.Flyway
 import org.homeflow.AppDependencies
-import org.homeflow.config.Config
-import org.homeflow.config.DatabaseConfig
-import org.homeflow.config.KeycloakConfig
-import org.homeflow.config.RateLimitConfig
 import org.homeflow.core.ApiError
 import org.homeflow.core.ErrorCode
 import org.homeflow.core.dto.UserDto
 import org.homeflow.db.Users
+import org.homeflow.integration.IntegrationHarness.AUDIENCE
+import org.homeflow.integration.IntegrationHarness.ENCRYPTION_KEY_BYTES
+import org.homeflow.integration.IntegrationHarness.ISSUER
+import org.homeflow.integration.IntegrationHarness.TOKEN_TTL_MILLIS
+import org.homeflow.integration.IntegrationHarness.bearer
+import org.homeflow.integration.IntegrationHarness.generateRsaKeyPair
+import org.homeflow.integration.IntegrationHarness.localJwkProvider
+import org.homeflow.integration.IntegrationHarness.makeToken
+import org.homeflow.integration.IntegrationHarness.migrateAndConnect
+import org.homeflow.integration.IntegrationHarness.newPostgres
+import org.homeflow.integration.IntegrationHarness.testConfig
 import org.homeflow.lib.KeycloakAdminClient
 import org.homeflow.module
 import org.jetbrains.exposed.sql.Database
@@ -37,9 +36,6 @@ import org.junit.AfterClass
 import org.junit.Before
 import org.junit.BeforeClass
 import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
-import java.math.BigInteger
-import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.util.Base64
@@ -149,10 +145,6 @@ class AuthUsersTest {
             block(client)
         }
 
-    private fun HttpRequestBuilder.bearer(token: String) {
-        header(HttpHeaders.Authorization, "Bearer $token")
-    }
-
     /** Records the subs it was asked to delete instead of calling a live Keycloak. */
     private class RecordingAdminClient : KeycloakAdminClient {
         val deleted = mutableListOf<String>()
@@ -163,19 +155,10 @@ class AuthUsersTest {
     }
 
     companion object {
-        private const val KID = "test-key"
         private const val SUB = "11111111-1111-1111-1111-111111111111"
-        private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
-        private const val AUDIENCE = "homeflow-backend"
-        private const val RSA_KEY_SIZE = 2048
-        private const val ENCRYPTION_KEY_BYTES = 32
-        private const val TOKEN_TTL_MILLIS = 3_600_000L
         private const val EXPIRED_OFFSET_MILLIS = 120_000L
-        private const val HIGH_RATE_LIMIT = 100_000
 
-        private val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("period_tracker_test")
+        private val postgres: PostgreSQLContainer<*> = newPostgres()
 
         private lateinit var db: Database
         private lateinit var publicKey: RSAPublicKey
@@ -187,30 +170,23 @@ class AuthUsersTest {
         @JvmStatic
         fun setUp() {
             postgres.start()
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .locations("classpath:db/migration")
-                .load()
-                .migrate()
-            db =
-                Database.connect(
-                    url = postgres.jdbcUrl,
-                    driver = "org.postgresql.Driver",
-                    user = postgres.username,
-                    password = postgres.password,
-                )
+            db = migrateAndConnect(postgres)
 
-            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(RSA_KEY_SIZE) }.generateKeyPair()
+            val keyPair = generateRsaKeyPair()
             publicKey = keyPair.public as RSAPublicKey
             privateKey = keyPair.private as RSAPrivateKey
 
             adminClient = RecordingAdminClient()
             deps =
                 AppDependencies(
-                    config = testConfig(),
+                    // AuthUsersTest uses a zero-byte encryption key (intentional: tests the
+                    // config path, not the encryption value) — override the harness default.
+                    config =
+                        testConfig().copy(
+                            encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES)),
+                        ),
                     database = db,
-                    jwkProvider = localJwkProvider(),
+                    jwkProvider = localJwkProvider(publicKey),
                     keycloakAdminClient = adminClient,
                 )
         }
@@ -221,55 +197,12 @@ class AuthUsersTest {
             postgres.stop()
         }
 
-        private fun testConfig(): Config =
-            Config(
-                apiPort = 0,
-                logLevel = "info",
-                // Unused — the test injects the Database and admin client directly.
-                database = DatabaseConfig("unused", 0, "unused", "unused", "unused"),
-                keycloak =
-                    KeycloakConfig(
-                        internalUrl = "http://unused",
-                        publicUrl = "https://test.homeflow.local",
-                        realm = "homeflow",
-                        clientId = AUDIENCE,
-                        clientSecret = "unused",
-                    ),
-                rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
-                encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES)),
-                serverVersion = "test",
-                minClientVersion = "0.0.0",
-            )
-
-        private fun localJwkProvider(): JwkProvider =
-            JwkProvider { keyId ->
-                Jwk.fromValues(
-                    mapOf(
-                        "kid" to keyId,
-                        "kty" to "RSA",
-                        "alg" to "RS256",
-                        "use" to "sig",
-                        "n" to base64Url(unsigned(publicKey.modulus)),
-                        "e" to base64Url(unsigned(publicKey.publicExponent)),
-                    ),
-                )
-            }
-
         private fun makeToken(
             subject: String,
             audience: String = AUDIENCE,
             issuer: String = ISSUER,
             expiresAt: Date = Date(System.currentTimeMillis() + TOKEN_TTL_MILLIS),
-        ): String =
-            JWT
-                .create()
-                .withKeyId(KID)
-                .withIssuer(issuer)
-                .withAudience(audience)
-                .withSubject(subject)
-                .withIssuedAt(Date())
-                .withExpiresAt(expiresAt)
-                .sign(Algorithm.RSA256(publicKey, privateKey))
+        ): String = makeToken(privateKey, publicKey, subject, audience, issuer, expiresAt)
 
         /**
          * Corrupts the signature segment so the token parses but fails verification.
@@ -293,13 +226,5 @@ class AuthUsersTest {
                     .count()
                     .toInt()
             }
-
-        private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-
-        /** Big-endian magnitude without a sign byte, as JWK n/e expect. */
-        private fun unsigned(value: BigInteger): ByteArray {
-            val bytes = value.toByteArray()
-            return if (bytes.size > 1 && bytes[0] == 0.toByte()) bytes.copyOfRange(1, bytes.size) else bytes
-        }
     }
 }
