@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.config.ServerCertificateResult
 import org.homeflow.app.shared.config.chooseCustomServerCertificate
@@ -68,6 +69,7 @@ fun ServerConnectScreen(
     var state by remember { mutableStateOf<ConnectState>(ConnectState.Idle) }
     var certName by remember { mutableStateOf(customServerCertificateName()) }
     var certError by remember { mutableStateOf<String?>(null) }
+    var connectJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
 
     fun connect() {
@@ -78,13 +80,20 @@ fun ServerConnectScreen(
         }
         error = null
         state = ConnectState.Checking
-        scope.launch {
-            val result = probeServer(host, clientVersion)
-            when (result) {
-                is ProbeResult.Reachable -> onConnected(host)
-                else -> state = ConnectState.Checked(host, result)
+        connectJob =
+            scope.launch {
+                val result = probeServer(host, clientVersion)
+                when (result) {
+                    is ProbeResult.Reachable -> onConnected(host)
+                    else -> state = ConnectState.Checked(host, result)
+                }
             }
-        }
+    }
+
+    fun cancelConnect() {
+        connectJob?.cancel()
+        connectJob = null
+        state = ConnectState.Idle
     }
 
     Box(
@@ -120,14 +129,15 @@ fun ServerConnectScreen(
             StatusRow(state)
 
             Button(
-                onClick = { connect() },
-                enabled = state !is ConnectState.Checking,
+                onClick = { if (state is ConnectState.Checking) cancelConnect() else connect() },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state is ConnectState.Checking) {
                     CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
+                    Text("Cancel")
+                } else {
+                    Text("Connect")
                 }
-                Text("Connect")
             }
 
             // Unreachable is advisory — let the user proceed anyway.

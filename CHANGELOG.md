@@ -26,6 +26,13 @@ changed." See `CLAUDE.md` for the rules.
   that affect both client apps but don't require a new server. Requires
   `version.desktop` and `version.android` to match; bump both together with
   `sh scripts/bump-version.sh clients`. See `__docs/RELEASE-PIPELINE.md` §13.1.
+- **Cancel button throughout server setup.** While the app is checking whether a
+  self-hosted server is reachable, the "Connect" button becomes a "Cancel" button —
+  tap it to stop the in-flight check instead of waiting it out, returning to the
+  hostname entry screen. A "Cancel" button is now also available on the "Sign in"
+  screen and while signing in ("Working…"), letting you back out of server setup
+  entirely (e.g. if you entered the wrong hostname) instead of being stuck until
+  login finishes or fails.
 - **Dark mode, with a theme setting.** Settings now has an "Appearance" section to
   choose **System**, **Light**, **Dark**, or **Classic Dark** — "System" follows your
   device's light/dark setting, "Dark" is the HomeFlow-branded coral/crimson dark theme,

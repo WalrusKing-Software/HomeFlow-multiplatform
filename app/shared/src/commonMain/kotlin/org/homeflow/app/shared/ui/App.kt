@@ -25,6 +25,11 @@ import org.homeflow.core.dto.ImportResultDto
  * - [connectedHost]: non-null in Mode B — displayed in the Server section of Settings.
  * - [onSwitchToLocal]: non-null in Mode B — "Switch to local-only mode" in Settings.
  * - [syncEngine] + [syncRepository]: non-null in Mode C — local-first repository with background sync.
+ * - [onCancelSetup]: non-null in Mode B — lets the user back out of server setup from the
+ *   sign-in screen or while a login is in flight, instead of being stuck once a host is
+ *   committed. Cancelling relies on Compose disposing this composable's [rememberCoroutineScope]
+ *   (and any in-flight `controller.login()` job with it) once the caller flips back to the host
+ *   gate — see [org.homeflow.app.shared.ui.AppRoot].
  */
 @Composable
 fun App(
@@ -36,6 +41,7 @@ fun App(
     onSwitchToLocal: (() -> Unit)? = null,
     syncEngine: SyncEngine? = null,
     syncRepository: HomeFlowRepository? = null,
+    onCancelSetup: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val state by controller.state.collectAsState()
@@ -44,10 +50,10 @@ fun App(
 
     when (val current = state) {
         is AuthState.LoggedOut ->
-            LoginScreen(onLogin = { scope.launch { controller.login() } })
+            LoginScreen(onLogin = { scope.launch { controller.login() } }, onCancel = onCancelSetup)
 
         is AuthState.Authenticating ->
-            LoadingScreen(message = "Working…")
+            LoadingScreen(message = "Working…", onCancel = onCancelSetup)
 
         is AuthState.Locked ->
             LockScreen(
