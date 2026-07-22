@@ -13,7 +13,8 @@
   "ssoSessionIdleTimeout": 28800,
   "ssoSessionMaxLifespan": 28800,
   "offlineSessionIdleTimeout": 2592000,
-  "offlineSessionMaxLifespanEnabled": false,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 7776000,
 
   "bruteForceProtected": true,
   "failureFactor": 5,

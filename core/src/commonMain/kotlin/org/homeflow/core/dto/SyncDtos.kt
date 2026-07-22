@@ -63,6 +63,12 @@ data class SyncPullResponse(
     val days: List<SyncDay> = emptyList(),
     val preferences: SyncPreferences? = null,
     val cursor: Long,
+    /**
+     * True when the server capped this page and more changes exist after [cursor].
+     * Additive (defaults false): an older client ignores it, persists the page
+     * cursor, and picks up the remainder on its next scheduled sync.
+     */
+    val hasMore: Boolean = false,
 )
 
 @Serializable

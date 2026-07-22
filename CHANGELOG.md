@@ -19,6 +19,17 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **Export now asks for confirmation first** and warns that the exported file is
+  plain, unencrypted JSON containing all of your health data.
+- **The server refuses to start with the dev-only Keycloak client secret** from
+  `realm-export.json`, so a production deployment can no longer run on a secret
+  that is committed to the repository. The dev stack sets `ALLOW_DEV_SECRETS=true`
+  in its compose overlay to keep working out of the box.
+- **The reverse proxy now sends `Strict-Transport-Security`** (1-year max-age) and
+  **caps request bodies at 26 MB**, matching the server's import limit.
+- **`POSTGRES_SSLMODE` environment variable** for TLS on the server's database
+  connection (default `disable`, correct for the on-host Docker network; set
+  `verify-full` for a remote PostgreSQL). Invalid values fail fast at startup.
 - **Clients-only release pipeline.** Tagging `clients-vX.Y.Z` (or a manual
   `release-clients.yml` dispatch) builds and publishes desktop installers (Windows
   `.msi`, macOS `.dmg`, Linux `.deb`) and a signed Android APK/AAB together in one
@@ -41,7 +52,34 @@ changed." See `CLAUDE.md` for the rules.
   there's also a quick light/dark toggle in the top bar.
 
 
+### Fixed
+- **Desktop: secure-storage (OS keychain) failures are now logged to the auth
+  diagnostics** instead of failing silently — a broken keychain previously looked
+  like a logout or a wrong passphrase with no way to tell why.
+- **The server now honors `LOG_LEVEL`** (default `INFO`); it previously logged at
+  TRACE regardless of the configured level.
+
 ### Changed
+- **Sync pull is now paginated** (500 changes per page): the server caps each
+  `GET /api/v1/sync/changes` response and reports `hasMore`; clients transparently
+  fetch all pages in one sync run. Protects the server from unbounded reads after
+  a device has been offline for a long time. Older clients still converge — they
+  pick up remaining pages on their next scheduled sync.
+- **Android app data is excluded from device/cloud backups** (`allowBackup=false`):
+  health data and key material never leave the device via Google/adb backup.
+- **Offline sessions now expire after at most 90 days** (previously unlimited as
+  long as the app was used monthly): a stolen offline refresh token has a hard
+  ceiling, and the apps re-login quarterly at most. Existing deployments must set
+  this manually (Realm settings → Sessions → Offline settings) — the realm export
+  only applies on first import.
+- **Containers run with reduced privileges**: `no-new-privileges` everywhere, Caddy
+  with only the low-port bind capability, and the backend on a read-only root
+  filesystem. Keycloak and the backend now have healthchecks, and the backend
+  waits for Keycloak to be *ready* (not just started) before serving.
+- **API rate limiting is now applied per client address** instead of one global
+  bucket, so one client can no longer exhaust the request limit for others. The
+  server resolves the client address from Caddy's `X-Forwarded-For` header
+  (the backend is only reachable through the reverse proxy).
 - **Pain logging is now organized into collapsible body-region rows.** In the day
   editor, pain locations are grouped under expandable headers (Head & Neck, Back,
   Abdomen, …) that show a count badge for how many locations are selected. Tapping a

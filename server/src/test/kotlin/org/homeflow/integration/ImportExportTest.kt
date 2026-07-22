@@ -1,9 +1,5 @@
 package org.homeflow.integration
 
-import com.auth0.jwk.Jwk
-import com.auth0.jwk.JwkProvider
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -11,7 +7,6 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -25,12 +20,7 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
-import org.flywaydb.core.Flyway
 import org.homeflow.AppDependencies
-import org.homeflow.config.Config
-import org.homeflow.config.DatabaseConfig
-import org.homeflow.config.KeycloakConfig
-import org.homeflow.config.RateLimitConfig
 import org.homeflow.core.ApiError
 import org.homeflow.core.ErrorCode
 import org.homeflow.core.dto.CreateCycleRequest
@@ -50,7 +40,13 @@ import org.homeflow.core.dto.SymptomCategoriesResponse
 import org.homeflow.db.Cycles
 import org.homeflow.db.DailyLogs
 import org.homeflow.db.Users
-import org.homeflow.lib.KeycloakAdminClient
+import org.homeflow.integration.IntegrationHarness.bearer
+import org.homeflow.integration.IntegrationHarness.generateRsaKeyPair
+import org.homeflow.integration.IntegrationHarness.localJwkProvider
+import org.homeflow.integration.IntegrationHarness.makeToken
+import org.homeflow.integration.IntegrationHarness.migrateAndConnect
+import org.homeflow.integration.IntegrationHarness.newPostgres
+import org.homeflow.integration.IntegrationHarness.testConfig
 import org.homeflow.module
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -62,13 +58,8 @@ import org.junit.AfterClass
 import org.junit.Before
 import org.junit.BeforeClass
 import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
-import java.math.BigInteger
-import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
-import java.util.Base64
-import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -103,7 +94,7 @@ class ImportExportTest {
             client.patchNotes(SUB, "2024-01-20", "Felt better today.")
             client.putPain(SUB, "2024-01-20", listOf(PainLocationDto(client.locationId(SUB, "lower_back"), 6)))
 
-            val response = client.get("/api/v1/export?format=json") { bearer(SUB) }
+            val response = client.get("/api/v1/export?format=json") { bearerSub(SUB) }
             assertEquals(HttpStatusCode.OK, response.status)
             val text = response.bodyAsText()
             assertTrue(text.contains("\"homeflow_export\":1"))
@@ -122,13 +113,13 @@ class ImportExportTest {
     fun `a round-trip import into a fresh account is lossless`() =
         withApp { client ->
             seedFullDay(client, SUB, "2024-01-20")
-            val original = client.get("/api/v1/export?format=json") { bearer(SUB) }.body<HomeFlowExport>()
+            val original = client.get("/api/v1/export?format=json") { bearerSub(SUB) }.body<HomeFlowExport>()
 
             val result = client.importJson(OTHER_SUB, original)
             assertTrue(result.cyclesCreated > 0)
             assertTrue(result.dailyLogsCreated > 0)
 
-            val reExported = client.get("/api/v1/export?format=json") { bearer(OTHER_SUB) }.body<HomeFlowExport>()
+            val reExported = client.get("/api/v1/export?format=json") { bearerSub(OTHER_SUB) }.body<HomeFlowExport>()
             assertEquals(original.cycles.toSet(), reExported.cycles.toSet())
             assertEquals(original.days.toSet(), reExported.days.toSet())
         }
@@ -137,7 +128,7 @@ class ImportExportTest {
     fun `re-importing the same file is idempotent`() =
         withApp { client ->
             seedFullDay(client, SUB, "2024-01-20")
-            val export = client.get("/api/v1/export?format=json") { bearer(SUB) }.body<HomeFlowExport>()
+            val export = client.get("/api/v1/export?format=json") { bearerSub(SUB) }.body<HomeFlowExport>()
             client.importJson(OTHER_SUB, export)
 
             val second = client.importJson(OTHER_SUB, export)
@@ -175,7 +166,7 @@ class ImportExportTest {
             assertTrue(result.warnings.isNotEmpty())
             assertEquals(1, result.dailyLogsCreated)
 
-            val day = client.get("/api/v1/daily-logs/2024-01-20") { bearer(SUB) }.body<DailyLogDto>()
+            val day = client.get("/api/v1/daily-logs/2024-01-20") { bearerSub(SUB) }.body<DailyLogDto>()
             assertEquals(listOf(client.optionId(SUB, "emotions", "fine")), day.emotions)
         }
 
@@ -184,7 +175,7 @@ class ImportExportTest {
         withApp { client ->
             val response =
                 client.post("/api/v1/import?source=clue") {
-                    bearer(SUB)
+                    bearerSub(SUB)
                     setBody(MultiPartFormDataContent(formData {}))
                 }
             assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -202,7 +193,7 @@ class ImportExportTest {
     @Test
     fun `an unsupported export format is 400`() =
         withApp { client ->
-            val response = client.get("/api/v1/export?format=csv") { bearer(SUB) }
+            val response = client.get("/api/v1/export?format=csv") { bearerSub(SUB) }
             assertEquals(HttpStatusCode.BadRequest, response.status)
             assertEquals(ErrorCode.VALIDATION_ERROR, response.body<ApiError>().error.code)
         }
@@ -233,7 +224,7 @@ class ImportExportTest {
         sub: String,
         json: String,
     ) = post("/api/v1/import?source=homeflow") {
-        bearer(sub)
+        bearerSub(sub)
         setBody(
             MultiPartFormDataContent(
                 formData {
@@ -254,12 +245,12 @@ class ImportExportTest {
     ) {
         val cycle =
             post("/api/v1/cycles") {
-                bearer(sub)
+                bearerSub(sub)
                 contentType(ContentType.Application.Json)
                 setBody(CreateCycleRequest("2024-01-15"))
             }.body<CycleDto>()
         post("/api/v1/daily-logs") {
-            bearer(sub)
+            bearerSub(sub)
             contentType(ContentType.Application.Json)
             setBody(CreateDailyLogRequest(date, cycle.id))
         }
@@ -271,7 +262,7 @@ class ImportExportTest {
         category: String,
         optionIds: List<String>,
     ) = put("/api/v1/daily-logs/$date/$category") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(OptionIdsRequest(optionIds))
     }
@@ -281,7 +272,7 @@ class ImportExportTest {
         date: String,
         locations: List<PainLocationDto>,
     ) = put("/api/v1/daily-logs/$date/pain") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(PainUpdateRequest(locations))
     }
@@ -291,7 +282,7 @@ class ImportExportTest {
         date: String,
         notes: String?,
     ) = patch("/api/v1/daily-logs/$date/notes") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(NotesUpdateRequest(notes))
     }
@@ -302,7 +293,7 @@ class ImportExportTest {
         categorySlug: String,
         optionSlug: String,
     ): String {
-        val categories = get("/api/v1/ref-data/symptom-categories") { bearer(sub) }.body<SymptomCategoriesResponse>()
+        val categories = get("/api/v1/ref-data/symptom-categories") { bearerSub(sub) }.body<SymptomCategoriesResponse>()
         return categories.categories
             .first { it.slug == categorySlug }
             .options
@@ -315,16 +306,14 @@ class ImportExportTest {
         sub: String,
         locationSlug: String,
     ): String {
-        val regions = get("/api/v1/ref-data/pain-regions") { bearer(sub) }.body<PainRegionsResponse>()
+        val regions = get("/api/v1/ref-data/pain-regions") { bearerSub(sub) }.body<PainRegionsResponse>()
         return regions.regions
             .flatMap { it.locations }
             .first { it.slug == locationSlug }
             .id
     }
 
-    private fun HttpRequestBuilder.bearer(sub: String) {
-        header(HttpHeaders.Authorization, "Bearer ${makeToken(sub)}")
-    }
+    private fun HttpRequestBuilder.bearerSub(sub: String) = bearer(makeToken(privateKey, publicKey, sub))
 
     private fun withApp(block: suspend (HttpClient) -> Unit) =
         testApplication {
@@ -333,26 +322,12 @@ class ImportExportTest {
             block(client)
         }
 
-    /** A no-op Keycloak admin client — account deletion is exercised in [AuthUsersTest], not here. */
-    private class NoopAdminClient : KeycloakAdminClient {
-        override suspend fun deleteUser(keycloakSub: String) = Unit
-    }
-
     companion object {
-        private const val KID = "test-key"
         private const val SUB = "11111111-1111-1111-1111-111111111111"
         private const val OTHER_SUB = "22222222-2222-2222-2222-222222222222"
-        private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
-        private const val AUDIENCE = "homeflow-backend"
-        private const val RSA_KEY_SIZE = 2048
-        private const val ENCRYPTION_KEY_BYTES = 32
-        private const val TOKEN_TTL_MILLIS = 3_600_000L
-        private const val HIGH_RATE_LIMIT = 100_000
         private val UUID_PATTERN = Regex("[0-9a-f]{8}-[0-9a-f]{4}-")
 
-        private val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("period_tracker_test")
+        private val postgres: PostgreSQLContainer<*> = newPostgres()
 
         private lateinit var db: Database
         private lateinit var publicKey: RSAPublicKey
@@ -363,21 +338,9 @@ class ImportExportTest {
         @JvmStatic
         fun setUp() {
             postgres.start()
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .locations("classpath:db/migration")
-                .load()
-                .migrate()
-            db =
-                Database.connect(
-                    url = postgres.jdbcUrl,
-                    driver = "org.postgresql.Driver",
-                    user = postgres.username,
-                    password = postgres.password,
-                )
+            db = migrateAndConnect(postgres)
 
-            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(RSA_KEY_SIZE) }.generateKeyPair()
+            val keyPair = generateRsaKeyPair()
             publicKey = keyPair.public as RSAPublicKey
             privateKey = keyPair.private as RSAPrivateKey
 
@@ -385,7 +348,7 @@ class ImportExportTest {
                 AppDependencies(
                     config = testConfig(),
                     database = db,
-                    jwkProvider = localJwkProvider(),
+                    jwkProvider = localJwkProvider(publicKey),
                     keycloakAdminClient = NoopAdminClient(),
                 )
         }
@@ -394,57 +357,6 @@ class ImportExportTest {
         @JvmStatic
         fun tearDown() {
             postgres.stop()
-        }
-
-        private fun testConfig(): Config =
-            Config(
-                apiPort = 0,
-                logLevel = "info",
-                database = DatabaseConfig("unused", 0, "unused", "unused", "unused"),
-                keycloak =
-                    KeycloakConfig(
-                        internalUrl = "http://unused",
-                        publicUrl = "https://test.homeflow.local",
-                        realm = "homeflow",
-                        clientId = AUDIENCE,
-                        clientSecret = "unused",
-                    ),
-                rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
-                encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES) { 7 }),
-                serverVersion = "test",
-                minClientVersion = "0.0.0",
-            )
-
-        private fun localJwkProvider(): JwkProvider =
-            JwkProvider { keyId ->
-                Jwk.fromValues(
-                    mapOf(
-                        "kid" to keyId,
-                        "kty" to "RSA",
-                        "alg" to "RS256",
-                        "use" to "sig",
-                        "n" to base64Url(unsigned(publicKey.modulus)),
-                        "e" to base64Url(unsigned(publicKey.publicExponent)),
-                    ),
-                )
-            }
-
-        private fun makeToken(subject: String): String =
-            JWT
-                .create()
-                .withKeyId(KID)
-                .withIssuer(ISSUER)
-                .withAudience(AUDIENCE)
-                .withSubject(subject)
-                .withIssuedAt(Date())
-                .withExpiresAt(Date(System.currentTimeMillis() + TOKEN_TTL_MILLIS))
-                .sign(Algorithm.RSA256(publicKey, privateKey))
-
-        private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-
-        private fun unsigned(value: BigInteger): ByteArray {
-            val bytes = value.toByteArray()
-            return if (bytes.size > 1 && bytes[0] == 0.toByte()) bytes.copyOfRange(1, bytes.size) else bytes
         }
     }
 }

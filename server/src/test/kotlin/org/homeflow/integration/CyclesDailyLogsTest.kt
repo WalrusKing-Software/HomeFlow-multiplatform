@@ -1,32 +1,21 @@
 package org.homeflow.integration
 
-import com.auth0.jwk.Jwk
-import com.auth0.jwk.JwkProvider
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.json.Json
-import org.flywaydb.core.Flyway
 import org.homeflow.AppDependencies
-import org.homeflow.config.Config
-import org.homeflow.config.DatabaseConfig
-import org.homeflow.config.KeycloakConfig
-import org.homeflow.config.RateLimitConfig
 import org.homeflow.core.ApiError
 import org.homeflow.core.ErrorCode
 import org.homeflow.core.dto.CreateCycleRequest
@@ -41,7 +30,13 @@ import org.homeflow.core.dto.UpdateCycleRequest
 import org.homeflow.db.Cycles
 import org.homeflow.db.DailyLogs
 import org.homeflow.db.Users
-import org.homeflow.lib.KeycloakAdminClient
+import org.homeflow.integration.IntegrationHarness.bearer
+import org.homeflow.integration.IntegrationHarness.generateRsaKeyPair
+import org.homeflow.integration.IntegrationHarness.localJwkProvider
+import org.homeflow.integration.IntegrationHarness.makeToken
+import org.homeflow.integration.IntegrationHarness.migrateAndConnect
+import org.homeflow.integration.IntegrationHarness.newPostgres
+import org.homeflow.integration.IntegrationHarness.testConfig
 import org.homeflow.module
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.deleteAll
@@ -51,13 +46,8 @@ import org.junit.AfterClass
 import org.junit.Before
 import org.junit.BeforeClass
 import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
-import java.math.BigInteger
-import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
-import java.util.Base64
-import java.util.Date
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -110,7 +100,7 @@ class CyclesDailyLogsTest {
         withApp { client ->
             client.createCycle(SUB, "2024-01-15")
             client.createCycle(SUB, "2024-02-12")
-            val cycles = client.get("/api/v1/cycles") { bearer(SUB) }.body<CyclesResponse>().cycles
+            val cycles = client.get("/api/v1/cycles") { bearerSub(SUB) }.body<CyclesResponse>().cycles
             assertEquals(listOf("2024-02-12", "2024-01-15"), cycles.map { it.startDate })
         }
 
@@ -119,7 +109,7 @@ class CyclesDailyLogsTest {
         withApp { client ->
             client.createCycle(SUB, "2024-01-15")
             client.createCycle(SUB, "2024-02-12")
-            val cycles = client.get("/api/v1/cycles") { bearer(SUB) }.body<CyclesResponse>().cycles
+            val cycles = client.get("/api/v1/cycles") { bearerSub(SUB) }.body<CyclesResponse>().cycles
 
             val newest = cycles.first { it.startDate == "2024-02-12" }
             val previous = cycles.first { it.startDate == "2024-01-15" }
@@ -130,9 +120,9 @@ class CyclesDailyLogsTest {
     @Test
     fun `current returns the open cycle and 404 when none is open`() =
         withApp { client ->
-            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/cycles/current") { bearer(SUB) }.status)
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/cycles/current") { bearerSub(SUB) }.status)
             val created = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
-            val current = client.get("/api/v1/cycles/current") { bearer(SUB) }
+            val current = client.get("/api/v1/cycles/current") { bearerSub(SUB) }
             assertEquals(HttpStatusCode.OK, current.status)
             assertEquals(created.id, current.body<CycleDto>().id)
         }
@@ -141,12 +131,12 @@ class CyclesDailyLogsTest {
     fun `get cycle by id returns it, while unknown and malformed ids are 404`() =
         withApp { client ->
             val created = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
-            assertEquals(HttpStatusCode.OK, client.get("/api/v1/cycles/${created.id}") { bearer(SUB) }.status)
+            assertEquals(HttpStatusCode.OK, client.get("/api/v1/cycles/${created.id}") { bearerSub(SUB) }.status)
             assertEquals(
                 HttpStatusCode.NotFound,
-                client.get("/api/v1/cycles/$UNKNOWN_UUID") { bearer(SUB) }.status,
+                client.get("/api/v1/cycles/$UNKNOWN_UUID") { bearerSub(SUB) }.status,
             )
-            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/cycles/not-a-uuid") { bearer(SUB) }.status)
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/cycles/not-a-uuid") { bearerSub(SUB) }.status)
         }
 
     @Test
@@ -167,12 +157,12 @@ class CyclesDailyLogsTest {
         withApp { client ->
             val created = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
             // Second user (different sub) must not see the first user's cycle.
-            val response = client.get("/api/v1/cycles/${created.id}") { bearer(OTHER_SUB) }
+            val response = client.get("/api/v1/cycles/${created.id}") { bearerSub(OTHER_SUB) }
             assertEquals(HttpStatusCode.NotFound, response.status)
             assertEquals(ErrorCode.RESOURCE_NOT_FOUND, response.body<ApiError>().error.code)
             val otherUserCycles =
                 client
-                    .get("/api/v1/cycles") { bearer(OTHER_SUB) }
+                    .get("/api/v1/cycles") { bearerSub(OTHER_SUB) }
                     .body<CyclesResponse>()
                     .cycles
             assertTrue(otherUserCycles.isEmpty())
@@ -205,7 +195,7 @@ class CyclesDailyLogsTest {
             client.createCycle(SUB, "2024-02-12")
             val firstCycle =
                 client
-                    .get("/api/v1/cycles") { bearer(SUB) }
+                    .get("/api/v1/cycles") { bearerSub(SUB) }
                     .body<CyclesResponse>()
                     .cycles
                     .first { it.startDate == "2024-01-15" }
@@ -229,12 +219,12 @@ class CyclesDailyLogsTest {
     @Test
     fun `get daily-log is 404 when missing and assembles the day when present`() =
         withApp { client ->
-            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/daily-logs/2024-01-20") { bearer(SUB) }.status)
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/v1/daily-logs/2024-01-20") { bearerSub(SUB) }.status)
 
             val cycle = client.createCycle(SUB, "2024-01-15").body<CycleDto>()
             client.createAnchor(SUB, "2024-01-20", cycle.id)
 
-            val response = client.get("/api/v1/daily-logs/2024-01-20") { bearer(SUB) }
+            val response = client.get("/api/v1/daily-logs/2024-01-20") { bearerSub(SUB) }
             assertEquals(HttpStatusCode.OK, response.status)
             val day = response.body<DailyLogDto>()
             assertEquals("2024-01-20", day.logDate)
@@ -259,7 +249,7 @@ class CyclesDailyLogsTest {
             assertEquals(noteText, patched.body<NotesResponse>().notes)
 
             // The plaintext round-trips on read…
-            val readBack = client.get("/api/v1/daily-logs/2024-01-20") { bearer(SUB) }.body<DailyLogDto>()
+            val readBack = client.get("/api/v1/daily-logs/2024-01-20") { bearerSub(SUB) }.body<DailyLogDto>()
             assertEquals(noteText, readBack.notes)
 
             // …but the column itself holds ciphertext, never the plaintext.
@@ -284,7 +274,7 @@ class CyclesDailyLogsTest {
             val cleared = client.patchNotes(SUB, "2024-01-20", null)
             assertEquals(HttpStatusCode.OK, cleared.status)
             assertNull(cleared.body<NotesResponse>().notes)
-            assertNull(client.get("/api/v1/daily-logs/2024-01-20") { bearer(SUB) }.body<DailyLogDto>().notes)
+            assertNull(client.get("/api/v1/daily-logs/2024-01-20") { bearerSub(SUB) }.body<DailyLogDto>().notes)
         }
 
     @Test
@@ -366,7 +356,7 @@ class CyclesDailyLogsTest {
         startDate: String,
         id: String? = null,
     ) = post("/api/v1/cycles") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(CreateCycleRequest(startDate, id))
     }
@@ -376,7 +366,7 @@ class CyclesDailyLogsTest {
         cycleId: String,
         endDate: String,
     ) = patch("/api/v1/cycles/$cycleId") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(UpdateCycleRequest(endDate))
     }
@@ -387,7 +377,7 @@ class CyclesDailyLogsTest {
         cycleId: String,
         id: String? = null,
     ) = post("/api/v1/daily-logs") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(CreateDailyLogRequest(date, cycleId, id))
     }
@@ -397,36 +387,20 @@ class CyclesDailyLogsTest {
         date: String,
         notes: String?,
     ) = patch("/api/v1/daily-logs/$date/notes") {
-        bearer(sub)
+        bearerSub(sub)
         contentType(ContentType.Application.Json)
         setBody(NotesUpdateRequest(notes))
     }
 
-    private fun HttpRequestBuilder.bearer(sub: String) {
-        header(HttpHeaders.Authorization, "Bearer ${makeToken(sub)}")
-    }
-
-    /** A no-op Keycloak admin client — account deletion is exercised in [AuthUsersTest], not here. */
-    private class NoopAdminClient : KeycloakAdminClient {
-        override suspend fun deleteUser(keycloakSub: String) = Unit
-    }
+    private fun HttpRequestBuilder.bearerSub(sub: String) = bearer(makeToken(privateKey, publicKey, sub))
 
     companion object {
-        private const val KID = "test-key"
         private const val SUB = "11111111-1111-1111-1111-111111111111"
         private const val OTHER_SUB = "22222222-2222-2222-2222-222222222222"
         private const val UNKNOWN_UUID = "33333333-3333-3333-3333-333333333333"
         private const val CLIENT_UUID = "44444444-4444-4444-4444-444444444444"
-        private const val ISSUER = "https://test.homeflow.local/realms/homeflow"
-        private const val AUDIENCE = "homeflow-backend"
-        private const val RSA_KEY_SIZE = 2048
-        private const val ENCRYPTION_KEY_BYTES = 32
-        private const val TOKEN_TTL_MILLIS = 3_600_000L
-        private const val HIGH_RATE_LIMIT = 100_000
 
-        private val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("period_tracker_test")
+        private val postgres: PostgreSQLContainer<*> = newPostgres()
 
         private lateinit var db: Database
         private lateinit var publicKey: RSAPublicKey
@@ -437,21 +411,9 @@ class CyclesDailyLogsTest {
         @JvmStatic
         fun setUp() {
             postgres.start()
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .locations("classpath:db/migration")
-                .load()
-                .migrate()
-            db =
-                Database.connect(
-                    url = postgres.jdbcUrl,
-                    driver = "org.postgresql.Driver",
-                    user = postgres.username,
-                    password = postgres.password,
-                )
+            db = migrateAndConnect(postgres)
 
-            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(RSA_KEY_SIZE) }.generateKeyPair()
+            val keyPair = generateRsaKeyPair()
             publicKey = keyPair.public as RSAPublicKey
             privateKey = keyPair.private as RSAPrivateKey
 
@@ -459,7 +421,7 @@ class CyclesDailyLogsTest {
                 AppDependencies(
                     config = testConfig(),
                     database = db,
-                    jwkProvider = localJwkProvider(),
+                    jwkProvider = localJwkProvider(publicKey),
                     keycloakAdminClient = NoopAdminClient(),
                 )
         }
@@ -468,57 +430,6 @@ class CyclesDailyLogsTest {
         @JvmStatic
         fun tearDown() {
             postgres.stop()
-        }
-
-        private fun testConfig(): Config =
-            Config(
-                apiPort = 0,
-                logLevel = "info",
-                database = DatabaseConfig("unused", 0, "unused", "unused", "unused"),
-                keycloak =
-                    KeycloakConfig(
-                        internalUrl = "http://unused",
-                        publicUrl = "https://test.homeflow.local",
-                        realm = "homeflow",
-                        clientId = AUDIENCE,
-                        clientSecret = "unused",
-                    ),
-                rateLimit = RateLimitConfig(maxRequests = HIGH_RATE_LIMIT, windowMillis = TOKEN_TTL_MILLIS),
-                encryptionKey = Base64.getEncoder().encodeToString(ByteArray(ENCRYPTION_KEY_BYTES) { 7 }),
-                serverVersion = "test",
-                minClientVersion = "0.0.0",
-            )
-
-        private fun localJwkProvider(): JwkProvider =
-            JwkProvider { keyId ->
-                Jwk.fromValues(
-                    mapOf(
-                        "kid" to keyId,
-                        "kty" to "RSA",
-                        "alg" to "RS256",
-                        "use" to "sig",
-                        "n" to base64Url(unsigned(publicKey.modulus)),
-                        "e" to base64Url(unsigned(publicKey.publicExponent)),
-                    ),
-                )
-            }
-
-        private fun makeToken(subject: String): String =
-            JWT
-                .create()
-                .withKeyId(KID)
-                .withIssuer(ISSUER)
-                .withAudience(AUDIENCE)
-                .withSubject(subject)
-                .withIssuedAt(Date())
-                .withExpiresAt(Date(System.currentTimeMillis() + TOKEN_TTL_MILLIS))
-                .sign(Algorithm.RSA256(publicKey, privateKey))
-
-        private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-
-        private fun unsigned(value: BigInteger): ByteArray {
-            val bytes = value.toByteArray()
-            return if (bytes.size > 1 && bytes[0] == 0.toByte()) bytes.copyOfRange(1, bytes.size) else bytes
         }
     }
 }

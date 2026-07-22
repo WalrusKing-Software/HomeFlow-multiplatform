@@ -42,7 +42,7 @@ import java.util.UUID
  * Encryption boundary: this service decrypts notes/sex on pull and encrypts on push.
  * No plaintext health data is logged; the repositories never see plaintext.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList") // one repository per synced entity, by design
 class SyncService(
     private val cyclesRepository: CyclesRepository,
     private val dailyLogsRepository: DailyLogsRepository,
@@ -51,6 +51,8 @@ class SyncService(
     private val changeLogRepository: ChangeLogRepository,
     private val refDataRepository: RefDataRepository,
     private val encryption: Encryption,
+    /** Max change rows per pull page (SEC-02). Injectable so tests can use a tiny page. */
+    private val pullPageSize: Int = SYNC_PULL_PAGE_SIZE,
 ) {
     // ──────────────────────────────────────────────────────────────────────────
     // PUSH
@@ -258,9 +260,11 @@ class SyncService(
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns all changes since [cursor] (exclusive). Each change row causes a full
-     * entity read — live entities are returned with all their data (decrypted), deleted
-     * entities are returned as tombstones (id + updatedAt + deleted=true).
+     * Returns changes since [cursor] (exclusive), capped at [pullPageSize] rows per
+     * page (SEC-02). Each change row causes a full entity read — live entities are
+     * returned with all their data (decrypted), deleted entities are returned as
+     * tombstones (id + updatedAt + deleted=true). The response `cursor` is the seq of
+     * the last row in this page and `hasMore` tells the client to pull again from it.
      */
     fun pull(
         principal: UserPrincipal,
@@ -268,7 +272,9 @@ class SyncService(
     ): SyncPullResponse {
         val ctx = buildRefDataContext()
         val userId = principal.id
-        val changes = changeLogRepository.findChangesSince(userId, cursor)
+        val page = changeLogRepository.findChangesSince(userId, cursor, pullPageSize + 1)
+        val hasMore = page.size > pullPageSize
+        val changes = if (hasMore) page.subList(0, pullPageSize) else page
 
         val resultCycles = mutableListOf<SyncCycle>()
         val resultDays = mutableListOf<SyncDay>()
@@ -301,6 +307,7 @@ class SyncService(
             days = resultDays,
             preferences = resultPrefs,
             cursor = newCursor,
+            hasMore = hasMore,
         )
     }
 
@@ -437,19 +444,22 @@ class SyncService(
             deleted = deletedAt != null,
         )
 
-    private companion object {
-        const val EMOTIONS = "emotions"
-        const val SLEEP_QUALITY = "sleep_quality"
-        const val ENERGY = "energy"
-        const val SEX = "sex"
-        const val DISCHARGE = "discharge"
-        const val SKIN = "skin"
-        const val DIGESTION = "digestion"
-        const val BLOOD_FLOW = "blood_flow"
-        const val COLLECTION_METHOD = "collection_method"
-        const val MIND = "mind"
+    companion object {
+        /** Max change rows returned per pull request (SEC-02). */
+        const val SYNC_PULL_PAGE_SIZE = 500
 
-        val ID_LIST = ListSerializer(String.serializer())
-        val SLUG_LIST = ListSerializer(String.serializer())
+        private const val EMOTIONS = "emotions"
+        private const val SLEEP_QUALITY = "sleep_quality"
+        private const val ENERGY = "energy"
+        private const val SEX = "sex"
+        private const val DISCHARGE = "discharge"
+        private const val SKIN = "skin"
+        private const val DIGESTION = "digestion"
+        private const val BLOOD_FLOW = "blood_flow"
+        private const val COLLECTION_METHOD = "collection_method"
+        private const val MIND = "mind"
+
+        private val ID_LIST = ListSerializer(String.serializer())
+        private val SLUG_LIST = ListSerializer(String.serializer())
     }
 }

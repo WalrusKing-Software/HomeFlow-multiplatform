@@ -76,7 +76,7 @@ The two front-end clients (`homeflow-frontend`, `homeflow-android`) are public b
 | SSO session max | **8 hours** | Hard cap regardless of activity (web) |
 | Refresh token lifespan | **8 hours** | Matches SSO session idle (web online refresh token) |
 | Offline session idle | **30 days** | Mobile `offline_access` — the app stays logged in across days behind the biometric gate |
-| Offline session max | **Off (unlimited)** *(or a deliberate cap, e.g. 90 days)* | Mobile session ceiling; the access token is still 15 min |
+| Offline session max | **90 days** (SEC-10) | Absolute ceiling on a stolen/offline refresh token — the app re-logins quarterly at most; the access token is still 15 min |
 
 > **How this works in practice (web):** The access token expires after 15 minutes. `hooks.server.ts` detects the expiry and silently exchanges the refresh token for a new access token — the user never sees a login prompt unless they've been inactive for 8 hours or closed their browser.
 >
@@ -455,7 +455,9 @@ docker compose cp keycloak:/tmp/export/homeflow-realm.json \
 
 ### After importing to a new environment
 
-1. Regenerate the `homeflow-backend` client secret
+1. Regenerate the `homeflow-backend` client secret — **the backend refuses to
+   start on the dev-only secret shipped in the export** unless
+   `ALLOW_DEV_SECRETS=true` (set only by the dev compose overlay)
 2. Update `KEYCLOAK_CLIENT_SECRET` in `.env`
 3. Assign `manage-users` role to the backend service account (verify this survived the import)
 4. Create the user account

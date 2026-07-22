@@ -34,10 +34,22 @@ class DesktopAppLockGate(
     }
 
     private fun loadRecord(): Pair<ByteArray, ByteArray>? {
-        val stored = runCatching { keyring.getPassword(SERVICE, ACCOUNT_PASSPHRASE) }.getOrNull() ?: return null
+        val stored =
+            try {
+                keyring.getPassword(SERVICE, ACCOUNT_PASSPHRASE)
+            } catch (e: Exception) {
+                // SEC-12: never fail silently — a broken keychain reads as "wrong passphrase".
+                authDebugLog("AppLockGate: keyring read failed: ${e.describe()}")
+                null
+            } ?: return null
         val parts = stored.split(":")
         if (parts.size != 2) return null
-        return runCatching { Base64.decode(parts[0]) to Base64.decode(parts[1]) }.getOrNull()
+        return try {
+            Base64.decode(parts[0]) to Base64.decode(parts[1])
+        } catch (e: Exception) {
+            authDebugLog("AppLockGate: stored enrollment record is corrupt: ${e.describe()}")
+            null
+        }
     }
 
     private fun pbkdf2(

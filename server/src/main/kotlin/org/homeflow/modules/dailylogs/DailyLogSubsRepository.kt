@@ -168,15 +168,7 @@ class DailyLogSubsRepository(
     ): OffsetDateTime? =
         transaction(db) {
             val (id, now) = findAnchorAndTime(userId, date) ?: return@transaction null
-            table.deleteWhere { (table.dailyLogId eq id) and (table.userId eq userId) }
-            optionIds.forEach { option ->
-                table.insert {
-                    it[table.dailyLogId] = id
-                    it[table.userId] = userId
-                    it[table.optionId] = option
-                    it[table.createdAt] = now
-                }
-            }
+            inlineReplaceMulti(table, userId, id, optionIds, now)
             touch(userId, date, now)
             changeLogRepository.record(userId, TYPE_DAY, id, now, deleted = false)
             now
@@ -191,15 +183,7 @@ class DailyLogSubsRepository(
     ): OffsetDateTime? =
         transaction(db) {
             val (id, now) = findAnchorAndTime(userId, date) ?: return@transaction null
-            table.deleteWhere { (table.dailyLogId eq id) and (table.userId eq userId) }
-            if (optionId != null) {
-                table.insert {
-                    it[table.dailyLogId] = id
-                    it[table.userId] = userId
-                    it[table.optionId] = optionId
-                    it[table.createdAt] = now
-                }
-            }
+            inlineReplaceSingle(table, userId, id, optionId, now)
             touch(userId, date, now)
             changeLogRepository.record(userId, TYPE_DAY, id, now, deleted = false)
             now
@@ -302,23 +286,23 @@ class DailyLogSubsRepository(
         updatedAt: OffsetDateTime,
     ): Boolean =
         transaction(db) {
-            val anchor =
-                DailyLogs
+            val anchorExists =
+                !DailyLogs
                     .selectAll()
                     .where { (DailyLogs.id eq anchorId) and (DailyLogs.userId eq userId) }
-                    .singleOrNull()
-                    ?: return@transaction false
+                    .empty()
+            if (!anchorExists) return@transaction false
 
-            inlineReplaceMulti(DailyLogEmotions, userId, anchorId, emotions)
-            inlineReplaceMulti(DailyLogSleep, userId, anchorId, sleep)
-            inlineReplaceMulti(DailyLogDischarge, userId, anchorId, discharge)
-            inlineReplaceMulti(DailyLogSkin, userId, anchorId, skin)
-            inlineReplaceMulti(DailyLogDigestion, userId, anchorId, digestion)
-            inlineReplaceMulti(DailyLogMind, userId, anchorId, mind)
+            inlineReplaceMulti(DailyLogEmotions, userId, anchorId, emotions, updatedAt)
+            inlineReplaceMulti(DailyLogSleep, userId, anchorId, sleep, updatedAt)
+            inlineReplaceMulti(DailyLogDischarge, userId, anchorId, discharge, updatedAt)
+            inlineReplaceMulti(DailyLogSkin, userId, anchorId, skin, updatedAt)
+            inlineReplaceMulti(DailyLogDigestion, userId, anchorId, digestion, updatedAt)
+            inlineReplaceMulti(DailyLogMind, userId, anchorId, mind, updatedAt)
 
-            inlineReplaceSingle(DailyLogEnergy, userId, anchorId, energy)
-            inlineReplaceSingle(DailyLogFlow, userId, anchorId, flow)
-            inlineReplaceSingle(DailyLogCollection, userId, anchorId, collection)
+            inlineReplaceSingle(DailyLogEnergy, userId, anchorId, energy, updatedAt)
+            inlineReplaceSingle(DailyLogFlow, userId, anchorId, flow, updatedAt)
+            inlineReplaceSingle(DailyLogCollection, userId, anchorId, collection, updatedAt)
 
             DailyLogSex.deleteWhere { (DailyLogSex.dailyLogId eq anchorId) and (DailyLogSex.userId eq userId) }
             if (sexEncryptedPayload != null) {
@@ -359,47 +343,49 @@ class DailyLogSubsRepository(
             }
 
             changeLogRepository.record(userId, TYPE_DAY, anchorId, updatedAt, deleted = false)
-
-            // suppress "unused" — loaded only for ownership check above
-            @Suppress("UNUSED_EXPRESSION")
-            anchor
             true
         }
 
-    /** Replaces all rows of a multi-select [table] for [anchorId]. Must be inside a transaction. */
+    /**
+     * Replaces all rows of a multi-select [table] for [anchorId], stamping [timestamp].
+     * Must be called inside an active transaction.
+     */
     private fun inlineReplaceMulti(
         table: MultiSelectLog,
         userId: UUID,
         anchorId: UUID,
         ids: List<UUID>,
+        timestamp: OffsetDateTime,
     ) {
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
         table.deleteWhere { (table.dailyLogId eq anchorId) and (table.userId eq userId) }
         ids.forEach { optionId ->
             table.insert {
                 it[table.dailyLogId] = anchorId
                 it[table.userId] = userId
                 it[table.optionId] = optionId
-                it[table.createdAt] = now
+                it[table.createdAt] = timestamp
             }
         }
     }
 
-    /** Replaces the single-select [table] row for [anchorId]. Must be inside a transaction. */
+    /**
+     * Replaces the single-select [table] row for [anchorId], stamping [timestamp].
+     * Must be called inside an active transaction.
+     */
     private fun inlineReplaceSingle(
         table: SingleSelectLog,
         userId: UUID,
         anchorId: UUID,
         id: UUID?,
+        timestamp: OffsetDateTime,
     ) {
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
         table.deleteWhere { (table.dailyLogId eq anchorId) and (table.userId eq userId) }
         if (id != null) {
             table.insert {
                 it[table.dailyLogId] = anchorId
                 it[table.userId] = userId
                 it[table.optionId] = id
-                it[table.createdAt] = now
+                it[table.createdAt] = timestamp
             }
         }
     }

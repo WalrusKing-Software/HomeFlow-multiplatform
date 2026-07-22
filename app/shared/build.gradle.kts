@@ -93,6 +93,11 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             // In-memory SQLite driver for contract/parity/analytics tests (no SQLCipher).
             implementation(libs.sqldelight.sqlite.driver)
+            // Compose UI tests for the shared screens run on the JVM target only:
+            // commonTest also feeds androidHostTest, where runComposeUiTest would need
+            // an instrumented/Robolectric environment (see __docs/TESTING.md).
+            implementation(libs.compose.uiTest)
+            implementation(compose.desktop.currentOs)
         }
     }
 }
