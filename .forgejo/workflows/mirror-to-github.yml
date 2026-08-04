@@ -1,0 +1,57 @@
+﻿name: Filtered mirror to GitHub
+
+# Manual only, deliberately. This force-replaces GitHub's history, so it
+# should never fire automatically until the filter logic is fully trusted.
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: >-
+          GitHub owner/repo to force-push into. USE A THROWAWAY REPO for
+          testing — this force-overwrites whatever's currently there.
+        required: true
+        default: "WalrusKing-Software/mirror-test-scratch"
+
+jobs:
+  filtered-mirror:
+    runs-on: docker
+    steps:
+      - name: Install tooling
+        run: |
+          apt-get update
+          apt-get install -y git python3-pip openssh-client
+          pip install --break-system-packages git-filter-repo
+
+      - name: Set up deploy key for read-only Forgejo access
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.MIRROR_DEPLOY_KEY }}" > ~/.ssh/mirror_deploy_key
+          chmod 600 ~/.ssh/mirror_deploy_key
+          ssh-keyscan -p 2222 10.10.0.19 >> ~/.ssh/known_hosts
+
+      - name: Clone the real, unfiltered repo (full history, all refs)
+        run: |
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_deploy_key -o IdentitiesOnly=yes" \
+            git clone --mirror ssh://git@10.10.0.19:2222/WalrusKing-Software/HomeFlow-multiplatform.git source.git
+
+      - name: Extract .runignore from the unfiltered repo
+        working-directory: source.git
+        run: |
+          git show refs/heads/main:.runignore > ../runignore.raw || {
+            echo "No .runignore found on main — refusing to run an unfiltered mirror."
+            exit 1
+          }
+          grep -vE '^\s*(#|$)' ../runignore.raw > ../runignore.clean
+          echo "Exclusion list for this run:"
+          cat ../runignore.clean
+
+      - name: Filter out everything in .runignore
+        working-directory: source.git
+        run: |
+          git filter-repo --invert-paths --paths-from-file ../runignore.clean --force
+
+      - name: Push filtered history to GitHub (force, mirrors all refs)
+        working-directory: source.git
+        run: |
+          git remote add github "https://x-access-token:${{ secrets.TOKEN_GITHUB_MIRROR }}@github.com/${{ github.event.inputs.target_repo }}.git"
+          git push --mirror github
