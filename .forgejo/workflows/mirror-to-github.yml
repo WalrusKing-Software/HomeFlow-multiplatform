@@ -51,8 +51,8 @@ jobs:
         run: |
           git filter-repo --invert-paths --paths-from-file ../runignore.clean --force
 
-      - name: Push filtered history to GitHub (force, mirrors all refs)
+      - name: Push filtered history to GitHub (force, branches + tags only)
         working-directory: source.git
         run: |
           git remote add github "https://x-access-token:${{ secrets.TOKEN_GITHUB_MIRROR }}@github.com/${{ github.event.inputs.target_repo }}.git"
-          git push --mirror github
+          git push --prune --force github 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
