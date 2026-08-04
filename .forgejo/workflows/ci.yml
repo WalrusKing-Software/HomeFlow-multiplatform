@@ -1,0 +1,77 @@
+name: CI
+
+# Split from the original single build-checks job, per real constraints found
+# while porting:
+#   - :server is the ONLY module with a Testcontainers dependency (verified
+#     against the actual build.gradle.kts files — :core, :app:shared,
+#     :app:androidApp, :app:desktopApp have none). tasks.withType<Test>()
+#     applies uniformly in :server's build script, so `:server:test` itself
+#     needs Docker — there's no separate integrationTest source set to skip.
+#   - build-checks below is the REQUIRED status check: ktlint + detekt
+#     (repo-wide, no Docker) + test on every module except :server. This can
+#     run on CT 109 with no DOCKER_HOST wiring at all.
+#   - server-integration-tests is deliberately NOT a required status check.
+#     It needs a runner with DOCKER_HOST wired in (real DinD/DooD), which
+#     should be a SEPARATE act_runner registration/label from the one used
+#     for build-checks/branch-rules/semgrep/gitleaks — not just a flag on the
+#     same runner — otherwise every job that runner picks up gets Docker
+#     access, including the required gate. Runs on a `runs-on: docker-build`
+#     label; register that label only on the Docker-enabled runner process.
+#     Until that second runner registration exists, this job will just sit
+#     queued/unassigned — expected, not a bug.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-checks:
+    name: build-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: https://github.com/actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Gradle
+        uses: https://github.com/gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Lint (ktlint)
+        run: ./gradlew ktlintCheck --no-daemon
+      - name: Static analysis (detekt)
+        run: ./gradlew detekt --no-daemon
+      - name: Test (everything except :server — the only module needing Docker)
+        run: ./gradlew test --no-daemon -x :server:test
+
+  server-integration-tests:
+    name: server-integration-tests
+    # NOT a required status check — see notes above. Needs a Docker-enabled
+    # runner; will queue until that runner/label exists.
+    runs-on: docker-build
+    steps:
+      - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: https://github.com/actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Gradle
+        uses: https://github.com/gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Server tests (Testcontainers/Postgres)
+        run: ./gradlew :server:test --no-daemon

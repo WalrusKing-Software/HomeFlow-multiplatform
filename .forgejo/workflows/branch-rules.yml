@@ -1,0 +1,61 @@
+name: Branch Rules
+
+# Enforces the branching MODEL. Ported from .github/workflows/branch-rules.yml
+# unchanged — pure bash, no actions/marketplace dependency, nothing Forgejo-specific
+# to fix. NOT YET SMOKE-TESTED on Forgejo: github.base_ref / github.head_ref are
+# assumed to populate the same way they do on GitHub Actions, since Forgejo's own
+# docs only call out that "some keys in the github context are missing" without
+# listing which — verify with one real test PR before trusting this as a gate.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-branch-flow:
+    name: validate-branch-flow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce source -> target branch policy
+        shell: bash
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          echo "Pull request: '$HEAD'  ->  '$BASE'"
+          fail() { echo "::error::$1"; exit 1; }
+
+          case "$BASE" in
+            main)
+              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+                echo "OK: release PR into 'main' from '$HEAD'."
+              else
+                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
+              fi
+              ;;
+            release/*)
+              if [[ "$HEAD" =~ ^develop-.+ || "$HEAD" =~ ^(feature|bugfix)/.+ ]]; then
+                echo "OK: PR into '$BASE' from '$HEAD' (develop integration or work/hotfix branch)."
+              else
+                fail "Only 'develop-*' (or 'feature/*'/'bugfix/*' for hotfixes) may be merged into '$BASE' (got head '$HEAD')."
+              fi
+              ;;
+            develop|develop-*)
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs)/.+ ]]; then
+                echo "OK: work PR into '$BASE' from '$HEAD'."
+              else
+                fail "Only 'feature/*', 'bugfix/*', or 'docs/*' branches may be merged into '$BASE' (got head '$HEAD')."
+              fi
+              ;;
+            *)
+              echo "No branch-flow rule defined for base '$BASE'; nothing to enforce."
+              ;;
+          esac

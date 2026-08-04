@@ -1,0 +1,44 @@
+name: SAST (Semgrep)
+
+# Ported from .github/workflows/semgrep.yml. Only change: fully-qualified the
+# checkout action URL, since Forgejo's default action resolution goes to
+# data.forgejo.org/code.forgejo.org (not github.com) and DEFAULT_ACTIONS_URL has
+# a known unreliable fallback bug (codeberg.org/forgejo/forgejo#5265, #6094).
+# The job-level `container:` below runs on CT 109's own already-configured
+# Docker daemon — this is NOT docker-in-docker, no runner config change needed.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.96.0
+    steps:
+      - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Run Semgrep
+        env:
+          SEMGREP_RULES: >-
+            p/default
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/kotlin
+            p/java
+        run: semgrep ci
