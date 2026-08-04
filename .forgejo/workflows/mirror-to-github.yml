@@ -10,6 +10,7 @@ on:
           GitHub owner/repo to force-push into. USE A THROWAWAY REPO for
           testing — this force-overwrites whatever's currently there.
         required: true
+        type: string
         default: "WalrusKing-Software/mirror-test-scratch"
 
 jobs:
