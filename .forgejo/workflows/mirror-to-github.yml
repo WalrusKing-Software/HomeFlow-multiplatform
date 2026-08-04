@@ -11,7 +11,7 @@ on:
           testing — this force-overwrites whatever's currently there.
         required: true
         type: string
-        default: "WalrusKing-Software/mirror-test-scratch"
+        default: "WalrusKing-Software/HomeFlow-multiplatform"
 
 jobs:
   filtered-mirror:
