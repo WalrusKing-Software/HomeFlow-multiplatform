@@ -31,7 +31,10 @@ jobs:
     steps:
       - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install Semgrep
-        run: pip install semgrep==1.96.0
+        # --break-system-packages overrides Debian's PEP 668 system-Python
+        # guard. Safe here specifically because this container is thrown away
+        # after the job — there's no persistent OS install to actually break.
+        run: pip install --break-system-packages semgrep==1.96.0
       - name: Run Semgrep
         env:
           SEMGREP_RULES: >-
