@@ -28,10 +28,10 @@ jobs:
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep:1.96.0
     steps:
       - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install Semgrep
+        run: pip install semgrep==1.96.0
       - name: Run Semgrep
         env:
           SEMGREP_RULES: >-
