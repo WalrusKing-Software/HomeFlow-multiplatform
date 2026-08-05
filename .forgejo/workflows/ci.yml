@@ -76,6 +76,20 @@ jobs:
     # NOT a required status check — see notes above. Needs a Docker-enabled
     # runner; will queue until that runner/label exists.
     runs-on: docker-build
+    env:
+      # Ryuk (Testcontainers' cleanup sidecar) needs to auto-detect which
+      # container it's running alongside via a local Docker socket, then
+      # establish a network handshake back to the test JVM. Our job container
+      # only has a remote DOCKER_HOST (tcp://10.10.0.21:2376), no local socket
+      # — Ryuk gets created but can't complete the handshake and dies almost
+      # instantly (confirmed: ~100ms in dind_ci's own daemon logs), which
+      # Testcontainers then reports as a startup failure blocking every real
+      # test container from starting. This is Testcontainers' own documented
+      # fix for exactly this class of remote/privileged-CI environment.
+      # Tradeoff: without Ryuk, containers aren't auto-reaped after a JVM
+      # crash/timeout — CT 110 may need periodic manual `docker system prune`
+      # if leftover containers accumulate over time.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: https://github.com/actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
