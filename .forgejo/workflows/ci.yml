@@ -85,15 +85,11 @@ jobs:
       - name: Set up Gradle
         uses: https://github.com/gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Server tests (Testcontainers/Postgres)
-        run: ./gradlew :server:test --no-daemon
-      - name: Upload test report on failure
-        if: failure()
-        # v4+ actively refuses to run against Forgejo (it checks for and rejects
-        # anything identifying as GHES — confirmed via a real failed run:
-        # "GHESNotSupportedError"). v3 uses the older artifact protocol Forgejo
-        # does support. -node20 variant, since the base v3.2.2 tag now targets
-        # Node 24 and this runner image's Node version wasn't confirmed to match.
-        uses: https://github.com/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de # v3.2.2-node20
-        with:
-          name: server-test-report
-          path: server/build/reports/tests/test/
+        # --stacktrace prints real exception messages/traces straight to
+        # console. Switched away from uploading the HTML report as an artifact
+        # after that itself hung indefinitely (v3 upload-artifact's multi-step
+        # protocol appears to wedge against Forgejo's backend — confirmed via a
+        # real job stuck "Up" for 14+ minutes, occupying this runner's only
+        # capacity slot). Console output is the reliably-captured path today;
+        # revisit artifact upload separately later if needed.
+        run: ./gradlew :server:test --no-daemon --stacktrace
