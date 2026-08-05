@@ -85,11 +85,14 @@ jobs:
       - name: Set up Gradle
         uses: https://github.com/gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Server tests (Testcontainers/Postgres)
-        # --stacktrace prints real exception messages/traces straight to
-        # console. Switched away from uploading the HTML report as an artifact
-        # after that itself hung indefinitely (v3 upload-artifact's multi-step
-        # protocol appears to wedge against Forgejo's backend — confirmed via a
-        # real job stuck "Up" for 14+ minutes, occupying this runner's only
-        # capacity slot). Console output is the reliably-captured path today;
-        # revisit artifact upload separately later if needed.
-        run: ./gradlew :server:test --no-daemon --stacktrace
+        run: ./gradlew :server:test --no-daemon
+      - name: Print real failure messages from JUnit XML on failure
+        # --stacktrace only expanded Gradle's own generic "there were failing
+        # tests" wrapper, not the actual per-test exception text (confirmed via
+        # a real run). The full message always exists in the JUnit XML results
+        # on disk regardless of console verbosity — grab it directly rather
+        # than fighting Gradle's console formatting or the artifact-upload
+        # path again (that hung against Forgejo — see prior commit).
+        if: failure()
+        run: |
+          grep -h -A3 '<failure' server/build/test-results/test/TEST-*.xml || true
