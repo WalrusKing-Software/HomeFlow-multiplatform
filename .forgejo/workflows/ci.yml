@@ -86,3 +86,9 @@ jobs:
         uses: https://github.com/gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Server tests (Testcontainers/Postgres)
         run: ./gradlew :server:test --no-daemon
+      - name: Upload test report on failure
+        if: failure()
+        uses: https://github.com/actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: server-test-report
+          path: server/build/reports/tests/test/
