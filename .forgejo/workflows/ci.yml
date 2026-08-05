@@ -88,7 +88,12 @@ jobs:
         run: ./gradlew :server:test --no-daemon
       - name: Upload test report on failure
         if: failure()
-        uses: https://github.com/actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # v4+ actively refuses to run against Forgejo (it checks for and rejects
+        # anything identifying as GHES — confirmed via a real failed run:
+        # "GHESNotSupportedError"). v3 uses the older artifact protocol Forgejo
+        # does support. -node20 variant, since the base v3.2.2 tag now targets
+        # Node 24 and this runner image's Node version wasn't confirmed to match.
+        uses: https://github.com/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de # v3.2.2-node20
         with:
           name: server-test-report
           path: server/build/reports/tests/test/
