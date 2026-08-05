@@ -1,0 +1,57 @@
+name: Secret Scan (gitleaks)
+
+# Rewritten, not just ported. The original .github/workflows/gitleaks.yml ran
+# `docker run zricethezav/gitleaks:latest` INSIDE the job — that's genuine
+# docker-in-docker, which needs a DOCKER_HOST wired into the runner container.
+# CT 109's docker_host was deliberately left unset for security when it was
+# built, and switching to a job-level `container:` (like semgrep) doesn't work
+# here either, since the gitleaks image has no Node.js to run actions/checkout
+# inside it. Cleanest fix: skip Docker altogether and run the pinned gitleaks
+# binary directly — same approach their own Husky pre-commit hook likely
+# already uses. Verify .gitleaks.toml's path/config flags still match; version
+# bumped from the original's unpinned `:latest` to a pinned release (8.30.1,
+# current stable as of this port) to match this project's pinning philosophy —
+# swap if a different version is wanted.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+  push:
+    branches:
+      - main
+      - 'release/*'
+      - develop
+      - 'develop-*'
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+    steps:
+      - uses: https://github.com/actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+      - name: Run gitleaks
+        run: |
+          ./gitleaks detect \
+            --source=. \
+            --config=.gitleaks.toml \
+            --redact \
+            --exit-code 1 \
+            --verbose
