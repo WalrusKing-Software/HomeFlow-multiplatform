@@ -53,6 +53,8 @@ jobs:
 
       - name: Push filtered history to GitHub (force, branches + tags only)
         working-directory: source.git
+        env:
+          TARGET_REPO: ${{ github.event.inputs.target_repo }}
         run: |
-          git remote add github "https://x-access-token:${{ secrets.TOKEN_GITHUB_MIRROR }}@github.com/${{ github.event.inputs.target_repo }}.git"
+          git remote add github "https://x-access-token:${{ secrets.TOKEN_GITHUB_MIRROR }}@github.com/${TARGET_REPO}.git"
           git push --prune --force github 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
