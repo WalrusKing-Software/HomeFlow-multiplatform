@@ -49,10 +49,10 @@ jobs:
               fi
               ;;
             develop|develop-*)
-              if [[ "$HEAD" =~ ^(feature|bugfix|docs)/.+ ]]; then
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs|chore)/.+ ]]; then
                 echo "OK: work PR into '$BASE' from '$HEAD'."
               else
-                fail "Only 'feature/*', 'bugfix/*', or 'docs/*' branches may be merged into '$BASE' (got head '$HEAD')."
+                fail "Only 'feature/*', 'bugfix/*', 'docs/*', or 'chore/*' branches may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
             *)
