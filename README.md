@@ -100,7 +100,7 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/SHARED-MODULE.md` | the `:core` boundary — what's shared vs server-only vs platform-specific |
 | `__docs/ARCHITECTURE-server.md` | Ktor layering, Exposed, auth, encryption, errors |
 | `__docs/ARCHITECTURE-client.md` | Compose Multiplatform structure, OIDC, token storage, `expect`/`actual` |
-| `__docs/data-model.md` (+ sex addendum) | full schema |
+| `_planning/data-model.md` (+ sex addendum) | full schema |
 | `__docs/API.md` | every route's contract |
 | `__docs/KEYCLOAK.md` | realm, clients, audience mapper, TOTP 2FA, JWT validation |
 | `__docs/threat-model.md` | threats + mitigations |
@@ -109,7 +109,7 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/TESTING.md` | test layers and what's covered |
 | `__docs/BACKUP.md` / `__docs/BRANCHING.md` | backups / git model + CI gates |
 | `__docs/RELEASE-PIPELINE.md` / `COMPATIBILITY.md` | release packaging / client–server compatibility |
-| `__docs/project-planning/` | product overview + feature spec |
+| `_planning/project-planning/` | product overview + feature spec |
 | `openapi.yaml` | the API contract (initial spec; may become a server-generated output) |
 
 ---

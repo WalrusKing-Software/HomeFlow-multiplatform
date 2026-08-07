@@ -9,7 +9,7 @@ import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
 import org.postgresql.util.PGobject
 
 /**
- * Exposed table objects mirroring `__docs/data-model.md` (and the `daily_log_sex`
+ * Exposed table objects mirroring `_planning/data-model.md` (and the `daily_log_sex`
  * encryption addendum). These are hand-written and must stay in lockstep with the
  * Flyway migrations under `resources/db/migration/` — the schema is created by
  * Flyway (as the superuser), never by Exposed, so these definitions are used only

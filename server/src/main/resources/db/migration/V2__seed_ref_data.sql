@@ -1,7 +1,7 @@
 -- V2__seed_ref_data.sql — reference data seed.
 --
 -- Seeds the read-only lookup tables from the "Seed Data Summary" in
--- __docs/data-model.md. Idempotent: every INSERT uses ON CONFLICT DO NOTHING
+-- _planning/data-model.md. Idempotent: every INSERT uses ON CONFLICT DO NOTHING
 -- against the natural-key UNIQUE constraints, so re-running is a no-op and safe.
 -- Options/locations resolve their parent by slug, so this does not depend on the
 -- gen_random_uuid() values assigned to the parent rows.
