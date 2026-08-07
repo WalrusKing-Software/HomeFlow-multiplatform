@@ -53,6 +53,10 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Fixed
+- **The first-run screens now use the app theme** (mode chooser, server connection,
+  and the passphrase/unlock screens). They previously rendered on a white background
+  with the theme's light text, making typed text nearly invisible in dark mode; they
+  now show the correct themed background like the rest of the app.
 - **Desktop: secure-storage (OS keychain) failures are now logged to the auth
   diagnostics** instead of failing silently — a broken keychain previously looked
   like a logout or a wrong passphrase with no way to tell why.
