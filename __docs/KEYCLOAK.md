@@ -62,11 +62,11 @@ The two front-end clients (`homeflow-frontend`, `homeflow-android`) are public b
 ### Registration & Login
 | Setting | Value | Reason |
 |---|---|---|
-| User registration | **Disabled** | Single-user app — no self-signup |
+| User registration | **Disabled** | Accounts are admin-provisioned — no self-signup, even with multiple users |
 | Forgot password | Disabled | Admin manages account recovery |
 | Remember me | Disabled | Session lifetime handles persistence |
 | Login with email | Enabled | Convenience |
-| Duplicate emails | Not allowed | Single user, no conflict expected |
+| Duplicate emails | Not allowed | Each user has a distinct email; avoids ambiguous login |
 
 ### Session & Token Lifetimes
 | Setting | Value | Reason |
@@ -321,7 +321,7 @@ On the very first login, a required action fires to enroll TOTP. After that, eve
 - **Provider-agnostic.** Bitwarden generates TOTP codes natively, so the "everything in Bitwarden" workflow is preserved; any other authenticator (Aegis, Google Authenticator, 1Password) works too.
 - **No re-enrollment on hostname change.** A passkey is bound to the origin and must be re-registered if the hostname changes; a TOTP secret is not.
 
-> **Trade-off vs. passkeys:** TOTP is not phishing-resistant the way a passkey is (a fake login page can capture a code within its 30-second window). For this single-user, self-hosted, LAN/Tailscale deployment the operator controls the hostname and the login is not exposed to the public web, so the phishing surface is minimal; cross-platform reliability wins. See `threat-model.md`.
+> **Trade-off vs. passkeys:** TOTP is not phishing-resistant the way a passkey is (a fake login page can capture a code within its 30-second window). For this self-hosted, LAN/Tailscale deployment the operator controls the hostname and the login is not exposed to the public web, so the phishing surface is minimal; cross-platform reliability wins. This holds whether the server serves one user or several. See `threat-model.md`.
 
 ### OTP Policy
 
@@ -396,24 +396,32 @@ The `Configure OTP` required action fires automatically for any new user on thei
 
 ## User Account Setup
 
-This app has exactly one user account (plus the admin account). The user account is created by the admin — self-registration is disabled.
+The server supports one or more user accounts (plus the admin account). Every user
+account is created by the admin — self-registration is disabled. To serve multiple
+users (e.g. housemates), repeat the steps below once per person; each gets a
+distinct account and, on the server, fully isolated data (every query is scoped to
+the user's own `userId`).
 
-### Creating the user account
+### Creating a user account
 
 1. Log into Keycloak admin console: `http://localhost:8180/auth/admin`
 2. Select realm: `homeflow`
 3. Users → Add User
 4. Set:
-   - Username: (your choice)
-   - Email: (your email — used for display only, no email server configured)
+   - Username: (their choice)
+   - Email: (their email — used for display only, no email server configured; must be unique per user)
    - Email Verified: On
    - Enabled: On
 5. Save
 6. Go to the **Credentials** tab → **Set Password** → enter a strong password → toggle "Temporary" **off**
-7. The `Configure OTP` required action is already set as a realm default, so it will fire automatically on the user's first login
-8. On first login: user enters username + password → Keycloak shows a QR code → user scans it into Bitwarden/an authenticator and confirms the code → done
+7. The `Configure OTP` required action is already set as a realm default, so it will fire automatically on that user's first login
+8. On first login: the user enters username + password → Keycloak shows a QR code → the user scans it into Bitwarden/an authenticator and confirms the code → done
 
-> After first login the user will need the 6-digit TOTP code on every subsequent login (factor 2).
+> After first login each user needs their 6-digit TOTP code on every subsequent login (factor 2).
+
+> **Adding another user later** is the same procedure — no server restart or config
+> change is required. A new user's account is empty until they log in from their
+> app(s); their data is never visible to any other user.
 
 ---
 

@@ -181,13 +181,13 @@ $KC add-roles -r homeflow --uusername service-account-homeflow-backend \
   --cclientid realm-management --rolename manage-users
 ```
 
-**6c — create the single user + password:**
+**6c — create a user + password** (repeat for each user the server should serve):
 ```bash
 $KC create users -r homeflow -s username=<you> -s email=<you@example.com> \
   -s emailVerified=true -s enabled=true
 $KC set-password -r homeflow --username <you> --new-password '<strong>'
 ```
-The `CONFIGURE_TOTP` action fires on first login (Keycloak shows a QR to enroll an authenticator).
+The `CONFIGURE_TOTP` action fires on first login (Keycloak shows a QR to enroll an authenticator). Each user's data is isolated server-side; adding another user later needs no restart or config change.
 
 > **Confirm the `homeflow-android` and `homeflow-desktop` public clients exist**
 > (PKCE S256 required, correct redirect URIs, the `homeflow-backend` audience

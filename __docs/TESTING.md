@@ -83,7 +83,7 @@ between tests; treat seeded reference tables as read-only.
 `runComposeUiTest` over `app/shared/src/jvmTest`: each screen renders its Loading / Error /
 Loaded states from a fake repository; the day view resolves option IDs to labels;
 empty states render (not crashes) when analytics fields are null. Keep these
-narrow — exhaustive UI testing isn't worth it for a single-user app. UI tests run
+narrow — exhaustive UI testing isn't worth it for this app's small client surface. UI tests run
 on the desktop JVM target (headless Skiko) because the Android host-test compilation
 of commonTest has no Robolectric/instrumentation environment for `runComposeUiTest`.
 

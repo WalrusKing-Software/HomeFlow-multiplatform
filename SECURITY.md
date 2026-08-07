@@ -1,8 +1,9 @@
 # Security Policy
 
 HomeFlow is a self-hosted application that stores highly sensitive menstrual and
-sexual-health data for a single user. Security is a first-class concern, not an
-afterthought. If you find a vulnerability, please report it responsibly.
+sexual-health data for one or more users, each with their data isolated from the
+others. Security is a first-class concern, not an afterthought. If you find a
+vulnerability, please report it responsibly.
 
 ## Reporting a vulnerability
 
