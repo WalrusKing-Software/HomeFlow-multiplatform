@@ -120,6 +120,7 @@ fun AppShell(
     connectedHost: String? = null,
     onSwitchToLocal: (() -> Unit)? = null,
     syncStatusFlow: StateFlow<SyncStatus>? = null,
+    onSyncNow: (suspend () -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DASHBOARD) }
     val syncStatus by syncStatusFlow?.collectAsState()
@@ -155,6 +156,8 @@ fun AppShell(
                     onUploadToServer = onUploadToServer,
                     connectedHost = connectedHost,
                     onSwitchToLocal = onSwitchToLocal,
+                    onSyncNow = onSyncNow,
+                    syncStatus = if (syncStatusFlow != null) syncStatus else null,
                 )
         }
     }
