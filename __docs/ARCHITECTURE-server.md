@@ -258,6 +258,6 @@ dev). No HTTP body logging is ever installed.
 | Migrations | Flyway, manual | controlled, re-runnable |
 | Auth | Keycloak OIDC; server validates JWT only | `KEYCLOAK.md`, threat model |
 | Encryption | AES-256-GCM, service layer | threat model |
-| Row scoping | `userId` from JWT on every health query | threat model |
+| Row scoping | `userId` from JWT on every health query; DB row-level security backstop via `userScopedTransaction` | threat model |
 | Logging | no PII, no bodies | threat model |
 | Shared contract | DTOs + domain math in `:core` | single source of truth |

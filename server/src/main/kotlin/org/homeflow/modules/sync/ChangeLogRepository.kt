@@ -1,6 +1,7 @@
 package org.homeflow.modules.sync
 
 import org.homeflow.db.SyncChanges
+import org.homeflow.db.userScopedTransaction
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -8,7 +9,6 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.upsert
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -87,7 +87,7 @@ class ChangeLogRepository(
         cursor: Long,
         limit: Int,
     ): List<SyncChangeRow> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             SyncChanges
                 .selectAll()
                 .where { (SyncChanges.userId eq userId) and (SyncChanges.serverSeq greater cursor) }
@@ -98,7 +98,7 @@ class ChangeLogRepository(
 
     /** The highest `server_seq` recorded for [userId], or 0 if none. */
     fun maxSeq(userId: UUID): Long =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             SyncChanges
                 .select(SyncChanges.serverSeq)
                 .where { SyncChanges.userId eq userId }

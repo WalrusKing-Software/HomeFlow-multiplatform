@@ -3,6 +3,7 @@ package org.homeflow.modules.cycles
 import kotlinx.datetime.LocalDate
 import org.homeflow.db.Cycles
 import org.homeflow.db.DailyLogs
+import org.homeflow.db.userScopedTransaction
 import org.homeflow.modules.sync.ChangeLogRepository
 import org.homeflow.modules.sync.ChangeLogRepository.Companion.TYPE_CYCLE
 import org.homeflow.modules.sync.ChangeLogRepository.Companion.TYPE_DAY
@@ -13,7 +14,6 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -46,7 +46,7 @@ class CyclesRepository(
 ) {
     /** All of the user's live (non-deleted) cycles, newest first (by start date, then creation). */
     fun findAllByUser(userId: UUID): List<CycleRow> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             Cycles
                 .selectAll()
                 .where { (Cycles.userId eq userId) and Cycles.deletedAt.isNull() }
@@ -59,7 +59,7 @@ class CyclesRepository(
         userId: UUID,
         cycleId: UUID,
     ): CycleRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             Cycles
                 .selectAll()
                 .where {
@@ -76,7 +76,7 @@ class CyclesRepository(
         userId: UUID,
         cycleId: UUID,
     ): CycleRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             Cycles
                 .selectAll()
                 .where { (Cycles.id eq cycleId) and (Cycles.userId eq userId) }
@@ -86,7 +86,7 @@ class CyclesRepository(
 
     /** The user's currently open (non-deleted) cycle (no `end_date`), or null if none is open. */
     fun findOpen(userId: UUID): CycleRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             Cycles
                 .selectAll()
                 .where {
@@ -98,7 +98,7 @@ class CyclesRepository(
 
     /** All live cycles for a user, in ascending start_date order. Used by the sync service. */
     fun findAllByUserAscending(userId: UUID): List<CycleRow> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             Cycles
                 .selectAll()
                 .where { (Cycles.userId eq userId) and Cycles.deletedAt.isNull() }
@@ -120,7 +120,7 @@ class CyclesRepository(
         previousEndDate: LocalDate,
         id: UUID = UUID.randomUUID(),
     ): CycleRow =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
 
             // Close any open cycle and record its change.
@@ -165,7 +165,7 @@ class CyclesRepository(
         endDate: LocalDate?,
         id: UUID = UUID.randomUUID(),
     ): CycleRow =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             Cycles.insert {
                 it[Cycles.id] = id
@@ -190,7 +190,7 @@ class CyclesRepository(
         cycleId: UUID,
         endDate: LocalDate,
     ): CycleRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             val updated =
                 Cycles.update({
@@ -222,7 +222,7 @@ class CyclesRepository(
         endDate: LocalDate?,
         updatedAt: OffsetDateTime,
     ): CycleRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val updated =
                 Cycles.update({
                     (Cycles.id eq cycleId) and (Cycles.userId eq userId)
@@ -250,7 +250,7 @@ class CyclesRepository(
         userId: UUID,
         cycleId: UUID,
     ): Boolean =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
 
             // Verify ownership (live cycle only — can't re-delete).
@@ -261,7 +261,7 @@ class CyclesRepository(
                         (Cycles.id eq cycleId) and (Cycles.userId eq userId) and Cycles.deletedAt.isNull()
                     }.map(::toRow)
                     .singleOrNull()
-                    ?: return@transaction false
+                    ?: return@userScopedTransaction false
 
             // Cascade: soft-delete all daily_logs for this cycle and record day tombstones.
             val dayIds =

@@ -19,6 +19,12 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **Database-enforced per-user isolation (defense-in-depth).** Every user-scoped
+  table now has PostgreSQL row-level security with `FORCE ROW LEVEL SECURITY`, and
+  the server scopes each authenticated transaction to the JWT's user
+  (`SET LOCAL app.current_user_id`). If server code ever forgets its `user_id`
+  filter, the database still returns no other user's rows. App-layer row scoping
+  (and the cross-user 404 tests) remains the primary control; this is a second layer.
 - **Export now asks for confirmation first** and warns that the exported file is
   plain, unencrypted JSON containing all of your health data.
 - **The server refuses to start with the dev-only Keycloak client secret** from
