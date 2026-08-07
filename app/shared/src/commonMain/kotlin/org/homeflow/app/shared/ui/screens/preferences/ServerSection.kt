@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.homeflow.app.shared.data.sync.SyncStatus
 import org.homeflow.app.shared.ui.components.SectionCard
 import org.homeflow.app.shared.ui.components.kmp.feedback.ConfirmDialog
 import org.homeflow.core.dto.ImportResultDto
@@ -27,6 +28,7 @@ import org.homeflow.core.dto.ImportResultDto
  * - Mode B ([connectedHost] != null): shows the host; if [onUploadToServer] != null,
  *   also shows "Upload local data to server" with a result summary; if [onSwitchToLocal]
  *   != null, offers a reversible "Switch to local-only mode".
+ * - Mode C ([onSyncNow] != null): a "Sync now" button plus the current [syncStatus].
  * - Neither set: nothing rendered.
  */
 @Composable
@@ -35,6 +37,8 @@ internal fun ServerSection(
     onConnectServer: (() -> Unit)?,
     onUploadToServer: (suspend () -> ImportResultDto?)?,
     onSwitchToLocal: (() -> Unit)?,
+    onSyncNow: (suspend () -> Unit)? = null,
+    syncStatus: SyncStatus? = null,
 ) {
     if (connectedHost == null && onConnectServer == null) return
 
@@ -44,6 +48,10 @@ internal fun ServerSection(
                 "Connected to $connectedHost",
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+
+        if (onSyncNow != null) {
+            SyncNowButton(onSyncNow, syncStatus)
         }
 
         if (onConnectServer != null) {
@@ -101,6 +109,70 @@ private fun SwitchToLocalButton(onSwitchToLocal: () -> Unit) {
         },
         onDismiss = { showDialog = false },
     )
+}
+
+/**
+ * Manual "Sync now" (Mode C). Kicks off a sync through the trigger and reflects progress: the
+ * button shows a spinner while running, and a line below reports the live [syncStatus]. The
+ * button is disabled while a sync is in flight (either this one or a background cycle) so a
+ * user can't stack requests.
+ */
+@Composable
+private fun SyncNowButton(
+    onSyncNow: suspend () -> Unit,
+    syncStatus: SyncStatus?,
+) {
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val syncing = busy || syncStatus is SyncStatus.Syncing
+
+    Text(
+        "Push your latest changes to the server and pull in anything from your other devices.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Button(
+        onClick = {
+            scope.launch {
+                busy = true
+                runCatching { onSyncNow() }
+                busy = false
+            }
+        },
+        enabled = !syncing,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (syncing) CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
+        Text("Sync now")
+    }
+
+    syncStatusLine(syncStatus)?.let { (line, isError) ->
+        Text(
+            line,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Maps a [SyncStatus] to a short status line and whether it is an error. `null` when there is
+ * nothing worth showing (no sync has run yet). Returns the last-synced time in UTC, formatted
+ * with pure string ops to stay free of platform date APIs.
+ */
+private fun syncStatusLine(status: SyncStatus?): Pair<String, Boolean>? =
+    when (status) {
+        is SyncStatus.Syncing -> "Syncing…" to false
+        is SyncStatus.Success -> "Last synced ${formatSyncedAt(status.lastSyncAt)}" to false
+        is SyncStatus.Error -> status.message to true
+        else -> null
+    }
+
+/** "2026-08-07T14:33:12.918Z" → "2026-08-07 14:33 UTC"; falls back to the raw string. */
+private fun formatSyncedAt(iso: String): String {
+    val trimmed = iso.substringBefore('.').substringBefore('Z').replace('T', ' ')
+    return if (trimmed.length >= 16) "${trimmed.substring(0, 16)} UTC" else iso
 }
 
 @Composable

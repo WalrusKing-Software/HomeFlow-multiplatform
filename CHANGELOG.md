@@ -19,6 +19,10 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Added
+- **"Sync now" button (server-connected mode).** Settings → Server now has a
+  manual sync control that pushes your pending changes and pulls in updates from
+  your other devices on demand, showing when the last sync completed. Automatic
+  background sync continues to run on app open and every 15 minutes.
 - **Database-enforced per-user isolation (defense-in-depth).** Every user-scoped
   table now has PostgreSQL row-level security with `FORCE ROW LEVEL SECURITY`, and
   the server scopes each authenticated transaction to the JWT's user

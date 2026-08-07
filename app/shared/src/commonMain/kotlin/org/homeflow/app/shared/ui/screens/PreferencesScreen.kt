@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import org.homeflow.app.shared.data.ApiResult
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.PreferencesEditor
+import org.homeflow.app.shared.data.sync.SyncStatus
 import org.homeflow.app.shared.data.userFacingMessage
 import org.homeflow.app.shared.ui.components.Loadable
 import org.homeflow.app.shared.ui.components.SectionCard
@@ -51,6 +52,8 @@ fun PreferencesScreen(
     onUploadToServer: (suspend () -> ImportResultDto?)? = null,
     connectedHost: String? = null,
     onSwitchToLocal: (() -> Unit)? = null,
+    onSyncNow: (suspend () -> Unit)? = null,
+    syncStatus: SyncStatus? = null,
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     val state by produceState<Loadable<PreferencesEditor>>(Loadable.Loading, repository, reloadKey) {
@@ -89,6 +92,8 @@ fun PreferencesScreen(
             onConnectServer = onConnectServer,
             onUploadToServer = onUploadToServer,
             onSwitchToLocal = onSwitchToLocal,
+            onSyncNow = onSyncNow,
+            syncStatus = syncStatus,
         )
         DangerZone(onDeleteAccount)
     }

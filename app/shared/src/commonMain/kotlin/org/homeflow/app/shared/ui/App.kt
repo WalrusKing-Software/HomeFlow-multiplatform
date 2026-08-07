@@ -1,15 +1,18 @@
 package org.homeflow.app.shared.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.SessionController
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.sync.SyncEngine
+import org.homeflow.app.shared.data.sync.SyncTrigger
 import org.homeflow.app.shared.ui.shell.AppShell
 import org.homeflow.core.dto.ImportResultDto
 
@@ -71,13 +74,14 @@ fun App(
         is AuthState.Authenticated -> {
             // Mode C: use local-first repository + background sync triggers.
             if (syncEngine != null && syncRepository != null) {
-                // Initial sync on foreground + periodic timer (~15 min).
-                LaunchedEffect(current) {
-                    syncEngine.syncNow()
-                    while (true) {
-                        kotlinx.coroutines.delay(15 * 60 * 1_000L)
-                        syncEngine.syncNow()
-                    }
+                // A single trigger owns the periodic timer, foreground, and manual "Sync now"
+                // sources for this authenticated session; it starts on entry and stops (its
+                // periodic timer is cancelled) when this composable leaves.
+                val syncTrigger =
+                    remember(syncEngine, scope) { SyncTrigger(scope = scope, runSync = syncEngine::syncNow) }
+                DisposableEffect(syncTrigger) {
+                    syncTrigger.start()
+                    onDispose { syncTrigger.stop() }
                 }
                 AppShell(
                     repository = syncRepository,
@@ -89,6 +93,7 @@ fun App(
                     connectedHost = connectedHost,
                     onSwitchToLocal = onSwitchToLocal,
                     syncStatusFlow = syncEngine.status,
+                    onSyncNow = { syncTrigger.syncNow() },
                 )
             } else {
                 AppShell(
