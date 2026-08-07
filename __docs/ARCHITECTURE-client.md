@@ -4,9 +4,10 @@ The client lives across three modules — **`:app:shared`** (shared Compose UI +
 logic, with per-platform `androidMain`/`jvmMain` source sets), **`:app:androidApp`**
 and **`:app:desktopApp`** (thin entry points) — producing both the **desktop**
 (JVM) and **Android** apps from one codebase. They are parallel clients to the Ktor
-server: same Keycloak realm, same single user, same `/api/v1`. The server needs
-**zero** client-specific changes — it authenticates stateless `Authorization:
-Bearer` JWTs.
+server: same Keycloak realm, same `/api/v1`. Each client authenticates as its own
+user (one server can serve several), and the server scopes all data to that user.
+The server needs **zero** client-specific changes — it authenticates stateless
+`Authorization: Bearer` JWTs.
 
 This is the platform-neutral successor to the original native-Android `ANDROID.md`.
 Read it before any work under `app/`. DTOs + domain math come from `:core`

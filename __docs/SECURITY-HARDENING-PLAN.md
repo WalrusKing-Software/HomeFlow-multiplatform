@@ -708,7 +708,7 @@ runbook in the `reference_android_ondevice_testing` notes before merging.
 |---|---|
 | `APP_ENCRYPTION_KEY` rotation / re-encryption tooling | Requires a migration pass over ciphertexts; separate feature, not hardening |
 | Encryption key zeroization in JVM memory | JVM gives no reliable guarantee; OS-compromise is out of scope (threat model §7) |
-| PostgreSQL Row Level Security | Single user + single DML role makes RLS near-tautological; app-layer scoping is tested. Revisit only if multi-user ever lands |
+| PostgreSQL Row Level Security | Multi-user is now supported, so RLS is no longer tautological — but app-layer row scoping remains the **primary** control and is covered by cross-user integration tests. RLS is worth adding as **defense-in-depth** (a DB-level backstop if an app query ever forgets its `user_id` filter); consciously re-deferred as hardening, not a fix, and tracked in issue #78 rather than done inline here |
 | Keycloak admin token caching | Account deletion is a rare, once-ever operation; caching adds token-lifetime handling for no measurable gain |
 | CORS plugin on the server | There are no browser clients; adding CORS would only widen the surface |
 | Import content-type validation | Auth + 25 MB cap + strict deserialization already bound the risk; content-type is attacker-controlled anyway |

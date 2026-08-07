@@ -11,8 +11,10 @@ SvelteKit + Node **HomeFlow** web app. It keeps that project's data model, API
 contract, Keycloak auth, and threat model (those docs are copied here as the
 authoritative spec), and reimplements the server and clients in Kotlin.
 
-> **Single user.** The app is designed for exactly one user account.
-> Self-registration is disabled in Keycloak.
+> **One or more users.** A single self-hosted server can serve multiple users
+> (e.g. housemates), each signing in with their own account and seeing only their
+> own data. Accounts are created by the server admin — self-registration is
+> disabled in Keycloak.
 
 ---
 
