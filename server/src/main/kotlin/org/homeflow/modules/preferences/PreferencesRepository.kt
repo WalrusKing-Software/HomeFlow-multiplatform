@@ -1,6 +1,7 @@
 package org.homeflow.modules.preferences
 
 import org.homeflow.db.UserDashboardPreferences
+import org.homeflow.db.userScopedTransaction
 import org.homeflow.modules.sync.ChangeLogRepository
 import org.homeflow.modules.sync.ChangeLogRepository.Companion.TYPE_PREFERENCES
 import org.jetbrains.exposed.sql.Database
@@ -8,7 +9,6 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -39,7 +39,7 @@ class PreferencesRepository(
 ) {
     /** The user's saved preferences, or null if they have never saved any. */
     fun find(userId: UUID): PreferencesRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             UserDashboardPreferences
                 .selectAll()
                 .where { UserDashboardPreferences.userId eq userId }
@@ -56,7 +56,7 @@ class PreferencesRepository(
         userId: UUID,
         categoryOrderJson: String,
     ): OffsetDateTime =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             val updated =
                 UserDashboardPreferences.update({ UserDashboardPreferences.userId eq userId }) {
