@@ -1,6 +1,6 @@
 -- V1__initial_schema.sql — HomeFlow initial schema.
 --
--- Mirrors __docs/data-model.md (and the daily_log_sex encryption addendum) exactly.
+-- Mirrors _planning/data-model.md (and the daily_log_sex encryption addendum) exactly.
 -- Run manually by the Postgres superuser via the :server flywayMigrate task; the
 -- restricted runtime app role only ever gets DML on these tables (see
 -- infra/postgres/init/02_create_app_role.sh and __docs/DOCKER.md).
