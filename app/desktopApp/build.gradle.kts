@@ -77,8 +77,16 @@ compose.desktop {
             // Installer version. jpackage requires major >= 1 (macOS dmg/pkg), so the
             // release pipeline passes -PdesktopPackageVersion = the release X.Y.Z when
             // major >= 1, else "1.0.0". Defaults to "1.0.0" for local packaging.
+            // Dev builds use 1.<year>.<dayOfYear> so every fresh build produces a strictly
+            // higher version and MSI upgrade logic replaces the previous install automatically.
             // See __docs/RELEASE-PIPELINE.md §3.2.
-            packageVersion = (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
+            packageVersion =
+                if (isDevBuild) {
+                    val now = java.time.LocalDate.now()
+                    "1.${now.year}.${now.dayOfYear}"
+                } else {
+                    (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
+                }
 
             // The bundled runtime is produced by jlink, which only keeps JDK modules it
             // can detect statically. Two modules must be forced in or the packaged app
