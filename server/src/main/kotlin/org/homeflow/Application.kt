@@ -127,9 +127,11 @@ fun main() {
 fun Application.module(deps: AppDependencies) {
     configureSerialization()
     configureStatusPages()
-    // The backend is reachable only from Caddy on the internal Docker network,
-    // so X-Forwarded-For is set by our own proxy and is safe to trust for
-    // rate-limit keying. Do NOT install this if the backend port is ever published.
+    // The backend is reachable only from Caddy on the internal Docker network, and Caddy
+    // *overwrites* X-Forwarded-For with the observed client IP (see infra/caddy/Caddyfile),
+    // so the header is safe to trust for rate-limit keying and a client cannot spoof it.
+    // Do NOT install this if the backend port is ever published, or if Caddy stops
+    // overwriting the header (reverse_proxy appends by default).
     install(XForwardedHeaders)
     configureRateLimiting(deps.config.rateLimit)
     configureAuthentication(deps.config.keycloak, deps.jwkProvider, deps.usersService)
