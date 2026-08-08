@@ -15,11 +15,21 @@ changed." See `CLAUDE.md` for the rules.
 -->
 
 
-## [Unreleased]
+## [Unreleased] 
+
+### Added
+
+### Fixed 
+
+### Changed
 
 
-## [0.1.0-alpha-2] - 2026-08-08
+## Version 0.1.0 - Alpha-2 - 2026-08-08
 
+Second alpha of the 0.1.0 release train: adds multi-device sync (offline-capable,
+with last-write-wins reconciliation), database-enforced per-user isolation and a
+round of server security hardening, dark mode with a theme setting, and UX polish
+across the day editor, navigation, and server-setup flow.
 
 ### Added
 - **"Sync now" button (server-connected mode).** Settings → Server now has a
