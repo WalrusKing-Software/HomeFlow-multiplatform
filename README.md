@@ -140,7 +140,8 @@ make dev                    # docker compose with the dev overlay
 
 ## Status
 
-Feature-complete and preparing the first release (**0.1.0**). The Kotlin
+The 0.1.0 release train is in pre-release — **v0.1.0-alpha-2** is the current
+build (see `CHANGELOG.md`). The Kotlin
 Multiplatform rebuild is implemented end to end: the shared `:core` contract, the
 Ktor server (auth, cycles, daily logs, symptoms, analytics, preferences), and the
 desktop + Android clients (read and write). Three deployment modes are supported:
