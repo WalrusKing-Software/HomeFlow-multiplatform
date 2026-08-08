@@ -83,10 +83,13 @@ compose.desktop {
             // See __docs/RELEASE-PIPELINE.md §3.2.
             packageVersion =
                 if (isDevBuild) {
-                    // Minutes elapsed since 2024-01-01 00:00 UTC, split into days + minute-of-day.
-                    // No java.time imports needed; System.currentTimeMillis() is always in scope.
+                    // Encode minutes since 2024-01-01 00:00 UTC as a base-65536 number split
+                    // across MINOR and BUILD. MSI limits: MAJOR 0-255, MINOR 0-255, BUILD 0-65535.
+                    // Days since epoch (~950 by Aug 2026) exceeds MINOR's limit of 255, so we
+                    // use minutesSinceEpoch / 65536 for MINOR (~20 by Aug 2026, grows ~8/year)
+                    // and minutesSinceEpoch % 65536 for BUILD. Monotonically increasing per minute.
                     val minutesSinceEpoch = ((System.currentTimeMillis() - 1_704_067_200_000L) / 60_000L).toInt()
-                    "1.${minutesSinceEpoch / 1440}.${minutesSinceEpoch % 1440}"
+                    "1.${minutesSinceEpoch / 65536}.${minutesSinceEpoch % 65536}"
                 } else {
                     (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
                 }
