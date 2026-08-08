@@ -15,7 +15,10 @@ changed." See `CLAUDE.md` for the rules.
 -->
 
 
-## [Unreleased] Version x.x.x - [release date]
+## [Unreleased]
+
+
+## [0.1.0-alpha-2] - 2026-08-08
 
 
 ### Added
