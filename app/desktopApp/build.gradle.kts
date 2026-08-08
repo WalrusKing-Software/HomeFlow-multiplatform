@@ -66,7 +66,12 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = appName
-            description = if (isDevBuild) "HomeFlow — self-hosted period tracking (Development Build)" else "HomeFlow — self-hosted period tracking"
+            description =
+                if (isDevBuild) {
+                    "HomeFlow — self-hosted period tracking (Development Build)"
+                } else {
+                    "HomeFlow — self-hosted period tracking"
+                }
             vendor = "HomeFlow"
             copyright = "© 2026 HomeFlow"
             // Installer version. jpackage requires major >= 1 (macOS dmg/pkg), so the
@@ -99,7 +104,8 @@ compose.desktop {
                 menuGroup = appName
                 // Dev builds use a separate UUID so they never replace the production install.
                 // Production UUID is stable for in-place upgrades (see RELEASE-PIPELINE.md §3.2).
-                upgradeUuid = if (isDevBuild) "a9f1e2d3-b4c5-4d6e-8f70-1a2b3c4d5e6f" else "5f1d2c9e-7b3a-4e2f-9c8d-1a2b3c4d5e6f"
+                upgradeUuid =
+                    if (isDevBuild) "a9f1e2d3-b4c5-4d6e-8f70-1a2b3c4d5e6f" else "5f1d2c9e-7b3a-4e2f-9c8d-1a2b3c4d5e6f"
                 iconFile.set(iconsDir.resolve("homeflow.ico"))
             }
             macOS {
