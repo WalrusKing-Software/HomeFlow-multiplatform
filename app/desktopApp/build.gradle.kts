@@ -51,14 +51,19 @@ dependencies {
     implementation(libs.compose.uiToolingPreview)
 }
 
+// Dev builds (-PdevBuild) install as "HomeFlow Dev" with a separate upgradeUuid so they
+// coexist with production installs rather than replacing them.
+val isDevBuild = project.hasProperty("devBuild")
+val appName = if (isDevBuild) "HomeFlow-Dev" else "HomeFlow"
+
 compose.desktop {
     application {
         mainClass = "org.homeflow.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "HomeFlow"
-            description = "HomeFlow — self-hosted period tracking"
+            packageName = appName
+            description = if (isDevBuild) "HomeFlow — self-hosted period tracking (Development Build)" else "HomeFlow — self-hosted period tracking"
             vendor = "HomeFlow"
             copyright = "© 2026 HomeFlow"
             // Installer version. jpackage requires major >= 1 (macOS dmg/pkg), so the
@@ -88,16 +93,17 @@ compose.desktop {
             // Linux. Rasterised from the SVG into app/desktopApp/icons/.
             val iconsDir = project.file("icons")
             windows {
-                menuGroup = "HomeFlow"
-                // Stable UUID so MSI upgrades replace the prior install instead of stacking.
-                upgradeUuid = "5f1d2c9e-7b3a-4e2f-9c8d-1a2b3c4d5e6f"
+                menuGroup = appName
+                // Dev builds use a separate UUID so they never replace the production install.
+                // Production UUID is stable for in-place upgrades (see RELEASE-PIPELINE.md §3.2).
+                upgradeUuid = if (isDevBuild) "a9f1e2d3-b4c5-4d6e-8f70-1a2b3c4d5e6f" else "5f1d2c9e-7b3a-4e2f-9c8d-1a2b3c4d5e6f"
                 iconFile.set(iconsDir.resolve("homeflow.ico"))
             }
             macOS {
                 iconFile.set(iconsDir.resolve("homeflow.icns"))
             }
             linux {
-                packageName = "homeflow"
+                packageName = if (isDevBuild) "homeflow-dev" else "homeflow"
                 iconFile.set(iconsDir.resolve("homeflow.png"))
             }
         }
