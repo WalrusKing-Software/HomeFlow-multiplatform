@@ -8,7 +8,7 @@ import java.util.Properties
  * Not encrypted — the host and migrated flag are not sensitive.
  */
 class DesktopServerConfigStore(
-    baseDir: File = File(System.getProperty("user.home"), ".homeflow"),
+    baseDir: File = desktopDataDir,
 ) : ServerConfigStore {
     private val file = File(baseDir, "server.properties")
 

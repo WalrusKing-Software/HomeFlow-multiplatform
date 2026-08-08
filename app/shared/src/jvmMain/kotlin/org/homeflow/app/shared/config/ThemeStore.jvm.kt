@@ -8,7 +8,7 @@ import java.util.Properties
  * encrypted) — the theme choice is not sensitive.
  */
 class DesktopThemeStore(
-    baseDir: File = File(System.getProperty("user.home"), ".homeflow"),
+    baseDir: File = desktopDataDir,
 ) : ThemeStore {
     private val file = File(baseDir, "theme.properties")
 

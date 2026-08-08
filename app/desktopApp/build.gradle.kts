@@ -11,6 +11,11 @@ plugins {
 // major >= 1 constraint); this project.version is the canonical release record.
 version = providers.gradleProperty("version.desktop").getOrElse("0.0.0")
 
+// Dev builds (-PdevBuild) install as "HomeFlow-Dev" with a separate upgradeUuid so they
+// coexist with production installs rather than replacing them.
+val isDevBuild = project.hasProperty("devBuild")
+val appName = if (isDevBuild) "HomeFlow-Dev" else "HomeFlow"
+
 // Generate a build-time version constant for the desktop app, mirroring Android's
 // BuildConfig.VERSION_NAME. Resolved from gradle.properties at configuration time
 // and written into the build output directory; the Kotlin source set below picks it up.
@@ -19,8 +24,10 @@ val generateDesktopBuildConfig by tasks.registering {
     // Resolve the provider to a plain String inside the task block so the config cache
     // doesn't need to serialize an outer-scope Gradle script object reference.
     val versionValue: String = providers.gradleProperty("version.desktop").getOrElse("unknown")
+    val dataDirValue: String = if (isDevBuild) ".homeflow-dev" else ".homeflow"
     outputs.dir(outDir)
     inputs.property("desktopVersion", versionValue)
+    inputs.property("desktopDataDir", dataDirValue)
     doLast {
         val dir = outDir.get().asFile
         dir.mkdirs()
@@ -29,6 +36,7 @@ val generateDesktopBuildConfig by tasks.registering {
             package org.homeflow
 
             internal const val DESKTOP_VERSION = "$versionValue"
+            internal const val DESKTOP_DATA_DIR = "$dataDirValue"
             """.trimIndent(),
         )
     }
@@ -50,11 +58,6 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
 }
-
-// Dev builds (-PdevBuild) install as "HomeFlow Dev" with a separate upgradeUuid so they
-// coexist with production installs rather than replacing them.
-val isDevBuild = project.hasProperty("devBuild")
-val appName = if (isDevBuild) "HomeFlow-Dev" else "HomeFlow"
 
 compose.desktop {
     application {

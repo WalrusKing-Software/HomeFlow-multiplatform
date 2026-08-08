@@ -2,6 +2,7 @@ package org.homeflow.app.shared.data.local
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import org.homeflow.app.shared.config.desktopDataDir
 import org.homeflow.app.shared.db.HomeFlowDb
 import java.io.File
 
@@ -18,7 +19,7 @@ import java.io.File
  */
 actual class LocalDatabaseFactory actual constructor() {
     actual fun create(dek: ByteArray): HomeFlowDb {
-        val dbDir = File(System.getProperty("user.home"), ".homeflow")
+        val dbDir = desktopDataDir
         dbDir.mkdirs()
         val dbFile = File(dbDir, DB_NAME)
         val isNew = !dbFile.exists() || dbFile.length() == 0L
