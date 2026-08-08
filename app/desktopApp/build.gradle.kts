@@ -77,13 +77,17 @@ compose.desktop {
             // Installer version. jpackage requires major >= 1 (macOS dmg/pkg), so the
             // release pipeline passes -PdesktopPackageVersion = the release X.Y.Z when
             // major >= 1, else "1.0.0". Defaults to "1.0.0" for local packaging.
-            // Dev builds use 1.<year>.<dayOfYear> so every fresh build produces a strictly
-            // higher version and MSI upgrade logic replaces the previous install automatically.
+            // Dev builds use 1.<days-since-2024-01-01>.<minute-of-day> so every build
+            // (down to the minute) produces a strictly higher version and MSI upgrade logic
+            // replaces the previous install automatically without needing an explicit uninstall.
             // See __docs/RELEASE-PIPELINE.md §3.2.
             packageVersion =
                 if (isDevBuild) {
-                    val now = java.time.LocalDate.now()
-                    "1.${now.year}.${now.dayOfYear}"
+                    val now = java.time.LocalDateTime.now()
+                    val epoch = java.time.LocalDate.of(2024, 1, 1)
+                    val days = java.time.temporal.ChronoUnit.DAYS.between(epoch, now.toLocalDate()).toInt()
+                    val minuteOfDay = now.hour * 60 + now.minute
+                    "1.$days.$minuteOfDay"
                 } else {
                     (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
                 }
