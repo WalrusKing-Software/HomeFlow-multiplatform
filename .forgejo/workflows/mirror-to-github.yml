@@ -38,8 +38,8 @@ jobs:
       - name: Extract .runignore from the unfiltered repo
         working-directory: source.git
         run: |
-          git show refs/heads/main:.runignore > ../runignore.raw || {
-            echo "No .runignore found on main — refusing to run an unfiltered mirror."
+          git show refs/heads/develop:.runignore > ../runignore.raw || {
+            echo "No .runignore found on develop — refusing to run an unfiltered mirror."
             exit 1
           }
           grep -vE '^\s*(#|$)' ../runignore.raw > ../runignore.clean
