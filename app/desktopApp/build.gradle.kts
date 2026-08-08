@@ -83,11 +83,10 @@ compose.desktop {
             // See __docs/RELEASE-PIPELINE.md §3.2.
             packageVersion =
                 if (isDevBuild) {
-                    val now = java.time.LocalDateTime.now()
-                    val epoch = java.time.LocalDate.of(2024, 1, 1)
-                    val days = java.time.temporal.ChronoUnit.DAYS.between(epoch, now.toLocalDate()).toInt()
-                    val minuteOfDay = now.hour * 60 + now.minute
-                    "1.$days.$minuteOfDay"
+                    // Minutes elapsed since 2024-01-01 00:00 UTC, split into days + minute-of-day.
+                    // No java.time imports needed; System.currentTimeMillis() is always in scope.
+                    val minutesSinceEpoch = ((System.currentTimeMillis() - 1_704_067_200_000L) / 60_000L).toInt()
+                    "1.${minutesSinceEpoch / 1440}.${minutesSinceEpoch % 1440}"
                 } else {
                     (project.findProperty("desktopPackageVersion") as String?) ?: "1.0.0"
                 }
