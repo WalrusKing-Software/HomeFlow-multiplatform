@@ -117,6 +117,25 @@ class SyncEngine(
             }
         }
 
+        // Referential integrity (issue #83): the server rejects a live day whose parent cycle
+        // isn't present (FK on daily_logs.cycle_id). A day can reference a cycle with no pending
+        // outbox entry — already synced, or left out of this batch by a first-connect race
+        // between the startup sync and rapid create-cycle-then-log-day. Pull each such day's
+        // cycle into the same push (idempotent via LWW on the server); drop a day whose cycle
+        // row is genuinely missing locally, since it can never satisfy the FK.
+        val dayIter = daysById.entries.iterator()
+        while (dayIter.hasNext()) {
+            val day = dayIter.next().value
+            if (day.deleted || cyclesById.containsKey(day.cycleId)) continue
+            val cycleRow =
+                db.cyclesQueries.selectByIdIncludingDeleted(day.cycleId, userId).executeAsOneOrNull()
+            if (cycleRow != null) {
+                cyclesById[day.cycleId] = assembler.assembleCycle(cycleRow)
+            } else {
+                dayIter.remove()
+            }
+        }
+
         if (cyclesById.isEmpty() && daysById.isEmpty() && preferences == null) {
             pending.forEach { outbox.markSynced(it.id) }
             return

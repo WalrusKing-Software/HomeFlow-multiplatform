@@ -127,6 +127,8 @@ class SyncEngineTest {
 
         fun cycleCount(): Int = cycles.values.count { !it.deleted }
 
+        fun dayCount(): Int = days.values.count { !it.deleted }
+
         private companion object {
             const val PREFS_ID = "preferences"
         }
@@ -231,6 +233,51 @@ class SyncEngineTest {
     }
 
     // ── Tests ────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `push pulls in a live day's parent cycle when only the day is queued (issue 83)`() =
+        runBlocking {
+            val server = FakeSyncServer()
+            val a = Device(server)
+            a.seedDayWithCycle(cycleStart = "2026-01-01", date = "2026-01-03")
+
+            // Simulate the first-connect race: the cycle's outbox entry is already gone, so only
+            // the day is pending. Without the fix the day would be pushed alone → server FK 500.
+            val outbox = LocalOutbox(a.db)
+            outbox
+                .pending()
+                .filter { it.entity_type == SyncEngine.ENTITY_CYCLE }
+                .forEach { outbox.markSynced(it.id) }
+            assertTrue(outbox.pending().all { it.entity_type == SyncEngine.ENTITY_DAY })
+
+            a.sync()
+
+            // The engine must have pulled the parent cycle into the same push (FK satisfied).
+            assertEquals(1, server.cycleCount())
+            assertEquals(1, server.dayCount())
+        }
+
+    @Test
+    fun `push drops a live day whose parent cycle no longer exists locally (issue 83)`() =
+        runBlocking {
+            val server = FakeSyncServer()
+            val a = Device(server)
+            a.seedDayWithCycle(cycleStart = "2026-02-01", date = "2026-02-02")
+
+            // Orphan the day: remove the cycle row entirely, then drop its dangling outbox entry.
+            a.db.cyclesQueries.deleteAll()
+            val outbox = LocalOutbox(a.db)
+            outbox
+                .pending()
+                .filter { it.entity_type == SyncEngine.ENTITY_CYCLE }
+                .forEach { outbox.markSynced(it.id) }
+
+            a.sync()
+
+            // An unsatisfiable day is dropped rather than pushed alone — nothing broken reaches the server.
+            assertEquals(0, server.cycleCount())
+            assertEquals(0, server.dayCount())
+        }
 
     @Test
     fun `push sends pending outbox entries and marks them synced`() =

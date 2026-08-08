@@ -170,6 +170,24 @@ class SyncTest {
         }
 
     @Test
+    fun `pushing a day whose parent cycle does not exist returns 400 not 500 (issue 83)`() =
+        withApp { client ->
+            client.anchorOn(SUB, "2024-01-20")
+            val day = client.pull(SUB, 0).days.single { it.date == "2024-01-20" }
+
+            // A day referencing a cycle that isn't on the server (dangling FK) must be rejected
+            // cleanly with a 400 — not surface as an opaque 500 that stalls the client's sync.
+            val orphan = day.copy(id = ORPHAN_DAY_ID, cycleId = MISSING_CYCLE_ID, updatedAt = FUTURE)
+            val response =
+                client.post("/api/v1/sync/changes") {
+                    bearerSub(SUB)
+                    contentType(ContentType.Application.Json)
+                    setBody(SyncPushRequest(days = listOf(orphan)))
+                }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+        }
+
+    @Test
     fun `GET sync changes since a cursor returns only newer changes`() =
         withApp { client ->
             client.anchorOn(SUB, "2024-01-20")
@@ -428,6 +446,8 @@ class SyncTest {
         private const val SUB = "11111111-1111-1111-1111-111111111111"
         private const val OTHER_SUB = "22222222-2222-2222-2222-222222222222"
         private const val REPLACEMENT_DAY_ID = "33333333-3333-3333-3333-333333333333"
+        private const val ORPHAN_DAY_ID = "44444444-4444-4444-4444-444444444444"
+        private const val MISSING_CYCLE_ID = "55555555-5555-5555-5555-555555555555"
 
         // Fixed bounds well outside any real server timestamp — ISO instants compare
         // lexicographically == chronologically, so these are an unambiguous winner/loser.

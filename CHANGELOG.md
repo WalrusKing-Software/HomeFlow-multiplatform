@@ -63,6 +63,11 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Fixed
+- **Sync no longer stalls when a day is created moments before its first sync.** A day is now
+  always pushed together with its parent cycle, so a first-connect timing race can no longer
+  send a day whose cycle hasn't reached the server yet — which previously failed the push and
+  left a persistent "Sync error." The server also rejects such a day with a clear error
+  instead of an internal (500) error.
 - **The first-run screens now use the app theme** (mode chooser, server connection,
   and the passphrase/unlock screens). They previously rendered on a white background
   with the theme's light text, making typed text nearly invisible in dark mode; they

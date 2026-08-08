@@ -15,6 +15,7 @@ import org.homeflow.core.service.MergeWinner
 import org.homeflow.core.service.mergeDecision
 import org.homeflow.core.service.reconcileOpenCycles
 import org.homeflow.lib.Encryption
+import org.homeflow.lib.ValidationException
 import org.homeflow.lib.parseIsoDate
 import org.homeflow.lib.toIsoString
 import org.homeflow.modules.cycles.CyclesRepository
@@ -175,6 +176,13 @@ class SyncService(
                 dailyLogsRepository.softDeleteById(userId, dayId)
             } else {
                 val cycleId = UUID.fromString(incoming.cycleId)
+                // Defense-in-depth (issue #83): a live day whose parent cycle isn't on the
+                // server violates the daily_logs FK and would surface as a 500. The client is
+                // expected to include the cycle in the same push; if a (buggy/legacy) client
+                // omits it, reject with a clean 400 instead of an opaque server error.
+                if (cyclesRepository.findByIdIncludingDeleted(userId, cycleId) == null) {
+                    throw ValidationException("A pushed day references a cycle that does not exist.")
+                }
                 val date = parseIsoDate(incoming.date)
                 val updatedAt = OffsetDateTime.parse(incoming.updatedAt)
 
