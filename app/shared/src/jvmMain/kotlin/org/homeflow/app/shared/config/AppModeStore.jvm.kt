@@ -8,7 +8,7 @@ import java.util.Properties
  * Plain text (not encrypted) — [AppMode] is not sensitive.
  */
 class DesktopAppModeStore(
-    baseDir: File = File(System.getProperty("user.home"), ".homeflow"),
+    baseDir: File = desktopDataDir,
 ) : AppModeStore {
     private val file = File(baseDir, "mode.properties")
 

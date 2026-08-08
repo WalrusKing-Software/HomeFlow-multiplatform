@@ -6,10 +6,8 @@ import java.awt.Frame
 import java.io.File
 import java.security.cert.CertificateFactory
 
-private val homeflowDir = File(System.getProperty("user.home"), ".homeflow")
-
 /** The user's chosen CA is copied here so trust survives the original being moved/deleted. */
-private val storedCaFile = File(homeflowDir, "server-ca.pem")
+private val storedCaFile get() = File(desktopDataDir, "server-ca.pem")
 
 actual val supportsCustomServerCertificate: Boolean = true
 
@@ -37,7 +35,7 @@ actual suspend fun chooseCustomServerCertificate(): ServerCertificateResult {
         }.getOrDefault(false)
     if (!valid) return ServerCertificateResult.INVALID
 
-    homeflowDir.mkdirs()
+    desktopDataDir.mkdirs()
     picked.copyTo(storedCaFile, overwrite = true)
     DesktopServerConfigStore().saveCaCert(storedCaFile.absolutePath, name)
     DesktopTls.invalidate()
