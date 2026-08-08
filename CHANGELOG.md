@@ -24,7 +24,7 @@ changed." See `CLAUDE.md` for the rules.
 ### Changed
 
 
-## Version 0.1.0 - Alpha-2 - 2026-08-08
+## [0.1.0] - 2026-08-08
 
 Second alpha of the 0.1.0 release train: adds multi-device sync (offline-capable,
 with last-write-wins reconciliation), database-enforced per-user isolation and a
@@ -137,7 +137,7 @@ across the day editor, navigation, and server-setup flow.
   the permanent account-deletion action is shown, so it's harder to hit by accident.
 
 
-## Version 0.1.0 - Alpha-1 — 07-04-2026
+## [0.1.0-alpha-1] - 2026-07-04
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).
