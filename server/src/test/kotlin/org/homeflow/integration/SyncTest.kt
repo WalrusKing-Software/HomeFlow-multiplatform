@@ -227,8 +227,9 @@ class SyncTest {
             val day = client.pull(SUB, 0).days.single { it.date == "2024-01-20" }
 
             // The REST route validates severity (1..10); the sync path must enforce the same
-            // rule rather than letting the DB CHECK surface as an opaque 500.
-            val badPain = day.copy(id = BAD_SEVERITY_DAY_ID, pain = listOf(ExportPain("neck", 99)), updatedAt = FUTURE)
+            // rule rather than letting the DB CHECK surface as an opaque 500. Reuse the existing
+            // day id (an LWW update) so this exercises the pain rule, not the live-date unique index.
+            val badPain = day.copy(pain = listOf(ExportPain("lower_back", 99)), updatedAt = FUTURE)
             val response =
                 client.post("/api/v1/sync/changes") {
                     bearerSub(SUB)
@@ -500,7 +501,6 @@ class SyncTest {
         private const val ORPHAN_DAY_ID = "44444444-4444-4444-4444-444444444444"
         private const val MISSING_CYCLE_ID = "55555555-5555-5555-5555-555555555555"
         private const val BAD_TS_DAY_ID = "66666666-6666-6666-6666-666666666666"
-        private const val BAD_SEVERITY_DAY_ID = "88888888-8888-8888-8888-888888888888"
 
         // Fixed bounds well outside any real server timestamp — ISO instants compare
         // lexicographically == chronologically, so these are an unambiguous winner/loser.
