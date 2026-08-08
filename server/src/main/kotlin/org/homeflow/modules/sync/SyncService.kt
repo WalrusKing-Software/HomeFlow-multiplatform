@@ -4,6 +4,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import org.homeflow.core.dto.ExportPain
+import org.homeflow.core.dto.PainLocationDto
 import org.homeflow.core.dto.SyncCycle
 import org.homeflow.core.dto.SyncDay
 import org.homeflow.core.dto.SyncPreferences
@@ -14,9 +15,13 @@ import org.homeflow.core.service.CycleBoundary
 import org.homeflow.core.service.MergeWinner
 import org.homeflow.core.service.mergeDecision
 import org.homeflow.core.service.reconcileOpenCycles
+import org.homeflow.core.validation.validatePainLocations
 import org.homeflow.lib.Encryption
 import org.homeflow.lib.ValidationException
+import org.homeflow.lib.orThrow
 import org.homeflow.lib.parseIsoDate
+import org.homeflow.lib.parseIsoTimestamp
+import org.homeflow.lib.parseUuid
 import org.homeflow.lib.toIsoString
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.dailylogs.AssembledPainLocation
@@ -26,7 +31,6 @@ import org.homeflow.modules.preferences.PreferencesRepository
 import org.homeflow.modules.refdata.RefDataRepository
 import org.homeflow.modules.refdata.SymptomOptionRow
 import org.homeflow.modules.users.UserPrincipal
-import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -86,7 +90,7 @@ class SyncService(
         // (the client adopts the authoritative post-merge state immediately).
         val resultCycles =
             request.cycles.map { incoming ->
-                cyclesRepository.findByIdIncludingDeleted(userId, UUID.fromString(incoming.id))?.toSyncCycle()
+                cyclesRepository.findByIdIncludingDeleted(userId, parseUuid(incoming.id, "cycle id"))?.toSyncCycle()
                     ?: incoming.copy(deleted = true)
             }
 
@@ -117,7 +121,7 @@ class SyncService(
         userId: UUID,
         incoming: SyncCycle,
     ): SyncCycle {
-        val cycleId = UUID.fromString(incoming.id)
+        val cycleId = parseUuid(incoming.id, "cycle id")
         val existing = cyclesRepository.findByIdIncludingDeleted(userId, cycleId)
 
         val shouldApply =
@@ -138,7 +142,7 @@ class SyncService(
             } else {
                 val start = parseIsoDate(incoming.startDate)
                 val end = incoming.endDate?.let { parseIsoDate(it) }
-                val updatedAt = OffsetDateTime.parse(incoming.updatedAt)
+                val updatedAt = parseIsoTimestamp(incoming.updatedAt)
                 if (existing == null) {
                     cyclesRepository.insertExplicit(userId, start, end, cycleId)
                 } else {
@@ -156,7 +160,7 @@ class SyncService(
         incoming: SyncDay,
         ctx: RefDataContext,
     ): SyncDay {
-        val dayId = UUID.fromString(incoming.id)
+        val dayId = parseUuid(incoming.id, "day id")
         val existing = dailyLogsRepository.findByIdIncludingDeleted(userId, dayId)
 
         val shouldApply =
@@ -175,7 +179,7 @@ class SyncService(
             if (incoming.deleted) {
                 dailyLogsRepository.softDeleteById(userId, dayId)
             } else {
-                val cycleId = UUID.fromString(incoming.cycleId)
+                val cycleId = parseUuid(incoming.cycleId, "cycle id")
                 // Defense-in-depth (issue #83): a live day whose parent cycle isn't on the
                 // server violates the daily_logs FK and would surface as a 500. The client is
                 // expected to include the cycle in the same push; if a (buggy/legacy) client
@@ -184,12 +188,20 @@ class SyncService(
                     throw ValidationException("A pushed day references a cycle that does not exist.")
                 }
                 val date = parseIsoDate(incoming.date)
-                val updatedAt = OffsetDateTime.parse(incoming.updatedAt)
+                val updatedAt = parseIsoTimestamp(incoming.updatedAt)
 
                 dailyLogsRepository.upsertById(userId, dayId, cycleId, date, updatedAt)
 
                 val notesEncrypted = incoming.notes?.let(encryption::encrypt)
                 val sexEncrypted = encryptSexPayload(incoming.sex, ctx)
+                val painLocations = resolvePain(incoming.pain, ctx.locationIdBySlug)
+                // Enforce the same pain rules as the REST route (severity range + no duplicate
+                // locations); the DB CHECK would otherwise turn a bad severity into an opaque 500.
+                validatePainLocations(
+                    painLocations.map {
+                        PainLocationDto(locationId = it.locationId.toString(), severity = it.severity)
+                    },
+                ).orThrow()
 
                 dailyLogSubsRepository.applyAllFromSync(
                     userId = userId,
@@ -205,7 +217,7 @@ class SyncService(
                     collection =
                         resolveSlug(incoming.collectionMethod, COLLECTION_METHOD, ctx.optionsByCategoryAndSlug),
                     sexEncryptedPayload = sexEncrypted,
-                    painLocations = resolvePain(incoming.pain, ctx.locationIdBySlug),
+                    painLocations = painLocations,
                     notesEncrypted = notesEncrypted,
                     updatedAt = updatedAt,
                 )

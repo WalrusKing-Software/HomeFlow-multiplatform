@@ -63,6 +63,11 @@ changed." See `CLAUDE.md` for the rules.
 
 
 ### Fixed
+- **Malformed sync data is now rejected cleanly instead of erroring.** A sync push that
+  carries a bad id, an unparseable timestamp, or an out-of-range pain severity now returns
+  a clear validation error (400) rather than an opaque internal error (500) that could stall
+  a device's sync. The sync path now enforces the same pain-severity rules as the regular
+  daily-log screens.
 - **Sync no longer stalls when a day is created moments before its first sync.** A day is now
   always pushed together with its parent cycle, so a first-connect timing race can no longer
   send a day whose cycle hasn't reached the server yet — which previously failed the push and
