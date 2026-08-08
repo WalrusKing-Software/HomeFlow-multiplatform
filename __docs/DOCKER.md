@@ -36,6 +36,12 @@ apps, not a served web app).
 
 ## Containers
 
+> **Digest pinning (SEC-09).** Every image in `docker-compose.yml` and both
+> Dockerfiles is pinned as `<tag>@sha256:<manifest-list digest>` — the tag stays
+> for readability, the digest is what Docker enforces (multi-arch safe). To bump
+> an image: `docker buildx imagetools inspect <image>:<tag>` and copy the
+> top-level digest.
+
 ### `postgres`
 - Image `postgres:16-alpine`; hostname `postgres`; no published port in prod (5432
   in dev overlay only).
@@ -177,8 +183,15 @@ networks: { app-network: { driver: bridge } }
 ```
 
 `docker-compose.dev.yml` (opt-in via `make dev`) adds: Postgres `5432` and
-Keycloak `8180` host ports, `KC_HOSTNAME_STRICT: false`, and `LOG_LEVEL: debug` on
-the backend. It is never auto-merged.
+Keycloak `8180` host ports, `KC_HOSTNAME_STRICT: false`, `LOG_LEVEL: debug` and
+`ALLOW_DEV_SECRETS: true` on the backend. It is never auto-merged.
+
+**Container hardening (SEC-07/08, in the real compose file, elided from the sketch):**
+every service runs with `no-new-privileges`; Caddy drops all capabilities except
+`NET_BIND_SERVICE`; the backend runs on a read-only root filesystem with a `/tmp`
+tmpfs; Keycloak enables `KC_HEALTH_ENABLED` with a healthcheck on management port
+9000 and the backend has a TCP healthcheck — the backend waits for Keycloak
+readiness (`service_healthy`), not just start.
 
 ---
 
@@ -189,11 +202,13 @@ the backend. It is never auto-merged.
 ```caddyfile
 {$APP_HOSTNAME} {
     tls internal                       # LAN; swap for tailscale cert (DEPLOYMENT §11)
+    request_body { max_size 26MB }     # SEC-06: import cap (25 MB) + multipart overhead
     handle /api/*   { reverse_proxy backend:8080 }
     handle /health  { reverse_proxy backend:8080 }
     handle /realms/* { reverse_proxy keycloak:8080 }   # OIDC for the native clients
     handle /resources/* { reverse_proxy keycloak:8080 } # Keycloak login-theme JS/CSS (login/OTP pages)
     header {
+        Strict-Transport-Security "max-age=31536000"   # SEC-06
         X-Frame-Options DENY
         X-Content-Type-Options nosniff
         Referrer-Policy same-origin
@@ -234,6 +249,10 @@ Must be different credentials in production.
 See `ARCHITECTURE-server.md` for the validated config and `DEPLOYMENT.md` for the
 production `.env` table. Generate secrets: `openssl rand -base64 32`
 (`APP_ENCRYPTION_KEY`), `openssl rand -base64 24` (passwords).
+
+`POSTGRES_SSLMODE` (optional, default `disable`) sets the JDBC TLS mode. `disable`
+is correct for the single-host Docker network (postgres has no published port);
+use `verify-full` if the database ever moves to a remote host.
 
 ---
 

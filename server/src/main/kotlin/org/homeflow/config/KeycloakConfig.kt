@@ -35,14 +35,38 @@ data class KeycloakConfig(
     fun adminUserUrl(keycloakSub: String): String = "$internalUrl/admin/realms/$realm/users/$keycloakSub"
 
     companion object {
+        /** The placeholder secret shipped in `infra/keycloak/realm-export.json` for dev imports. */
+        internal const val DEV_BACKEND_SECRET = "dev-only-backend-secret-change-me"
+
         fun fromEnv(): KeycloakConfig =
             KeycloakConfig(
                 internalUrl = requireEnv("KEYCLOAK_INTERNAL_URL").trimEnd('/'),
                 publicUrl = requireEnv("PUBLIC_KEYCLOAK_URL").trimEnd('/'),
                 realm = requireEnv("PUBLIC_KEYCLOAK_REALM"),
                 clientId = requireEnv("KEYCLOAK_CLIENT_ID"),
-                clientSecret = requireEnv("KEYCLOAK_CLIENT_SECRET"),
+                clientSecret =
+                    validateClientSecret(
+                        requireEnv("KEYCLOAK_CLIENT_SECRET"),
+                        allowDevSecrets = System.getenv("ALLOW_DEV_SECRETS") == "true",
+                    ),
             )
+
+        /**
+         * SEC-05: refuse to start on the dev-only secret from the realm export unless
+         * `ALLOW_DEV_SECRETS=true` (set only by `docker-compose.dev.yml`) — production
+         * must never run on a secret that is committed to the repository.
+         */
+        internal fun validateClientSecret(
+            clientSecret: String,
+            allowDevSecrets: Boolean,
+        ): String {
+            require(allowDevSecrets || clientSecret != DEV_BACKEND_SECRET) {
+                "KEYCLOAK_CLIENT_SECRET is the dev-only default from realm-export.json. " +
+                    "Regenerate it in Keycloak (Clients → homeflow-backend → Credentials) " +
+                    "and update .env, or set ALLOW_DEV_SECRETS=true (dev compose only)."
+            }
+            return clientSecret
+        }
     }
 }
 

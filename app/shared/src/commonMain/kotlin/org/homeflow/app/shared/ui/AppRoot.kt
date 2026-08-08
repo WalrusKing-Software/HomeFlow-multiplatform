@@ -236,6 +236,12 @@ fun AppRoot(
                         },
                         syncEngine = syncEngine,
                         syncRepository = syncRepository,
+                        onCancelSetup = {
+                            // Uncommit the host so the SERVER-mode gate re-shows ServerConnectScreen.
+                            // Disposing this branch's composition cancels any in-flight login job.
+                            serverConfigStore.clear()
+                            host = null
+                        },
                     )
 
                     // Auto-prompt overlay — rendered on top of the signed-in App content. Confirm

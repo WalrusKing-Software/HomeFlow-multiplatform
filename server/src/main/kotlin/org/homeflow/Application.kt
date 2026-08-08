@@ -7,8 +7,10 @@ package org.homeflow
 
 import com.auth0.jwk.JwkProvider
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import org.homeflow.config.Config
 import org.homeflow.config.connectDatabase
 import org.homeflow.lib.Encryption
@@ -125,6 +127,12 @@ fun main() {
 fun Application.module(deps: AppDependencies) {
     configureSerialization()
     configureStatusPages()
+    // The backend is reachable only from Caddy on the internal Docker network, and Caddy
+    // *overwrites* X-Forwarded-For with the observed client IP (see infra/caddy/Caddyfile),
+    // so the header is safe to trust for rate-limit keying and a client cannot spoof it.
+    // Do NOT install this if the backend port is ever published, or if Caddy stops
+    // overwriting the header (reverse_proxy appends by default).
+    install(XForwardedHeaders)
     configureRateLimiting(deps.config.rateLimit)
     configureAuthentication(deps.config.keycloak, deps.jwkProvider, deps.usersService)
     configureRouting(

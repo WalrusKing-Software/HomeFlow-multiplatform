@@ -24,6 +24,8 @@ dependencies {
     implementation(libs.ktor.serializationJson)
     implementation(libs.ktor.serverStatusPages)
     implementation(libs.ktor.serverRateLimit)
+    // X-Forwarded-For handling so the rate limiter can key per client behind Caddy.
+    implementation(libs.ktor.serverForwardedHeader)
     // HTTP client for the Keycloak Admin API (account deletion).
     implementation(libs.ktor.clientCore)
     implementation(libs.ktor.clientCio)

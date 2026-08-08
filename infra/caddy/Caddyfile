@@ -6,12 +6,27 @@
 {$APP_HOSTNAME} {
 	tls internal
 
+	# SEC-06: cap request bodies globally — the server's import limit is 25 MB,
+	# plus multipart overhead; every other route carries small JSON bodies.
+	request_body {
+		max_size 26MB
+	}
+
+	# SEC: overwrite X-Forwarded-For with the real client IP Caddy observed, discarding
+	# any value the client sent. The backend keys its per-client rate limiter on this
+	# header (via Ktor's XForwardedHeaders); without the overwrite, reverse_proxy would
+	# *append* to a client-supplied XFF and a caller could rotate a spoofed first entry
+	# to evade the limiter.
 	handle /api/* {
-		reverse_proxy backend:8080
+		reverse_proxy backend:8080 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	handle /health {
-		reverse_proxy backend:8080
+		reverse_proxy backend:8080 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 
 	# OIDC for the native clients (discovery, auth, token, end-session) over the
@@ -28,6 +43,8 @@
 	}
 
 	header {
+		# SEC-06: no includeSubDomains/preload — the hostname is a LAN/tailnet name.
+		Strict-Transport-Security "max-age=31536000"
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin

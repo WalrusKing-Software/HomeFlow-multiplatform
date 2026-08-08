@@ -1,10 +1,13 @@
 package org.homeflow.app.shared.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import org.homeflow.app.shared.config.ThemePreference
 import org.homeflow.app.shared.config.isDark
@@ -46,6 +49,14 @@ private val ClassicDarkColors = darkColorScheme()
  * [ThemePreference.SYSTEM] follows the OS via [isSystemInDarkTheme]. [ThemePreference.DARK] is
  * the branded dark palette and [ThemePreference.CLASSIC_DARK] the neutral one. Applied once in
  * `AppRoot`, above the auth gate, so login and lock screens are themed too.
+ *
+ * Wraps [content] in a full-size [Surface] painted with the theme's `background` color. A
+ * `MaterialTheme` alone only supplies color *values* — it paints nothing. Without this Surface
+ * the pre-shell screens (mode chooser, server connect, passphrase/lock) render their bare
+ * `Column`/`Box` over the OS-default white window while their text picks up the themed (light,
+ * in dark mode) `onBackground` color, leaving light text on white and near-invisible. The
+ * signed-in shell already paints via `Scaffold`; this gives every other screen the same
+ * themed background.
  */
 @Composable
 fun HomeFlowTheme(
@@ -58,5 +69,12 @@ fun HomeFlowTheme(
             preference == ThemePreference.CLASSIC_DARK -> ClassicDarkColors
             else -> DarkColors
         }
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    MaterialTheme(colorScheme = colorScheme) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            content()
+        }
+    }
 }

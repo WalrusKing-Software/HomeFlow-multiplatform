@@ -64,7 +64,7 @@ class SchemaMigrationTest {
     @Test
     fun `migrations apply, re-run cleanly, and seed reference data that Exposed can read`() {
         val first = flyway().migrate()
-        assertEquals(4, first.migrationsExecuted, "expected V1 + V2 + V3 + V4 to apply on a fresh DB")
+        assertEquals(5, first.migrationsExecuted, "expected V1 + V2 + V3 + V4 + V5 to apply on a fresh DB")
 
         // Re-running migrate against an already-migrated DB must be a clean no-op.
         val second = flyway().migrate()

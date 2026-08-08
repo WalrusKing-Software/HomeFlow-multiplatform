@@ -47,7 +47,7 @@ server/                          # the :server module (Ktor); package root org.h
     plugins/
       Authentication.kt        # JWT validation; resolves the UserPrincipal
       StatusPages.kt           # maps thrown typed errors → ApiError JSON
-      RateLimiting.kt
+      RateLimiting.kt          # per-client (X-Forwarded-For) buckets behind Caddy
       Serialization.kt         # ContentNegotiation(kotlinx.serialization)
     modules/                   # one package per domain
       cycles/
@@ -258,6 +258,6 @@ dev). No HTTP body logging is ever installed.
 | Migrations | Flyway, manual | controlled, re-runnable |
 | Auth | Keycloak OIDC; server validates JWT only | `KEYCLOAK.md`, threat model |
 | Encryption | AES-256-GCM, service layer | threat model |
-| Row scoping | `userId` from JWT on every health query | threat model |
+| Row scoping | `userId` from JWT on every health query; DB row-level security backstop via `userScopedTransaction` | threat model |
 | Logging | no PII, no bodies | threat model |
 | Shared contract | DTOs + domain math in `:core` | single source of truth |

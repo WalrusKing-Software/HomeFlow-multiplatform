@@ -11,8 +11,10 @@ SvelteKit + Node **HomeFlow** web app. It keeps that project's data model, API
 contract, Keycloak auth, and threat model (those docs are copied here as the
 authoritative spec), and reimplements the server and clients in Kotlin.
 
-> **Single user.** The app is designed for exactly one user account.
-> Self-registration is disabled in Keycloak.
+> **One or more users.** A single self-hosted server can serve multiple users
+> (e.g. housemates), each signing in with their own account and seeing only their
+> own data. Accounts are created by the server admin — self-registration is
+> disabled in Keycloak.
 
 ---
 
@@ -98,7 +100,7 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/SHARED-MODULE.md` | the `:core` boundary — what's shared vs server-only vs platform-specific |
 | `__docs/ARCHITECTURE-server.md` | Ktor layering, Exposed, auth, encryption, errors |
 | `__docs/ARCHITECTURE-client.md` | Compose Multiplatform structure, OIDC, token storage, `expect`/`actual` |
-| `__docs/data-model.md` (+ sex addendum) | full schema |
+| `_planning/data-model.md` (+ sex addendum) | full schema |
 | `__docs/API.md` | every route's contract |
 | `__docs/KEYCLOAK.md` | realm, clients, audience mapper, TOTP 2FA, JWT validation |
 | `__docs/threat-model.md` | threats + mitigations |
@@ -107,7 +109,7 @@ Start with **`CLAUDE.md`** (project entry point + non-negotiable rules), then:
 | `__docs/TESTING.md` | test layers and what's covered |
 | `__docs/BACKUP.md` / `__docs/BRANCHING.md` | backups / git model + CI gates |
 | `__docs/RELEASE-PIPELINE.md` / `COMPATIBILITY.md` | release packaging / client–server compatibility |
-| `__docs/project-planning/` | product overview + feature spec |
+| `_planning/project-planning/` | product overview + feature spec |
 | `openapi.yaml` | the API contract (initial spec; may become a server-generated output) |
 
 ---
@@ -138,7 +140,8 @@ make dev                    # docker compose with the dev overlay
 
 ## Status
 
-Feature-complete and preparing the first release (**0.1.0**). The Kotlin
+The 0.1.0 release train is in pre-release — **v0.1.0-alpha-2** is the current
+build (see `CHANGELOG.md`). The Kotlin
 Multiplatform rebuild is implemented end to end: the shared `:core` contract, the
 Ktor server (auth, cycles, daily logs, symptoms, analytics, preferences), and the
 desktop + Android clients (read and write). Three deployment modes are supported:

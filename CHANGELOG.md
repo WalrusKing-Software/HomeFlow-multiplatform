@@ -15,10 +15,44 @@ changed." See `CLAUDE.md` for the rules.
 -->
 
 
-## [Unreleased] Version x.x.x - [release date]
-
+## [Unreleased] 
 
 ### Added
+
+### Fixed 
+
+### Changed
+
+
+## [0.1.0] - 2026-08-08
+
+Second alpha of the 0.1.0 release train: adds multi-device sync (offline-capable,
+with last-write-wins reconciliation), database-enforced per-user isolation and a
+round of server security hardening, dark mode with a theme setting, and UX polish
+across the day editor, navigation, and server-setup flow.
+
+### Added
+- **"Sync now" button (server-connected mode).** Settings → Server now has a
+  manual sync control that pushes your pending changes and pulls in updates from
+  your other devices on demand, showing when the last sync completed. Automatic
+  background sync continues to run on app open and every 15 minutes.
+- **Database-enforced per-user isolation (defense-in-depth).** Every user-scoped
+  table now has PostgreSQL row-level security with `FORCE ROW LEVEL SECURITY`, and
+  the server scopes each authenticated transaction to the JWT's user
+  (`SET LOCAL app.current_user_id`). If server code ever forgets its `user_id`
+  filter, the database still returns no other user's rows. App-layer row scoping
+  (and the cross-user 404 tests) remains the primary control; this is a second layer.
+- **Export now asks for confirmation first** and warns that the exported file is
+  plain, unencrypted JSON containing all of your health data.
+- **The server refuses to start with the dev-only Keycloak client secret** from
+  `realm-export.json`, so a production deployment can no longer run on a secret
+  that is committed to the repository. The dev stack sets `ALLOW_DEV_SECRETS=true`
+  in its compose overlay to keep working out of the box.
+- **The reverse proxy now sends `Strict-Transport-Security`** (1-year max-age) and
+  **caps request bodies at 26 MB**, matching the server's import limit.
+- **`POSTGRES_SSLMODE` environment variable** for TLS on the server's database
+  connection (default `disable`, correct for the on-host Docker network; set
+  `verify-full` for a remote PostgreSQL). Invalid values fail fast at startup.
 - **Clients-only release pipeline.** Tagging `clients-vX.Y.Z` (or a manual
   `release-clients.yml` dispatch) builds and publishes desktop installers (Windows
   `.msi`, macOS `.dmg`, Linux `.deb`) and a signed Android APK/AAB together in one
@@ -26,6 +60,13 @@ changed." See `CLAUDE.md` for the rules.
   that affect both client apps but don't require a new server. Requires
   `version.desktop` and `version.android` to match; bump both together with
   `sh scripts/bump-version.sh clients`. See `__docs/RELEASE-PIPELINE.md` §13.1.
+- **Cancel button throughout server setup.** While the app is checking whether a
+  self-hosted server is reachable, the "Connect" button becomes a "Cancel" button —
+  tap it to stop the in-flight check instead of waiting it out, returning to the
+  hostname entry screen. A "Cancel" button is now also available on the "Sign in"
+  screen and while signing in ("Working…"), letting you back out of server setup
+  entirely (e.g. if you entered the wrong hostname) instead of being stuck until
+  login finishes or fails.
 - **Dark mode, with a theme setting.** Settings now has an "Appearance" section to
   choose **System**, **Light**, **Dark**, or **Classic Dark** — "System" follows your
   device's light/dark setting, "Dark" is the HomeFlow-branded coral/crimson dark theme,
@@ -34,7 +75,48 @@ changed." See `CLAUDE.md` for the rules.
   there's also a quick light/dark toggle in the top bar.
 
 
+### Fixed
+- **Malformed sync data is now rejected cleanly instead of erroring.** A sync push that
+  carries a bad id, an unparseable timestamp, or an out-of-range pain severity now returns
+  a clear validation error (400) rather than an opaque internal error (500) that could stall
+  a device's sync. The sync path now enforces the same pain-severity rules as the regular
+  daily-log screens.
+- **Sync no longer stalls when a day is created moments before its first sync.** A day is now
+  always pushed together with its parent cycle, so a first-connect timing race can no longer
+  send a day whose cycle hasn't reached the server yet — which previously failed the push and
+  left a persistent "Sync error." The server also rejects such a day with a clear error
+  instead of an internal (500) error.
+- **The first-run screens now use the app theme** (mode chooser, server connection,
+  and the passphrase/unlock screens). They previously rendered on a white background
+  with the theme's light text, making typed text nearly invisible in dark mode; they
+  now show the correct themed background like the rest of the app.
+- **Desktop: secure-storage (OS keychain) failures are now logged to the auth
+  diagnostics** instead of failing silently — a broken keychain previously looked
+  like a logout or a wrong passphrase with no way to tell why.
+- **The server now honors `LOG_LEVEL`** (default `INFO`); it previously logged at
+  TRACE regardless of the configured level.
+
 ### Changed
+- **Sync pull is now paginated** (500 changes per page): the server caps each
+  `GET /api/v1/sync/changes` response and reports `hasMore`; clients transparently
+  fetch all pages in one sync run. Protects the server from unbounded reads after
+  a device has been offline for a long time. Older clients still converge — they
+  pick up remaining pages on their next scheduled sync.
+- **Android app data is excluded from device/cloud backups** (`allowBackup=false`):
+  health data and key material never leave the device via Google/adb backup.
+- **Offline sessions now expire after at most 90 days** (previously unlimited as
+  long as the app was used monthly): a stolen offline refresh token has a hard
+  ceiling, and the apps re-login quarterly at most. Existing deployments must set
+  this manually (Realm settings → Sessions → Offline settings) — the realm export
+  only applies on first import.
+- **Containers run with reduced privileges**: `no-new-privileges` everywhere, Caddy
+  with only the low-port bind capability, and the backend on a read-only root
+  filesystem. Keycloak and the backend now have healthchecks, and the backend
+  waits for Keycloak to be *ready* (not just started) before serving.
+- **API rate limiting is now applied per client address** instead of one global
+  bucket, so one client can no longer exhaust the request limit for others. The
+  server resolves the client address from Caddy's `X-Forwarded-For` header
+  (the backend is only reachable through the reverse proxy).
 - **Pain logging is now organized into collapsible body-region rows.** In the day
   editor, pain locations are grouped under expandable headers (Head & Neck, Back,
   Abdomen, …) that show a count badge for how many locations are selected. Tapping a
@@ -55,7 +137,7 @@ changed." See `CLAUDE.md` for the rules.
   the permanent account-deletion action is shown, so it's harder to hit by accident.
 
 
-## Version 0.1.0 - Alpha-1 — 07-04-2026
+## [0.1.0-alpha-1] - 2026-07-04
 
 Initial Kotlin Multiplatform rebuild of HomeFlow (desktop + Android, self-hosted
 Ktor server).

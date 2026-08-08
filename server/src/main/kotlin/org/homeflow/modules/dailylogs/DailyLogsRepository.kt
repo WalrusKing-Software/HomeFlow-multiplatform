@@ -2,6 +2,7 @@ package org.homeflow.modules.dailylogs
 
 import kotlinx.datetime.LocalDate
 import org.homeflow.db.DailyLogs
+import org.homeflow.db.userScopedTransaction
 import org.homeflow.modules.sync.ChangeLogRepository
 import org.homeflow.modules.sync.ChangeLogRepository.Companion.TYPE_DAY
 import org.jetbrains.exposed.sql.Database
@@ -10,7 +11,6 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -51,7 +51,7 @@ class DailyLogsRepository(
         userId: UUID,
         date: LocalDate,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             DailyLogs
                 .selectAll()
                 .where {
@@ -67,7 +67,7 @@ class DailyLogsRepository(
         userId: UUID,
         date: LocalDate,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             DailyLogs
                 .selectAll()
                 .where { (DailyLogs.userId eq userId) and (DailyLogs.logDate eq date) }
@@ -80,7 +80,7 @@ class DailyLogsRepository(
         userId: UUID,
         id: UUID,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             DailyLogs
                 .selectAll()
                 .where { (DailyLogs.id eq id) and (DailyLogs.userId eq userId) }
@@ -90,7 +90,7 @@ class DailyLogsRepository(
 
     /** Every live anchor owned by [userId], in no particular order. Used by export (Phase 12). */
     fun findAllByUser(userId: UUID): List<DailyLogRow> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             DailyLogs
                 .selectAll()
                 .where { (DailyLogs.userId eq userId) and DailyLogs.deletedAt.isNull() }
@@ -110,7 +110,7 @@ class DailyLogsRepository(
         date: LocalDate,
         id: UUID = UUID.randomUUID(),
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val existing =
                 DailyLogs
                     .selectAll()
@@ -120,7 +120,7 @@ class DailyLogsRepository(
                             DailyLogs.deletedAt.isNull()
                     }.map(::toRow)
                     .singleOrNull()
-            if (existing != null) return@transaction null
+            if (existing != null) return@userScopedTransaction null
 
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             DailyLogs.insert {
@@ -152,7 +152,7 @@ class DailyLogsRepository(
         date: LocalDate,
         updatedAt: OffsetDateTime,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = updatedAt
 
             // Check if this exact anchor already exists (any state).
@@ -172,7 +172,7 @@ class DailyLogsRepository(
                     it[deletedAt] = null
                 }
                 changeLogRepository.record(userId, TYPE_DAY, id, now, deleted = false)
-                return@transaction DailyLogRow(
+                return@userScopedTransaction DailyLogRow(
                     id,
                     userId,
                     cycleId,
@@ -211,7 +211,7 @@ class DailyLogsRepository(
         date: LocalDate,
         ciphertext: String?,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             val updated =
                 DailyLogs.update({
@@ -250,7 +250,7 @@ class DailyLogsRepository(
         userId: UUID,
         date: LocalDate,
     ): DailyLogRow? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val existing =
                 DailyLogs
                     .selectAll()
@@ -260,7 +260,7 @@ class DailyLogsRepository(
                             DailyLogs.deletedAt.isNull()
                     }.map(::toRow)
                     .singleOrNull()
-                    ?: return@transaction null
+                    ?: return@userScopedTransaction null
 
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             DailyLogs.update({ DailyLogs.id eq existing.id }) {
@@ -279,7 +279,7 @@ class DailyLogsRepository(
         userId: UUID,
         id: UUID,
     ): Boolean =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val now = OffsetDateTime.now(ZoneOffset.UTC)
             val updated =
                 DailyLogs.update({

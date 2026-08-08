@@ -1,15 +1,18 @@
 package org.homeflow.app.shared.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import org.homeflow.app.shared.auth.AuthState
 import org.homeflow.app.shared.auth.SessionController
 import org.homeflow.app.shared.data.HomeFlowRepository
 import org.homeflow.app.shared.data.sync.SyncEngine
+import org.homeflow.app.shared.data.sync.SyncTrigger
 import org.homeflow.app.shared.ui.shell.AppShell
 import org.homeflow.core.dto.ImportResultDto
 
@@ -25,6 +28,11 @@ import org.homeflow.core.dto.ImportResultDto
  * - [connectedHost]: non-null in Mode B — displayed in the Server section of Settings.
  * - [onSwitchToLocal]: non-null in Mode B — "Switch to local-only mode" in Settings.
  * - [syncEngine] + [syncRepository]: non-null in Mode C — local-first repository with background sync.
+ * - [onCancelSetup]: non-null in Mode B — lets the user back out of server setup from the
+ *   sign-in screen or while a login is in flight, instead of being stuck once a host is
+ *   committed. Cancelling relies on Compose disposing this composable's [rememberCoroutineScope]
+ *   (and any in-flight `controller.login()` job with it) once the caller flips back to the host
+ *   gate — see [org.homeflow.app.shared.ui.AppRoot].
  */
 @Composable
 fun App(
@@ -36,6 +44,7 @@ fun App(
     onSwitchToLocal: (() -> Unit)? = null,
     syncEngine: SyncEngine? = null,
     syncRepository: HomeFlowRepository? = null,
+    onCancelSetup: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val state by controller.state.collectAsState()
@@ -44,10 +53,10 @@ fun App(
 
     when (val current = state) {
         is AuthState.LoggedOut ->
-            LoginScreen(onLogin = { scope.launch { controller.login() } })
+            LoginScreen(onLogin = { scope.launch { controller.login() } }, onCancel = onCancelSetup)
 
         is AuthState.Authenticating ->
-            LoadingScreen(message = "Working…")
+            LoadingScreen(message = "Working…", onCancel = onCancelSetup)
 
         is AuthState.Locked ->
             LockScreen(
@@ -65,13 +74,14 @@ fun App(
         is AuthState.Authenticated -> {
             // Mode C: use local-first repository + background sync triggers.
             if (syncEngine != null && syncRepository != null) {
-                // Initial sync on foreground + periodic timer (~15 min).
-                LaunchedEffect(current) {
-                    syncEngine.syncNow()
-                    while (true) {
-                        kotlinx.coroutines.delay(15 * 60 * 1_000L)
-                        syncEngine.syncNow()
-                    }
+                // A single trigger owns the periodic timer, foreground, and manual "Sync now"
+                // sources for this authenticated session; it starts on entry and stops (its
+                // periodic timer is cancelled) when this composable leaves.
+                val syncTrigger =
+                    remember(syncEngine, scope) { SyncTrigger(scope = scope, runSync = syncEngine::syncNow) }
+                DisposableEffect(syncTrigger) {
+                    syncTrigger.start()
+                    onDispose { syncTrigger.stop() }
                 }
                 AppShell(
                     repository = syncRepository,
@@ -83,6 +93,7 @@ fun App(
                     connectedHost = connectedHost,
                     onSwitchToLocal = onSwitchToLocal,
                     syncStatusFlow = syncEngine.status,
+                    onSyncNow = { syncTrigger.syncNow() },
                 )
             } else {
                 AppShell(

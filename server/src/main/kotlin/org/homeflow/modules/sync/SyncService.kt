@@ -4,6 +4,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import org.homeflow.core.dto.ExportPain
+import org.homeflow.core.dto.PainLocationDto
 import org.homeflow.core.dto.SyncCycle
 import org.homeflow.core.dto.SyncDay
 import org.homeflow.core.dto.SyncPreferences
@@ -14,8 +15,13 @@ import org.homeflow.core.service.CycleBoundary
 import org.homeflow.core.service.MergeWinner
 import org.homeflow.core.service.mergeDecision
 import org.homeflow.core.service.reconcileOpenCycles
+import org.homeflow.core.validation.validatePainLocations
 import org.homeflow.lib.Encryption
+import org.homeflow.lib.ValidationException
+import org.homeflow.lib.orThrow
 import org.homeflow.lib.parseIsoDate
+import org.homeflow.lib.parseIsoTimestamp
+import org.homeflow.lib.parseUuid
 import org.homeflow.lib.toIsoString
 import org.homeflow.modules.cycles.CyclesRepository
 import org.homeflow.modules.dailylogs.AssembledPainLocation
@@ -25,7 +31,6 @@ import org.homeflow.modules.preferences.PreferencesRepository
 import org.homeflow.modules.refdata.RefDataRepository
 import org.homeflow.modules.refdata.SymptomOptionRow
 import org.homeflow.modules.users.UserPrincipal
-import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -42,7 +47,7 @@ import java.util.UUID
  * Encryption boundary: this service decrypts notes/sex on pull and encrypts on push.
  * No plaintext health data is logged; the repositories never see plaintext.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList") // one repository per synced entity, by design
 class SyncService(
     private val cyclesRepository: CyclesRepository,
     private val dailyLogsRepository: DailyLogsRepository,
@@ -51,6 +56,8 @@ class SyncService(
     private val changeLogRepository: ChangeLogRepository,
     private val refDataRepository: RefDataRepository,
     private val encryption: Encryption,
+    /** Max change rows per pull page (SEC-02). Injectable so tests can use a tiny page. */
+    private val pullPageSize: Int = SYNC_PULL_PAGE_SIZE,
 ) {
     // ──────────────────────────────────────────────────────────────────────────
     // PUSH
@@ -83,7 +90,7 @@ class SyncService(
         // (the client adopts the authoritative post-merge state immediately).
         val resultCycles =
             request.cycles.map { incoming ->
-                cyclesRepository.findByIdIncludingDeleted(userId, UUID.fromString(incoming.id))?.toSyncCycle()
+                cyclesRepository.findByIdIncludingDeleted(userId, parseUuid(incoming.id, "cycle id"))?.toSyncCycle()
                     ?: incoming.copy(deleted = true)
             }
 
@@ -114,7 +121,7 @@ class SyncService(
         userId: UUID,
         incoming: SyncCycle,
     ): SyncCycle {
-        val cycleId = UUID.fromString(incoming.id)
+        val cycleId = parseUuid(incoming.id, "cycle id")
         val existing = cyclesRepository.findByIdIncludingDeleted(userId, cycleId)
 
         val shouldApply =
@@ -135,7 +142,7 @@ class SyncService(
             } else {
                 val start = parseIsoDate(incoming.startDate)
                 val end = incoming.endDate?.let { parseIsoDate(it) }
-                val updatedAt = OffsetDateTime.parse(incoming.updatedAt)
+                val updatedAt = parseIsoTimestamp(incoming.updatedAt)
                 if (existing == null) {
                     cyclesRepository.insertExplicit(userId, start, end, cycleId)
                 } else {
@@ -153,7 +160,7 @@ class SyncService(
         incoming: SyncDay,
         ctx: RefDataContext,
     ): SyncDay {
-        val dayId = UUID.fromString(incoming.id)
+        val dayId = parseUuid(incoming.id, "day id")
         val existing = dailyLogsRepository.findByIdIncludingDeleted(userId, dayId)
 
         val shouldApply =
@@ -172,14 +179,29 @@ class SyncService(
             if (incoming.deleted) {
                 dailyLogsRepository.softDeleteById(userId, dayId)
             } else {
-                val cycleId = UUID.fromString(incoming.cycleId)
+                val cycleId = parseUuid(incoming.cycleId, "cycle id")
+                // Defense-in-depth (issue #83): a live day whose parent cycle isn't on the
+                // server violates the daily_logs FK and would surface as a 500. The client is
+                // expected to include the cycle in the same push; if a (buggy/legacy) client
+                // omits it, reject with a clean 400 instead of an opaque server error.
+                if (cyclesRepository.findByIdIncludingDeleted(userId, cycleId) == null) {
+                    throw ValidationException("A pushed day references a cycle that does not exist.")
+                }
                 val date = parseIsoDate(incoming.date)
-                val updatedAt = OffsetDateTime.parse(incoming.updatedAt)
+                val updatedAt = parseIsoTimestamp(incoming.updatedAt)
 
                 dailyLogsRepository.upsertById(userId, dayId, cycleId, date, updatedAt)
 
                 val notesEncrypted = incoming.notes?.let(encryption::encrypt)
                 val sexEncrypted = encryptSexPayload(incoming.sex, ctx)
+                val painLocations = resolvePain(incoming.pain, ctx.locationIdBySlug)
+                // Enforce the same pain rules as the REST route (severity range + no duplicate
+                // locations); the DB CHECK would otherwise turn a bad severity into an opaque 500.
+                validatePainLocations(
+                    painLocations.map {
+                        PainLocationDto(locationId = it.locationId.toString(), severity = it.severity)
+                    },
+                ).orThrow()
 
                 dailyLogSubsRepository.applyAllFromSync(
                     userId = userId,
@@ -195,7 +217,7 @@ class SyncService(
                     collection =
                         resolveSlug(incoming.collectionMethod, COLLECTION_METHOD, ctx.optionsByCategoryAndSlug),
                     sexEncryptedPayload = sexEncrypted,
-                    painLocations = resolvePain(incoming.pain, ctx.locationIdBySlug),
+                    painLocations = painLocations,
                     notesEncrypted = notesEncrypted,
                     updatedAt = updatedAt,
                 )
@@ -258,9 +280,11 @@ class SyncService(
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns all changes since [cursor] (exclusive). Each change row causes a full
-     * entity read — live entities are returned with all their data (decrypted), deleted
-     * entities are returned as tombstones (id + updatedAt + deleted=true).
+     * Returns changes since [cursor] (exclusive), capped at [pullPageSize] rows per
+     * page (SEC-02). Each change row causes a full entity read — live entities are
+     * returned with all their data (decrypted), deleted entities are returned as
+     * tombstones (id + updatedAt + deleted=true). The response `cursor` is the seq of
+     * the last row in this page and `hasMore` tells the client to pull again from it.
      */
     fun pull(
         principal: UserPrincipal,
@@ -268,7 +292,9 @@ class SyncService(
     ): SyncPullResponse {
         val ctx = buildRefDataContext()
         val userId = principal.id
-        val changes = changeLogRepository.findChangesSince(userId, cursor)
+        val page = changeLogRepository.findChangesSince(userId, cursor, pullPageSize + 1)
+        val hasMore = page.size > pullPageSize
+        val changes = if (hasMore) page.subList(0, pullPageSize) else page
 
         val resultCycles = mutableListOf<SyncCycle>()
         val resultDays = mutableListOf<SyncDay>()
@@ -301,6 +327,7 @@ class SyncService(
             days = resultDays,
             preferences = resultPrefs,
             cursor = newCursor,
+            hasMore = hasMore,
         )
     }
 
@@ -437,19 +464,22 @@ class SyncService(
             deleted = deletedAt != null,
         )
 
-    private companion object {
-        const val EMOTIONS = "emotions"
-        const val SLEEP_QUALITY = "sleep_quality"
-        const val ENERGY = "energy"
-        const val SEX = "sex"
-        const val DISCHARGE = "discharge"
-        const val SKIN = "skin"
-        const val DIGESTION = "digestion"
-        const val BLOOD_FLOW = "blood_flow"
-        const val COLLECTION_METHOD = "collection_method"
-        const val MIND = "mind"
+    companion object {
+        /** Max change rows returned per pull request (SEC-02). */
+        const val SYNC_PULL_PAGE_SIZE = 500
 
-        val ID_LIST = ListSerializer(String.serializer())
-        val SLUG_LIST = ListSerializer(String.serializer())
+        private const val EMOTIONS = "emotions"
+        private const val SLEEP_QUALITY = "sleep_quality"
+        private const val ENERGY = "energy"
+        private const val SEX = "sex"
+        private const val DISCHARGE = "discharge"
+        private const val SKIN = "skin"
+        private const val DIGESTION = "digestion"
+        private const val BLOOD_FLOW = "blood_flow"
+        private const val COLLECTION_METHOD = "collection_method"
+        private const val MIND = "mind"
+
+        private val ID_LIST = ListSerializer(String.serializer())
+        private val SLUG_LIST = ListSerializer(String.serializer())
     }
 }

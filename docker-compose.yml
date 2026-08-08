@@ -5,9 +5,13 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # SEC-09: pinned by manifest-list digest (multi-arch) to prevent tag mutation.
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: homeflow-postgres-prod
     restart: unless-stopped
+    # SEC-07: block privilege escalation (dropping root→postgres still works).
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -26,11 +30,15 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    image: quay.io/keycloak/keycloak:26.1@sha256:be6a86215213145bfb4fb3e2b3ab982a806d00262655abdcf3ffa6a38d241c7c
     container_name: homeflow-keycloak-prod
     restart: unless-stopped
     command: start --import-realm
+    security_opt:
+      - no-new-privileges:true
     environment:
+      # SEC-08: management-port health endpoints for the container healthcheck.
+      KC_HEALTH_ENABLED: "true"
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}
@@ -48,6 +56,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # SEC-08: the KC image has bash but no curl; /dev/tcp is the documented pattern.
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
   backend:
     build:
@@ -55,6 +70,12 @@ services:
       dockerfile: server/Dockerfile
     container_name: homeflow-backend-prod
     restart: unless-stopped
+    # SEC-07: non-root JVM app on an immutable filesystem; /tmp is the only writable path.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -73,13 +94,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # SEC-08: wait for Keycloak readiness — the backend fetches JWKS on demand,
+      # and starting before KC is up produced avoidable startup 401s/retries.
       keycloak:
-        condition: service_started
+        condition: service_healthy
+    # SEC-08: TCP connect proves Netty is listening (temurin JRE has bash, no curl).
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     container_name: homeflow-caddy-prod
     restart: unless-stopped
+    # SEC-07: minimal capabilities — only the low-port bind Caddy actually needs.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     ports:
       - "80:80"
       - "443:443"

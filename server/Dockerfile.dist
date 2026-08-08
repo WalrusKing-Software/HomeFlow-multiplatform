@@ -11,7 +11,8 @@
 # See __docs/RELEASE-PIPELINE.md §3.1.
 #
 # Produce the distribution first:  ./gradlew :server:installDist
-FROM eclipse-temurin:21-jre AS production
+# SEC-09: pinned by manifest-list digest (multi-arch) to prevent tag mutation.
+FROM eclipse-temurin:21-jre@sha256:d2b9f8f12212cadcfdf889461531784e8fd097feade954d65b31ee7a71c473ec AS production
 # SERVER_VERSION is stamped by the release pipeline via --build-arg and read at
 # runtime by Config.fromEnv() to populate GET /api/v1/version.
 ARG SERVER_VERSION=unknown

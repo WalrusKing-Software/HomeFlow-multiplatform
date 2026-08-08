@@ -58,10 +58,12 @@ jobs:
               fi
               ;;
             develop|develop-*)
-              if [[ "$HEAD" =~ ^(feature|bugfix|docs)/.+ ]]; then
+              # dependabot/* are Dependabot's dependency-bump branches (SEC-14) —
+              # they integrate like work branches and pass the same CI gates.
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs|dependabot|chore)/.+ ]]; then
                 echo "OK: work PR into '$BASE' from '$HEAD'."
               else
-                fail "Only 'feature/*', 'bugfix/*', or 'docs/*' branches may be merged into '$BASE' (got head '$HEAD')."
+                fail "Only 'feature/*', 'bugfix/*', 'docs/*', 'dependabot/*', or 'chore/*' branches may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
             *)

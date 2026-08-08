@@ -6,13 +6,13 @@ import org.homeflow.db.Cycles
 import org.homeflow.db.DailyLogFlow
 import org.homeflow.db.DailyLogSleep
 import org.homeflow.db.DailyLogs
+import org.homeflow.db.userScopedTransaction
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.innerJoin
 import org.jetbrains.exposed.sql.max
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.UUID
 
 /** One sleep selection on a logged day, with the day's cycle start so its phase can be derived. */
@@ -38,7 +38,7 @@ class AnalyticsRepository(
      * for cycle-length stats and the period-length chart.
      */
     fun closedCycles(userId: UUID): List<ClosedCycleInput> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val flowCountByCycle =
                 (DailyLogFlow innerJoin DailyLogs)
                     .selectAll()
@@ -61,7 +61,7 @@ class AnalyticsRepository(
 
     /** The start date of the user's most recent cycle (open or closed), or null if none exist. */
     fun mostRecentCycleStart(userId: UUID): LocalDate? =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val maxStart = Cycles.startDate.max()
             Cycles
                 .select(maxStart)
@@ -76,7 +76,7 @@ class AnalyticsRepository(
      * option); the service groups them by [SleepLogRow.dailyLogId].
      */
     fun sleepLogs(userId: UUID): List<SleepLogRow> =
-        transaction(db) {
+        userScopedTransaction(db, userId) {
             val cycleStarts =
                 Cycles
                     .selectAll()
