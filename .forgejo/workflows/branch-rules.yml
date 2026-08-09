@@ -35,10 +35,10 @@ jobs:
 
           case "$BASE" in
             main)
-              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-                echo "OK: release PR into 'main' from '$HEAD'."
+              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ || "$HEAD" == "develop" ]]; then
+                echo "OK: PR into 'main' from '$HEAD' (release promotion or develop back-merge)."
               else
-                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
+                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) or 'develop' (back-merge) may be merged into 'main' (got head '$HEAD')."
               fi
               ;;
             release/*)
@@ -49,10 +49,10 @@ jobs:
               fi
               ;;
             develop|develop-*)
-              if [[ "$HEAD" =~ ^(feature|bugfix|docs|chore)/.+ ]]; then
-                echo "OK: work PR into '$BASE' from '$HEAD'."
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs|chore)/.+ || "$HEAD" == "main" || "$HEAD" =~ ^release/.+ ]]; then
+                echo "OK: PR into '$BASE' from '$HEAD' (work branch, or main/release back-merge)."
               else
-                fail "Only 'feature/*', 'bugfix/*', 'docs/*', or 'chore/*' branches may be merged into '$BASE' (got head '$HEAD')."
+                fail "Only 'feature/*', 'bugfix/*', 'docs/*', 'chore/*', 'main' (back-merge), or 'release/*' (back-merge) branches may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
             *)
