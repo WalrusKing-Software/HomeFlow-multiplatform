@@ -5,9 +5,10 @@ name: Branch Rules
 # branch a PR is allowed to come from. This check fails the PR when the
 # head -> base flow is not allowed.
 #
-#   main               <-  release/x.y.z              (release PRs only)
+#   main               <-  release/x.y.z | develop        (release PRs + develop back-merge)
 #   release/*          <-  develop-* | feature/* | bugfix/*
-#   develop | develop-* <- feature/* | bugfix/* | docs/*  (integration of work branches)
+#   develop | develop-* <- feature/* | bugfix/* | docs/* | chore/* | dependabot/*
+#                          | main | release/*             (work branches + back-merges)
 #
 # develop-* is the integration branch for the next release: work branches merge
 # into it while the version number is still undecided, then it lands on a
@@ -44,10 +45,11 @@ jobs:
             main)
               # release/x.y.z, with an optional 'v' prefix and optional pre-release
               # qualifier (e.g. release/0.1.0, release/v0.1.0, release/v0.1.0-alpha-1).
-              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-                echo "OK: release PR into 'main' from '$HEAD'."
+              # 'develop' is also allowed as a post-release back-merge into main.
+              if [[ "$HEAD" =~ ^release/v?[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ || "$HEAD" == "develop" ]]; then
+                echo "OK: PR into 'main' from '$HEAD' (release promotion or develop back-merge)."
               else
-                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) may be merged into 'main' (got head '$HEAD'). main must always reflect the latest stable release."
+                fail "Only 'release/x.y.z' branches (optionally 'v'-prefixed and/or with a pre-release suffix) or 'develop' (back-merge) may be merged into 'main' (got head '$HEAD')."
               fi
               ;;
             release/*)
@@ -60,10 +62,12 @@ jobs:
             develop|develop-*)
               # dependabot/* are Dependabot's dependency-bump branches (SEC-14) —
               # they integrate like work branches and pass the same CI gates.
-              if [[ "$HEAD" =~ ^(feature|bugfix|docs|dependabot|chore)/.+ ]]; then
-                echo "OK: work PR into '$BASE' from '$HEAD'."
+              # 'main' and 'release/*' are allowed as post-release back-merges so the
+              # integration branch can re-absorb the release commits.
+              if [[ "$HEAD" =~ ^(feature|bugfix|docs|dependabot|chore)/.+ || "$HEAD" == "main" || "$HEAD" =~ ^release/.+ ]]; then
+                echo "OK: PR into '$BASE' from '$HEAD' (work branch, or main/release back-merge)."
               else
-                fail "Only 'feature/*', 'bugfix/*', 'docs/*', 'dependabot/*', or 'chore/*' branches may be merged into '$BASE' (got head '$HEAD')."
+                fail "Only 'feature/*', 'bugfix/*', 'docs/*', 'dependabot/*', 'chore/*', 'main' (back-merge), or 'release/*' (back-merge) branches may be merged into '$BASE' (got head '$HEAD')."
               fi
               ;;
             *)
