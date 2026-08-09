@@ -36,7 +36,7 @@ postgresql = "42.7.4"
 sqldelight = "2.0.2"
 sqlcipher-android = "4.5.4"
 sqlite-jdbc-willena = "3.49.1.0"
-testcontainers = "1.20.4"
+testcontainers = "1.21.4"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
