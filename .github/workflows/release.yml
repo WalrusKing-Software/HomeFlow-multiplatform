@@ -153,7 +153,7 @@ jobs:
       # Multi-arch image built FROM the prebuilt dist (see RELEASE-PIPELINE.md §3.1).
       # Context is the dist directory so the repo .dockerignore (**/build/) does not hide it.
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
