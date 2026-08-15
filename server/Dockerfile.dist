@@ -12,7 +12,7 @@
 #
 # Produce the distribution first:  ./gradlew :server:installDist
 # SEC-09: pinned by manifest-list digest (multi-arch) to prevent tag mutation.
-FROM eclipse-temurin:21-jre@sha256:d2b9f8f12212cadcfdf889461531784e8fd097feade954d65b31ee7a71c473ec AS production
+FROM eclipse-temurin:25-jre@sha256:a214efa3200af4b657e41935799aa12d7aee3336fdb42eb505a0948f6ecdd983 AS production
 # SERVER_VERSION is stamped by the release pipeline via --build-arg and read at
 # runtime by Config.fromEnv() to populate GET /api/v1/version.
 ARG SERVER_VERSION=unknown

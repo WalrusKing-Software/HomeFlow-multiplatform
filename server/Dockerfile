@@ -8,7 +8,7 @@
 # the server bundle still never compiles Android code — it just needs the SDK to
 # resolve the build model.)
 # SEC-09: pinned by manifest-list digest (multi-arch) to prevent tag mutation.
-FROM eclipse-temurin:21-jdk@sha256:1eeacc8c295ed4805f6ffead2417b1936aad296b02ea9e56b457230befc9e98d AS build
+FROM eclipse-temurin:25-jdk@sha256:c42fecf62f32725c65cfea284c012526d6fb31cc78123c740ebdc1cfd2dced12 AS build
 
 ENV ANDROID_HOME=/opt/android-sdk \
     DEBIAN_FRONTEND=noninteractive
@@ -34,7 +34,7 @@ COPY . .
 RUN ./gradlew :server:installDist --no-daemon --no-configuration-cache
 
 # ── Stage: runtime — minimal JRE, non-root ───────────────────────────────────
-FROM eclipse-temurin:21-jre@sha256:d2b9f8f12212cadcfdf889461531784e8fd097feade954d65b31ee7a71c473ec AS production
+FROM eclipse-temurin:25-jre@sha256:a214efa3200af4b657e41935799aa12d7aee3336fdb42eb505a0948f6ecdd983 AS production
 WORKDIR /app
 COPY --from=build /app/server/build/install/server ./
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
