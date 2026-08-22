@@ -19,7 +19,7 @@ composeMultiplatform = "1.11.1"
 # ImageVector constants, so it's pinned here while the rest of Compose tracks 1.11.1.
 composeMaterialIcons = "1.7.3"
 detekt = "1.23.8"
-exposed = "0.56.0"
+exposed = "1.4.0"
 flyway = "10.20.1"
 hikari = "6.2.1"
 javaKeyring = "1.0.4"
